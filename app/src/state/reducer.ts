@@ -24,7 +24,7 @@ import {
   updateShape,
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
-import type { Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
@@ -130,6 +130,8 @@ export type Action =
   | { type: 'ADD_WAYPOINT'; id: string; p: Pt }
   | { type: 'CLEAR_WAYPOINTS'; id: string }
   | { type: 'SET_CONNECTOR_ROUTING'; id: string; routing: 'straight' | 'orthogonal' }
+  | { type: 'SET_CONNECTOR_DASHED'; id: string; dashed: boolean }
+  | { type: 'SET_CONNECTOR_ARROW_DIRECTION'; id: string; arrowDirection: ArrowDirection }
   | { type: 'START_INSERT'; id: string }
   | { type: 'INSERT_COMMIT'; label: string }
   | { type: 'CMD_OPEN' }
@@ -1347,6 +1349,24 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         connectors: state.doc.connectors.map((c) => (c.id === action.id ? { ...c, routing: action.routing } : c)),
       };
       return commit(state, doc, { msg: action.routing === 'orthogonal' ? 'routing: orthogonal' : 'routing: straight' });
+    }
+
+    case 'SET_CONNECTOR_DASHED': {
+      const doc: Doc = {
+        ...state.doc,
+        connectors: state.doc.connectors.map((c) => (c.id === action.id ? { ...c, dashed: action.dashed } : c)),
+      };
+      return commit(state, doc, { msg: action.dashed ? 'line: dashed' : 'line: solid' });
+    }
+
+    case 'SET_CONNECTOR_ARROW_DIRECTION': {
+      const doc: Doc = {
+        ...state.doc,
+        connectors: state.doc.connectors.map((c) =>
+          c.id === action.id ? { ...c, arrowDirection: action.arrowDirection } : c,
+        ),
+      };
+      return commit(state, doc, { msg: `arrow: ${action.arrowDirection}` });
     }
 
     case 'ADD_IMAGE': {

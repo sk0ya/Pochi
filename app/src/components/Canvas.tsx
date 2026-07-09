@@ -689,6 +689,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     // (otherwise the color you just picked is hidden while still selected).
     const trueStroke = c.color ?? 'var(--shape-stroke)';
     const marker = c.color ? `url(#arrow-${markerKey(c.color)})` : 'url(#arrow)';
+    const arrowDir = c.arrowDirection ?? 'end';
+    const showEndArrow = arrowDir === 'end' || arrowDir === 'both';
+    const showStartArrow = arrowDir === 'start' || arrowDir === 'both';
     const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
     // Same reasoning as the shape body: with the arrow tool active, dragging
     // the connector's body starts a fresh arrow from that point rather than
@@ -720,7 +723,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           stroke={trueStroke}
           strokeWidth={selected ? 2 : 1.5}
           strokeLinejoin="round"
-          markerEnd={marker}
+          strokeDasharray={c.dashed ? '6 4' : undefined}
+          markerStart={showStartArrow ? marker : undefined}
+          markerEnd={showEndArrow ? marker : undefined}
         />
         {selected &&
           c.waypoints?.map((wp, i) => (

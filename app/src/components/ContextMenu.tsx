@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { TriangleDirection } from '../model/types';
+import type { ArrowDirection, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
@@ -14,6 +14,18 @@ const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
   ['up-right', '◥', '右上向き(斜め)'],
   ['down-left', '◣', '左下向き(斜め)'],
   ['down-right', '◢', '右下向き(斜め)'],
+];
+
+const ARROW_DIRECTIONS: Array<[ArrowDirection, string, string]> = [
+  ['none', '─', '矢印なし'],
+  ['end', '─▶', '終点のみ'],
+  ['start', '◀─', '始点のみ'],
+  ['both', '◀▶', '両方向'],
+];
+
+const LINE_STYLES: Array<[boolean, string, string]> = [
+  [false, '───', '実線'],
+  [true, '╌╌╌', '点線'],
 ];
 
 export function ContextMenu({
@@ -64,7 +76,13 @@ export function ContextMenu({
   };
 
   // Clamp so the menu doesn't run off the viewport edge.
-  const menuHeight = hasTarget ? (singleShape?.kind === 'triangle' ? 470 : 420) : 90;
+  const menuHeight = hasTarget
+    ? singleShape?.kind === 'triangle'
+      ? 470
+      : singleConnector
+        ? 540
+        : 420
+    : 90;
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -125,6 +143,32 @@ export function ContextMenu({
                   ベンドポイントを全て削除
                 </button>
               )}
+              <div className="context-label">線種</div>
+              <div className="direction-row">
+                {LINE_STYLES.map(([dashed, icon, title]) => (
+                  <button
+                    key={title}
+                    className={`direction-swatch${(singleConnector.dashed ?? false) === dashed ? ' active' : ''}`}
+                    title={title}
+                    onClick={() => run({ type: 'SET_CONNECTOR_DASHED', id: ids[0], dashed })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="context-label">矢印</div>
+              <div className="direction-row">
+                {ARROW_DIRECTIONS.map(([dir, icon, title]) => (
+                  <button
+                    key={dir}
+                    className={`direction-swatch${(singleConnector.arrowDirection ?? 'end') === dir ? ' active' : ''}`}
+                    title={title}
+                    onClick={() => run({ type: 'SET_CONNECTOR_ARROW_DIRECTION', id: ids[0], arrowDirection: dir })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
             </>
           )}
           <div className="context-sep" />

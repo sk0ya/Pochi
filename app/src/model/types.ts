@@ -43,6 +43,9 @@ export interface Endpoint {
   y: number;
 }
 
+/** Arrowhead placement along a connector; undefined = 'end' (the original default). */
+export type ArrowDirection = 'none' | 'start' | 'end' | 'both';
+
 export interface Connector {
   id: string;
   from: Endpoint;
@@ -54,6 +57,10 @@ export interface Connector {
   routing?: 'straight' | 'orthogonal';
   /** Manual bend points, in order from `from` to `to`. */
   waypoints?: Pt[];
+  /** Dashed vs solid stroke; undefined = solid. */
+  dashed?: boolean;
+  /** Arrowhead placement; undefined = 'end'. */
+  arrowDirection?: ArrowDirection;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }

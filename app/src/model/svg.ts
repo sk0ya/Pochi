@@ -67,8 +67,12 @@ export function exportSvg(doc: Doc): string {
     const stroke = c.color ?? '#333a45';
     const markerId = c.color ? `arrow-${markerKey(c.color)}` : 'arrow';
     const points = path.map((p) => `${p.x},${p.y}`).join(' ');
+    const arrowDir = c.arrowDirection ?? 'end';
+    const dashAttr = c.dashed ? ' stroke-dasharray="6 4"' : '';
+    const markerStartAttr = arrowDir === 'start' || arrowDir === 'both' ? ` marker-start="url(#${markerId})"` : '';
+    const markerEndAttr = arrowDir === 'end' || arrowDir === 'both' ? ` marker-end="url(#${markerId})"` : '';
     parts.push(
-      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#${markerId})"/>`,
+      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round"${dashAttr}${markerStartAttr}${markerEndAttr}/>`,
     );
     if (c.label) {
       const mid = path[Math.floor((path.length - 1) / 2)];
