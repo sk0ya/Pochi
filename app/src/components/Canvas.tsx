@@ -55,10 +55,45 @@ function diamondPoints(s: Shape, pad = 0): string {
   return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
 }
 
+/** Pushes each edge of a convex polygon outward along its own normal by `pad`,
+ * then re-intersects consecutive edges — a true parallel offset, unlike
+ * padding the bounding box (which skews slanted edges since it only ever
+ * moves them along x/y, not along their own normal). */
+function offsetPolygon(vertices: Pt[], pad: number): Pt[] {
+  if (!pad) return vertices;
+  const n = vertices.length;
+  const cx = vertices.reduce((s, p) => s + p.x, 0) / n;
+  const cy = vertices.reduce((s, p) => s + p.y, 0) / n;
+  const lines = vertices.map((a, i) => {
+    const b = vertices[(i + 1) % n];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    let nx = uy;
+    let ny = -ux;
+    const midx = (a.x + b.x) / 2;
+    const midy = (a.y + b.y) / 2;
+    if (nx * (cx - midx) + ny * (cy - midy) > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { p: { x: a.x + nx * pad, y: a.y + ny * pad }, d: { x: ux, y: uy } };
+  });
+  return vertices.map((_, i) => {
+    const prev = lines[(i - 1 + n) % n];
+    const curr = lines[i];
+    const denom = prev.d.x * curr.d.y - prev.d.y * curr.d.x;
+    if (Math.abs(denom) < 1e-9) return curr.p;
+    const dx = curr.p.x - prev.p.x;
+    const dy = curr.p.y - prev.p.y;
+    const t = (dx * curr.d.y - dy * curr.d.x) / denom;
+    return { x: prev.p.x + t * prev.d.x, y: prev.p.y + t * prev.d.y };
+  });
+}
+
 /** Triangle polygon points for a bounding box + apex direction, optionally expanded by `pad` (for the halo). */
 function trianglePoints(box: { x: number; y: number; w: number; h: number; direction?: Shape['direction'] }, pad = 0): string {
-  const b = pad ? { ...box, x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 } : box;
-  return triangleVertices(b)
+  return offsetPolygon(triangleVertices(box), pad)
     .map((p) => `${p.x},${p.y}`)
     .join(' ');
 }
@@ -193,6 +228,34 @@ function connectRing(s: Shape, offset: number) {
           fill="none"
           stroke="var(--accent-dim)"
           strokeWidth={1.5}
+          opacity={0.7}
+          style={{ pointerEvents: 'none' }}
+        />
+      </>
+    );
+  }
+  if (s.kind === 'triangle') {
+    const points = trianglePoints(s, offset);
+    return (
+      <>
+        <polygon
+          data-handle="connect"
+          data-shape={s.id}
+          points={points}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={14}
+          strokeLinejoin="round"
+          style={{ cursor: 'alias' }}
+        >
+          <title>{CONNECT_RING_TITLE}</title>
+        </polygon>
+        <polygon
+          points={points}
+          fill="none"
+          stroke="var(--accent-dim)"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
           opacity={0.7}
           style={{ pointerEvents: 'none' }}
         />
