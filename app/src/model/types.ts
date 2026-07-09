@@ -13,6 +13,8 @@ export interface Shape {
   w: number;
   h: number;
   label: string;
+  /** Accent color (hex); undefined = theme default. */
+  color?: string;
 }
 
 /** Arrow endpoint: bound to a shape (follows it) or a fixed point. */
@@ -27,6 +29,8 @@ export interface Connector {
   from: Endpoint;
   to: Endpoint;
   label: string;
+  /** Accent color (hex); undefined = theme default. */
+  color?: string;
 }
 
 export interface Doc {

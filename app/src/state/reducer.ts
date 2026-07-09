@@ -6,6 +6,7 @@ import {
   findShape,
   itemsInRect,
   measureLabel,
+  reorderItems,
   shapeAt,
   translateItems,
   updateShape,
@@ -57,6 +58,8 @@ export interface EditorState {
   showHelp: boolean;
   view: View;
   fileName: string | null;
+  /** Right-click context menu: screen position to render at, world point for context, target under cursor. */
+  contextMenu: { screen: Pt; world: Pt; id?: string } | null;
 }
 
 export type Action =
@@ -96,7 +99,16 @@ export type Action =
   | { type: 'MSG'; msg: string }
   | { type: 'SAVED'; fileName: string }
   | { type: 'SET_VIM'; on: boolean }
-  | { type: 'TOGGLE_HELP' };
+  | { type: 'TOGGLE_HELP' }
+  | { type: 'SET_COLOR'; ids: string[]; color: string | null }
+  | { type: 'REORDER'; ids: string[]; dir: 'front' | 'back' }
+  | { type: 'DUPLICATE' }
+  | { type: 'DELETE_IDS'; ids: string[] }
+  | { type: 'COPY' }
+  | { type: 'PASTE_OFFSET' }
+  | { type: 'PASTE_AT'; p: Pt }
+  | { type: 'CONTEXT_MENU_OPEN'; screen: Pt; world: Pt; id?: string }
+  | { type: 'CONTEXT_MENU_CLOSE' };
 
 const DEFAULT_W = GRID * 10;
 const DEFAULT_H = GRID * 6;
@@ -126,6 +138,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     showHelp: false,
     view: { x: 0, y: 0, scale: 1 },
     fileName: null,
+    contextMenu: null,
   };
 }
 
@@ -323,7 +336,7 @@ function yankSelection(state: EditorState): Clipboard | null {
   };
 }
 
-function pasteClipboard(state: EditorState, clip: Clipboard): EditorState {
+function pasteClipboard(state: EditorState, clip: Clipboard, atPoint?: Pt): EditorState {
   const xs: number[] = [];
   const ys: number[] = [];
   for (const s of clip.shapes) {
@@ -339,7 +352,7 @@ function pasteClipboard(state: EditorState, clip: Clipboard): EditorState {
     }
   }
   if (!xs.length) return { ...state, count: '', msg: 'clipboard empty' };
-  const at = snapPt(state.cursor);
+  const at = snapPt(atPoint ?? state.cursor);
   const dx = at.x - Math.min(...xs);
   const dy = at.y - Math.min(...ys);
   const idMap = new Map<string, string>();
@@ -367,6 +380,47 @@ function pasteClipboard(state: EditorState, clip: Clipboard): EditorState {
     count: '',
     msg: 'pasted',
   });
+}
+
+/** Copy+offset clipboard items in place (Ctrl+D duplicate, or Ctrl+V without a vim cursor). */
+function pasteWithOffset(state: EditorState, clip: Clipboard, offset: number): EditorState {
+  const idMap = new Map<string, string>();
+  const shapes = clip.shapes.map((s) => {
+    const id = newId();
+    idMap.set(s.id, id);
+    return { ...s, id, x: s.x + offset, y: s.y + offset };
+  });
+  const remap = (e: Endpoint): Endpoint =>
+    e.shapeId
+      ? { shapeId: idMap.get(e.shapeId), x: e.x + offset, y: e.y + offset }
+      : { x: e.x + offset, y: e.y + offset };
+  const connectors = clip.connectors.map((c) => ({
+    ...c,
+    id: newId(),
+    from: remap(c.from),
+    to: remap(c.to),
+  }));
+  const doc: Doc = {
+    shapes: [...state.doc.shapes, ...shapes],
+    connectors: [...state.doc.connectors, ...connectors],
+  };
+  return commit(state, doc, {
+    selectedIds: [...shapes.map((s) => s.id), ...connectors.map((c) => c.id)],
+    msg: 'duplicated',
+  });
+}
+
+function copySelection(state: EditorState): EditorState {
+  if (!state.selectedIds.length) return { ...state, msg: 'select something first' };
+  const clip = yankSelection(state);
+  if (!clip) return { ...state, msg: 'nothing to copy' };
+  return { ...state, clipboard: clip, msg: 'copied' };
+}
+
+function duplicateSelection(state: EditorState): EditorState {
+  const clip = state.selectedIds.length ? yankSelection(state) : null;
+  if (!clip) return { ...state, msg: 'select something first' };
+  return pasteWithOffset(state, clip, GRID * 2);
 }
 
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean): EditorState {
@@ -908,6 +962,59 @@ export function reduce(state: EditorState, action: Action): EditorState {
 
     case 'TOGGLE_HELP':
       return { ...state, showHelp: !state.showHelp };
+
+    case 'SET_COLOR': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const color = action.color ?? undefined;
+      const doc: Doc = {
+        shapes: state.doc.shapes.map((s) => (idSet.has(s.id) ? { ...s, color } : s)),
+        connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, color } : c)),
+      };
+      return commit(state, doc, { msg: color ? 'color set' : 'color reset' });
+    }
+
+    case 'REORDER': {
+      if (!action.ids.length) return state;
+      return commit(state, reorderItems(state.doc, action.ids, action.dir), {
+        msg: action.dir === 'front' ? 'brought to front' : 'sent to back',
+      });
+    }
+
+    case 'DUPLICATE':
+      return duplicateSelection(state);
+
+    case 'DELETE_IDS': {
+      if (!action.ids.length) return state;
+      const doc = action.ids.reduce((d, id) => deleteItem(d, id), state.doc);
+      return commit(state, doc, {
+        selectedIds: state.selectedIds.filter((id) => !action.ids.includes(id)),
+        msg: action.ids.length > 1 ? `deleted ${action.ids.length} items` : 'deleted',
+      });
+    }
+
+    case 'COPY':
+      return copySelection(state);
+
+    case 'PASTE_OFFSET': {
+      if (!state.clipboard) return { ...state, msg: 'clipboard empty' };
+      return pasteWithOffset(state, state.clipboard, GRID * 2);
+    }
+
+    case 'PASTE_AT': {
+      if (!state.clipboard) return { ...state, msg: 'clipboard empty' };
+      return pasteClipboard(state, state.clipboard, action.p);
+    }
+
+    case 'CONTEXT_MENU_OPEN':
+      return {
+        ...state,
+        contextMenu: { screen: action.screen, world: action.world, id: action.id },
+        selectedIds: action.id && !state.selectedIds.includes(action.id) ? [action.id] : state.selectedIds,
+      };
+
+    case 'CONTEXT_MENU_CLOSE':
+      return state.contextMenu ? { ...state, contextMenu: null } : state;
 
     default:
       return state;

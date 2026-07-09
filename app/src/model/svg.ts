@@ -1,8 +1,11 @@
 import { connectorEnds, docBounds } from './doc';
+import { fillTint } from './palette';
 import type { Doc, Shape } from './types';
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const markerKey = (hex: string): string => hex.replace('#', '');
 
 const LINE_H = 20;
 
@@ -19,14 +22,20 @@ function labelSvg(label: string, cx: number, cy: number, color: string): string 
 function shapeSvg(s: Shape): string {
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
-  const style = 'fill="#ffffff" stroke="#333a45" stroke-width="1.5"';
+  const stroke = s.color ?? '#333a45';
+  const fill = s.color ? fillTint(s.color) : '#ffffff';
+  const style = `fill="${fill}" stroke="${stroke}" stroke-width="1.5"`;
   let body = '';
   if (s.kind === 'rect') {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4" ${style}/>`;
   } else if (s.kind === 'ellipse') {
     body = `<ellipse cx="${cx}" cy="${cy}" rx="${s.w / 2}" ry="${s.h / 2}" ${style}/>`;
   }
-  return body + labelSvg(s.label, cx, cy, '#222933');
+  return body + labelSvg(s.label, cx, cy, s.kind === 'text' && s.color ? s.color : '#222933');
+}
+
+function markerDef(id: string, hex: string): string {
+  return `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${hex}"/></marker>`;
 }
 
 export function exportSvg(doc: Doc): string {
@@ -37,23 +46,32 @@ export function exportSvg(doc: Doc): string {
   const w = b.w + PAD * 2;
   const h = b.h + PAD * 2;
 
+  const connectorColors = Array.from(new Set(doc.connectors.map((c) => c.color).filter((v): v is string => !!v)));
+
   const parts: string[] = [];
   for (const s of doc.shapes) parts.push(shapeSvg(s));
   for (const c of doc.connectors) {
     const [a, bp] = connectorEnds(doc, c);
+    const stroke = c.color ?? '#333a45';
+    const markerId = c.color ? `arrow-${markerKey(c.color)}` : 'arrow';
     parts.push(
-      `<line x1="${a.x}" y1="${a.y}" x2="${bp.x}" y2="${bp.y}" stroke="#333a45" stroke-width="1.5" marker-end="url(#arrow)"/>`,
+      `<line x1="${a.x}" y1="${a.y}" x2="${bp.x}" y2="${bp.y}" stroke="${stroke}" stroke-width="1.5" marker-end="url(#${markerId})"/>`,
     );
     if (c.label) {
       const mx = (a.x + bp.x) / 2;
       const my = (a.y + bp.y) / 2 - 10;
-      parts.push(labelSvg(c.label, mx, my, '#4a5568'));
+      parts.push(labelSvg(c.label, mx, my, c.color ?? '#4a5568'));
     }
   }
 
+  const markers = [
+    markerDef('arrow', '#333a45'),
+    ...connectorColors.map((hex) => markerDef(`arrow-${markerKey(hex)}`, hex)),
+  ].join('');
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}" font-family="system-ui, sans-serif">`,
-    `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#333a45"/></marker></defs>`,
+    `<defs>${markers}</defs>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     ...parts,
     `</svg>`,

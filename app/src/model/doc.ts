@@ -137,6 +137,18 @@ export function updateShape(doc: Doc, id: string, patch: Partial<Shape>): Doc {
   return { ...doc, shapes: doc.shapes.map((s) => (s.id === id ? { ...s, ...patch } : s)) };
 }
 
+/** Move shapes/connectors to the front or back of their own draw-order array. */
+export function reorderItems(doc: Doc, ids: string[], dir: 'front' | 'back'): Doc {
+  const idSet = new Set(ids);
+  const reorder = <T extends { id: string }>(arr: T[]): T[] => {
+    const sel = arr.filter((x) => idSet.has(x.id));
+    if (!sel.length) return arr;
+    const rest = arr.filter((x) => !idSet.has(x.id));
+    return dir === 'front' ? [...rest, ...sel] : [...sel, ...rest];
+  };
+  return { shapes: reorder(doc.shapes), connectors: reorder(doc.connectors) };
+}
+
 /** Delete a shape (and connectors bound to it) or a connector. */
 export function deleteItem(doc: Doc, id: string): Doc {
   if (doc.shapes.some((s) => s.id === id)) {

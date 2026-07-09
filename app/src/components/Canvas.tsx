@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { connectorAt, connectorEnds, findShape, resolveEndpoint, shapeAt } from '../model/doc';
+import { fillTint } from '../model/palette';
 import type { Connector, Pt, Shape } from '../model/types';
 import { GRID, snap } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
+
+/** Turn a hex color into a safe DOM id fragment for a per-color arrow marker. */
+const markerKey = (hex: string): string => hex.replace('#', '');
 
 const LINE_H = 20;
 
@@ -29,9 +33,9 @@ function Label({ label, cx, cy, color }: { label: string; cx: number; cy: number
 }
 
 function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boolean }) {
-  const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : 'var(--shape-stroke)';
+  const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : s.color ?? 'var(--shape-stroke)';
   const common = {
-    fill: 'var(--shape-fill)',
+    fill: s.color ? fillTint(s.color) : 'var(--shape-fill)',
     stroke,
     strokeWidth: selected ? 2 : 1.5,
   };
@@ -53,7 +57,7 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
           strokeWidth={1}
         />
       )}
-      <Label label={s.label} cx={cx} cy={cy} />
+      <Label label={s.label} cx={cx} cy={cy} color={s.kind === 'text' ? s.color : undefined} />
     </g>
   );
 }
@@ -300,6 +304,17 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     dispatch({ type: 'DBL_CLICK', p: toWorld(e), id: hitId(e.target) });
   };
 
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (mode !== 'normal') return;
+    dispatch({
+      type: 'CONTEXT_MENU_OPEN',
+      screen: { x: e.clientX, y: e.clientY },
+      world: toWorld(e),
+      id: hitId(e.target),
+    });
+  };
+
   const onWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey) {
       const r = svgRef.current!.getBoundingClientRect();
@@ -357,7 +372,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const [a, b] = connectorEnds(doc, c);
     const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
-    const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : 'var(--shape-stroke)';
+    const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : c.color ?? 'var(--shape-stroke)';
+    const marker =
+      selected || hot ? 'url(#arrow-accent)' : c.color ? `url(#arrow-${markerKey(c.color)})` : 'url(#arrow)';
     return (
       <g key={c.id} data-id={c.id}>
         <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={12} />
@@ -368,12 +385,17 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           y2={b.y}
           stroke={stroke}
           strokeWidth={selected ? 2 : 1.5}
-          markerEnd={selected || hot ? 'url(#arrow-accent)' : 'url(#arrow)'}
+          markerEnd={marker}
         />
-        <Label label={c.label} cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2 - 12} color="var(--muted)" />
+        <Label label={c.label} cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2 - 12} color={c.color ?? 'var(--muted)'} />
       </g>
     );
   };
+
+  const connectorColors = useMemo(
+    () => Array.from(new Set(doc.connectors.map((c) => c.color).filter((v): v is string => !!v))),
+    [doc.connectors],
+  );
 
   return (
     <svg
@@ -384,6 +406,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       onMouseUp={onMouseUp}
       onDoubleClick={onDoubleClick}
       onWheel={onWheel}
+      onContextMenu={onContextMenu}
     >
       <defs>
         <pattern id="grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
@@ -411,6 +434,20 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)" />
         </marker>
+        {connectorColors.map((hex) => (
+          <marker
+            key={hex}
+            id={`arrow-${markerKey(hex)}`}
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={hex} />
+          </marker>
+        ))}
       </defs>
       <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
         <rect x={-50000} y={-50000} width={100000} height={100000} fill="url(#grid)" />

@@ -8,6 +8,7 @@ import {
   writeFile,
 } from './bridge';
 import { Canvas } from './components/Canvas';
+import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
 import { StatusBar } from './components/StatusBar';
 import { TextEditOverlay } from './components/TextEditOverlay';
@@ -173,7 +174,27 @@ export default function App() {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       if (s.mode === 'insert' || s.mode === 'command') return;
+      if (s.contextMenu) {
+        dispatch({ type: 'CONTEXT_MENU_CLOSE' });
+        if (e.key === 'Escape') return;
+      }
 
+      if (e.ctrlKey && e.key === 'c') {
+        e.preventDefault();
+        dispatch({ type: 'COPY' });
+        return;
+      }
+      if (e.ctrlKey && e.key === 'v') {
+        e.preventDefault();
+        if (s.vim && s.mode === 'normal') dispatch({ type: 'KEY', key: 'p', ctrl: false });
+        else dispatch({ type: 'PASTE_OFFSET' });
+        return;
+      }
+      if (e.ctrlKey && e.key === 'd') {
+        e.preventDefault();
+        dispatch({ type: 'DUPLICATE' });
+        return;
+      }
       if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
         void save();
@@ -235,6 +256,7 @@ export default function App() {
       <div className="canvas-wrap">
         <Canvas state={state} dispatch={dispatch} />
         <TextEditOverlay state={state} dispatch={dispatch} />
+        <ContextMenu state={state} dispatch={dispatch} />
       </div>
       <StatusBar state={state} dispatch={dispatch} runCommand={runCommand} />
       {state.showHelp && <HelpOverlay dispatch={dispatch} />}
