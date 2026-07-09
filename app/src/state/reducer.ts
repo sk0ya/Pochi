@@ -54,6 +54,8 @@ export interface EditorState {
   cursor: Pt;
   /** Selection lives above vim modes: normal-mode keys act on it when non-empty. */
   selectedIds: string[];
+  /** Stack of previous selections, most recent last. Lets Delete/Backspace fall back to whatever was selected before, so repeated presses delete a chain of items. */
+  selectionHistory: string[][];
   mode: Mode;
   draw: { kind: DrawKind; anchor: Pt } | null;
   arrowFrom: Endpoint | null;
@@ -156,6 +158,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     base: null,
     cursor: { x: GRID * 10, y: GRID * 10 },
     selectedIds: [],
+    selectionHistory: [],
     mode: 'normal',
     draw: null,
     arrowFrom: null,
@@ -186,6 +189,32 @@ function commit(state: EditorState, doc: Doc, extra?: Partial<EditorState>): Edi
     redo: [],
     ...extra,
   };
+}
+
+const SELECTION_HISTORY_LIMIT = 50;
+
+/** Record `ids` as a selection the user is navigating away from, so it can be restored later. */
+function pushSelectionHistory(history: string[][], ids: string[]): string[][] {
+  if (!ids.length) return history;
+  return [...history, ids].slice(-SELECTION_HISTORY_LIMIT);
+}
+
+/**
+ * After a delete, fall back to whatever was selected just before the deleted selection —
+ * skipping any history entries that no longer exist in `doc` — so repeated Delete/Backspace
+ * presses walk back through prior selections instead of just clearing the selection.
+ */
+function restorePreviousSelection(history: string[][], doc: Doc): { selectedIds: string[]; selectionHistory: string[][] } {
+  let remaining = history;
+  while (remaining.length) {
+    const candidate = remaining[remaining.length - 1];
+    remaining = remaining.slice(0, -1);
+    const filtered = candidate.filter(
+      (id) => doc.shapes.some((s) => s.id === id) || doc.connectors.some((c) => c.id === id),
+    );
+    if (filtered.length) return { selectedIds: filtered, selectionHistory: remaining };
+  }
+  return { selectedIds: [], selectionHistory: remaining };
 }
 
 /** End a transient op: commit `base` to history if the doc actually changed. */
@@ -480,7 +509,7 @@ function duplicateSelection(state: EditorState): EditorState {
 
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
-    if (key === 'r') return reduce(state, { type: 'REDO' });
+    if (key === 'r') return reduceCore(state, { type: 'REDO' });
     return state;
   }
 
@@ -578,8 +607,10 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
         ids = [id];
       }
       const doc = ids.reduce((d, id) => deleteItem(d, id), state.doc);
+      const restore = restorePreviousSelection(state.selectionHistory, doc);
       return commit(state, doc, {
-        selectedIds: [],
+        selectedIds: restore.selectedIds,
+        selectionHistory: restore.selectionHistory,
         count: '',
         msg: ids.length > 1 ? `deleted ${ids.length} items` : 'deleted',
       });
@@ -595,7 +626,7 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return pasteClipboard(state, state.clipboard);
     }
     case 'u':
-      return reduce(state, { type: 'UNDO' });
+      return reduceCore(state, { type: 'UNDO' });
     case '?':
       return { ...state, showHelp: !state.showHelp, count: '' };
     default:
@@ -671,8 +702,8 @@ function handleTransientKey(state: EditorState, key: string, shift: boolean): Ed
 /** Simplified bindings when vim mode is off: arrows + Delete on the selection. */
 function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
-    if (key === 'z') return reduce(state, { type: 'UNDO' });
-    if (key === 'y') return reduce(state, { type: 'REDO' });
+    if (key === 'z') return reduceCore(state, { type: 'UNDO' });
+    if (key === 'y') return reduceCore(state, { type: 'REDO' });
     return state;
   }
   if (state.mode === 'draw' || state.mode === 'arrow') return handleTransientKey(state, key, shift);
@@ -685,7 +716,12 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: b
   if (key === 'Delete' || key === 'Backspace') {
     if (!state.selectedIds.length) return state;
     const doc = state.selectedIds.reduce((d, id) => deleteItem(d, id), state.doc);
-    return commit(state, doc, { selectedIds: [], msg: 'deleted' });
+    const restore = restorePreviousSelection(state.selectionHistory, doc);
+    return commit(state, doc, {
+      selectedIds: restore.selectedIds,
+      selectionHistory: restore.selectionHistory,
+      msg: 'deleted',
+    });
   }
   if (key === 'F2' && state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
   const delta = moveDelta(key, GRID * (shift ? BIG_STEP : 1));
@@ -741,7 +777,35 @@ function commitInsert(state: EditorState, label: string): EditorState {
   };
 }
 
+/**
+ * Whether `action` performs a delete: these manage `selectionHistory` themselves
+ * (popping the previous selection back in), so the `reduce` wrapper below must not
+ * also record a history entry for them.
+ */
+function isDeleteAction(action: Action): boolean {
+  if (action.type === 'DELETE_IDS') return true;
+  return action.type === 'KEY' && ['Delete', 'Backspace', 'd', 'x'].includes(action.key);
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/**
+ * Every selection change (clicking a shape, creating one, marquee-select, ...) records
+ * the selection it replaced, so Delete/Backspace can fall back to it — letting repeated
+ * presses walk back through a chain of selections (e.g. create A, create B, then
+ * Delete, Delete removes both and reselects along the way).
+ */
 export function reduce(state: EditorState, action: Action): EditorState {
+  const result = reduceCore(state, action);
+  if (result === state || isDeleteAction(action) || sameIds(result.selectedIds, state.selectedIds)) {
+    return result;
+  }
+  return { ...result, selectionHistory: pushSelectionHistory(state.selectionHistory, state.selectedIds) };
+}
+
+function reduceCore(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case 'KEY': {
       if (state.mode === 'insert' || state.mode === 'command') return state;
@@ -1136,8 +1200,13 @@ export function reduce(state: EditorState, action: Action): EditorState {
     case 'DELETE_IDS': {
       if (!action.ids.length) return state;
       const doc = action.ids.reduce((d, id) => deleteItem(d, id), state.doc);
+      const stillSelected = state.selectedIds.filter((id) => !action.ids.includes(id));
+      const restore = stillSelected.length
+        ? { selectedIds: stillSelected, selectionHistory: state.selectionHistory }
+        : restorePreviousSelection(state.selectionHistory, doc);
       return commit(state, doc, {
-        selectedIds: state.selectedIds.filter((id) => !action.ids.includes(id)),
+        selectedIds: restore.selectedIds,
+        selectionHistory: restore.selectionHistory,
         msg: action.ids.length > 1 ? `deleted ${action.ids.length} items` : 'deleted',
       });
     }
@@ -1190,10 +1259,10 @@ export function reduce(state: EditorState, action: Action): EditorState {
         const [gid] = gids;
         const members = groupMembers(state.doc, gid);
         if (members.length === ids.length && members.every((m) => ids.includes(m))) {
-          return reduce(state, { type: 'UNGROUP' });
+          return reduceCore(state, { type: 'UNGROUP' });
         }
       }
-      return reduce(state, { type: 'GROUP' });
+      return reduceCore(state, { type: 'GROUP' });
     }
 
     case 'WAYPOINT_DRAG_START':
