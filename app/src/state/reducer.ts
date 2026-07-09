@@ -4,8 +4,10 @@ import {
   connectorAt,
   deleteItem,
   findShape,
+  itemsInRect,
   measureLabel,
   shapeAt,
+  translateItems,
   updateShape,
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
@@ -23,6 +25,11 @@ export interface View {
   scale: number;
 }
 
+export interface Clipboard {
+  shapes: Shape[];
+  connectors: Connector[];
+}
+
 export interface EditorState {
   doc: Doc;
   undo: Doc[];
@@ -30,13 +37,16 @@ export interface EditorState {
   /** Snapshot taken when a transient op (move/resize/drag/insert) starts. */
   base: Doc | null;
   cursor: Pt;
-  selectedId: string | null;
+  /** Selection lives above vim modes: normal-mode keys act on it when non-empty. */
+  selectedIds: string[];
   mode: Mode;
   draw: { kind: 'rect' | 'ellipse'; anchor: Pt } | null;
   arrowFrom: Endpoint | null;
+  /** Rubber-band selection rectangle being dragged (Shift+drag). */
+  marquee: { a: Pt; b: Pt } | null;
   editingId: string | null;
   editingIsNew: boolean;
-  clipboard: Shape | null;
+  clipboard: Clipboard | null;
   tool: MouseTool;
   /** Freehand stroke being drawn (sketch tool). */
   sketch: Pt[] | null;
@@ -51,7 +61,7 @@ export interface EditorState {
 
 export type Action =
   | { type: 'KEY'; key: string; ctrl: boolean }
-  | { type: 'CLICK'; p: Pt; id?: string }
+  | { type: 'CLICK'; p: Pt; id?: string; shift?: boolean }
   | { type: 'DBL_CLICK'; p: Pt; id?: string }
   | { type: 'MOUSE_CURSOR'; p: Pt }
   | { type: 'DRAG_START'; id: string }
@@ -72,6 +82,10 @@ export type Action =
   | { type: 'SKETCH_POINT'; p: Pt }
   | { type: 'SKETCH_END' }
   | { type: 'SKETCH_CANCEL' }
+  | { type: 'MARQUEE_START'; p: Pt }
+  | { type: 'MARQUEE_MOVE'; p: Pt }
+  | { type: 'MARQUEE_END' }
+  | { type: 'MARQUEE_CANCEL' }
   | { type: 'PAN'; dx: number; dy: number }
   | { type: 'ZOOM'; factor: number; center: Pt }
   | { type: 'CENTER'; screenW: number; screenH: number }
@@ -95,10 +109,11 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     redo: [],
     base: null,
     cursor: { x: GRID * 10, y: GRID * 10 },
-    selectedId: null,
+    selectedIds: [],
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    marquee: null,
     editingId: null,
     editingIsNew: false,
     clipboard: null,
@@ -195,7 +210,7 @@ function startDraw(state: EditorState, kind: 'rect' | 'ellipse'): EditorState {
     mode: 'draw',
     draw: { kind, anchor },
     cursor: { x: anchor.x + DEFAULT_W, y: anchor.y + DEFAULT_H },
-    selectedId: null,
+    selectedIds: [],
     count: '',
     msg: 'DRAW: hjkl to size, Enter/click to place, Esc to cancel',
   };
@@ -208,7 +223,7 @@ function confirmDraw(state: EditorState): EditorState {
   return commit(state, addShape(state.doc, shape), {
     mode: 'normal',
     draw: null,
-    selectedId: shape.id,
+    selectedIds: [shape.id],
     count: '',
     msg: 'placed (i: add text)',
   });
@@ -223,7 +238,7 @@ function startArrow(state: EditorState): EditorState {
     ...state,
     mode: 'arrow',
     arrowFrom: from,
-    selectedId: null,
+    selectedIds: [],
     count: '',
     msg: 'ARROW: move to target, Enter/click to connect, Esc to cancel',
   };
@@ -240,7 +255,7 @@ function confirmArrow(state: EditorState): EditorState {
   return commit(state, addConnector(state.doc, c), {
     mode: 'normal',
     arrowFrom: null,
-    selectedId: c.id,
+    selectedIds: [c.id],
     count: '',
     msg: 'connected',
   });
@@ -264,7 +279,7 @@ function startTextInsert(state: EditorState, p: Pt): EditorState {
     mode: 'insert',
     editingId: shape.id,
     editingIsNew: true,
-    selectedId: shape.id,
+    selectedIds: [shape.id],
     count: '',
   };
 }
@@ -276,9 +291,82 @@ function startEdit(state: EditorState, id: string): EditorState {
     mode: 'insert',
     editingId: id,
     editingIsNew: false,
-    selectedId: id,
+    selectedIds: [id],
     count: '',
   };
+}
+
+/** Shapes among the current selection (connectors filtered out). */
+function selectedShapes(state: EditorState): Shape[] {
+  return state.selectedIds
+    .map((id) => findShape(state.doc, id))
+    .filter((s): s is Shape => !!s);
+}
+
+/** Clipboard from the selection (or the hot shape): shapes plus connectors that stay valid. */
+function yankSelection(state: EditorState): Clipboard | null {
+  const shapes = selectedShapes(state);
+  if (!shapes.length) {
+    const { shape } = hotItem(state);
+    return shape ? { shapes: [{ ...shape }], connectors: [] } : null;
+  }
+  const shapeIds = new Set(shapes.map((s) => s.id));
+  const selected = new Set(state.selectedIds);
+  const connectors = state.doc.connectors.filter((c) => {
+    const bound = [c.from, c.to].filter((e) => e.shapeId);
+    if (bound.some((e) => !shapeIds.has(e.shapeId as string))) return false;
+    return selected.has(c.id) || bound.length === 2;
+  });
+  return {
+    shapes: shapes.map((s) => ({ ...s })),
+    connectors: connectors.map((c) => ({ ...c, from: { ...c.from }, to: { ...c.to } })),
+  };
+}
+
+function pasteClipboard(state: EditorState, clip: Clipboard): EditorState {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of clip.shapes) {
+    xs.push(s.x);
+    ys.push(s.y);
+  }
+  for (const c of clip.connectors) {
+    for (const e of [c.from, c.to]) {
+      if (!e.shapeId) {
+        xs.push(e.x);
+        ys.push(e.y);
+      }
+    }
+  }
+  if (!xs.length) return { ...state, count: '', msg: 'clipboard empty' };
+  const at = snapPt(state.cursor);
+  const dx = at.x - Math.min(...xs);
+  const dy = at.y - Math.min(...ys);
+  const idMap = new Map<string, string>();
+  const shapes = clip.shapes.map((s) => {
+    const id = newId();
+    idMap.set(s.id, id);
+    return { ...s, id, x: s.x + dx, y: s.y + dy };
+  });
+  const remap = (e: Endpoint): Endpoint =>
+    e.shapeId
+      ? { shapeId: idMap.get(e.shapeId), x: e.x + dx, y: e.y + dy }
+      : { x: e.x + dx, y: e.y + dy };
+  const connectors = clip.connectors.map((c) => ({
+    ...c,
+    id: newId(),
+    from: remap(c.from),
+    to: remap(c.to),
+  }));
+  const doc: Doc = {
+    shapes: [...state.doc.shapes, ...shapes],
+    connectors: [...state.doc.connectors, ...connectors],
+  };
+  return commit(state, doc, {
+    selectedIds: [...shapes.map((s) => s.id), ...connectors.map((c) => c.id)],
+    count: '',
+    msg: 'pasted',
+  });
 }
 
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean): EditorState {
@@ -302,7 +390,7 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
 
   switch (key) {
     case 'Escape':
-      return { ...state, selectedId: null, count: '', msg: '', showHelp: false };
+      return { ...state, selectedIds: [], count: '', msg: '', showHelp: false };
     case 'r':
       return startDraw(state, 'rect');
     case 'e':
@@ -312,6 +400,7 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
     case 't':
       return startTextInsert(state, state.cursor);
     case 'i': {
+      if (state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
       const { shape, connector } = hotItem(state);
       if (shape) return startEdit(state, shape.id);
       if (connector) return startEdit(state, connector.id);
@@ -319,57 +408,65 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
     }
     case 'Enter': {
       const { shape, connector } = hotItem(state);
-      return { ...state, selectedId: shape?.id ?? connector?.id ?? null, count: '' };
+      const id = shape?.id ?? connector?.id;
+      return { ...state, selectedIds: id ? [id] : [], count: '' };
     }
     case 'v': {
-      const { shape } = hotItem(state);
-      if (!shape) return { ...state, msg: 'no shape under cursor', count: '' };
+      let ids = state.selectedIds;
+      if (!ids.length) {
+        const { shape, connector } = hotItem(state);
+        const id = shape?.id ?? connector?.id;
+        if (!id) return { ...state, msg: 'nothing under cursor', count: '' };
+        ids = [id];
+      }
       return {
         ...state,
         mode: 'move',
         base: state.doc,
-        selectedId: shape.id,
+        selectedIds: ids,
         count: '',
         msg: 'MOVE: hjkl to move, Enter to drop, Esc to cancel',
       };
     }
     case 's': {
-      const { shape } = hotItem(state);
+      const sel = selectedShapes(state);
+      if (sel.length > 1) return { ...state, msg: 'resize: select a single shape', count: '' };
+      const shape = sel[0] ?? hotItem(state).shape;
       if (!shape) return { ...state, msg: 'no shape under cursor', count: '' };
       return {
         ...state,
         mode: 'resize',
         base: state.doc,
-        selectedId: shape.id,
+        selectedIds: [shape.id],
         count: '',
         msg: 'RESIZE: l/h wider/narrower, j/k taller/shorter, Enter to done',
       };
     }
     case 'd':
     case 'x': {
-      const { shape, connector } = hotItem(state);
-      const id = shape?.id ?? connector?.id;
-      if (!id) return { ...state, msg: 'nothing under cursor', count: '' };
-      return commit(state, deleteItem(state.doc, id), {
-        selectedId: null,
+      let ids = state.selectedIds;
+      if (!ids.length) {
+        const { shape, connector } = hotItem(state);
+        const id = shape?.id ?? connector?.id;
+        if (!id) return { ...state, msg: 'nothing under cursor', count: '' };
+        ids = [id];
+      }
+      const doc = ids.reduce((d, id) => deleteItem(d, id), state.doc);
+      return commit(state, doc, {
+        selectedIds: [],
         count: '',
-        msg: 'deleted',
+        msg: ids.length > 1 ? `deleted ${ids.length} items` : 'deleted',
       });
     }
     case 'y': {
-      const { shape } = hotItem(state);
-      if (!shape) return { ...state, msg: 'no shape under cursor', count: '' };
-      return { ...state, clipboard: { ...shape }, count: '', msg: 'yanked' };
+      const clip = yankSelection(state);
+      if (!clip) return { ...state, msg: 'no shape under cursor', count: '' };
+      const n = clip.shapes.length + clip.connectors.length;
+      return { ...state, clipboard: clip, count: '', msg: n > 1 ? `yanked ${n} items` : 'yanked' };
     }
     case 'p': {
       if (!state.clipboard) return { ...state, msg: 'clipboard empty', count: '' };
-      const at = snapPt(state.cursor);
-      const shape: Shape = { ...state.clipboard, id: newId(), x: at.x, y: at.y };
-      return commit(state, addShape(state.doc, shape), {
-        selectedId: shape.id,
-        count: '',
-        msg: 'pasted',
-      });
+      return pasteClipboard(state, state.clipboard);
     }
     case 'u':
       return reduce(state, { type: 'UNDO' });
@@ -402,13 +499,10 @@ function handleTransientKey(state: EditorState, key: string): EditorState {
 
   if (state.mode === 'move') {
     const delta = moveDelta(key, step);
-    const id = state.selectedId;
-    if (delta && id) {
-      const s = findShape(state.doc, id);
-      if (!s) return cancelTransient(state);
+    if (delta && state.selectedIds.length) {
       return {
         ...state,
-        doc: updateShape(state.doc, id, { x: s.x + delta.x, y: s.y + delta.y }),
+        doc: translateItems(state.doc, state.selectedIds, delta.x, delta.y),
         cursor: { x: state.cursor.x + delta.x, y: state.cursor.y + delta.y },
         count: '',
       };
@@ -419,7 +513,7 @@ function handleTransientKey(state: EditorState, key: string): EditorState {
   }
 
   if (state.mode === 'resize') {
-    const id = state.selectedId;
+    const id = state.selectedIds[0];
     const s = id ? findShape(state.doc, id) : undefined;
     if (!s || !id) return cancelTransient(state);
     let dw = 0;
@@ -454,24 +548,16 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean): EditorS
     return state;
   }
   if (state.mode === 'draw' || state.mode === 'arrow') return handleTransientKey(state, key);
-  if (key === 'Escape') return { ...state, selectedId: null, msg: '', showHelp: false };
+  if (key === 'Escape') return { ...state, selectedIds: [], msg: '', showHelp: false };
   if (key === 'Delete' || key === 'Backspace') {
-    if (!state.selectedId) return state;
-    return commit(state, deleteItem(state.doc, state.selectedId), {
-      selectedId: null,
-      msg: 'deleted',
-    });
+    if (!state.selectedIds.length) return state;
+    const doc = state.selectedIds.reduce((d, id) => deleteItem(d, id), state.doc);
+    return commit(state, doc, { selectedIds: [], msg: 'deleted' });
   }
-  if (key === 'F2' && state.selectedId) return startEdit(state, state.selectedId);
+  if (key === 'F2' && state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
   const delta = moveDelta(key, GRID);
-  if (delta && state.selectedId) {
-    const s = findShape(state.doc, state.selectedId);
-    if (s) {
-      return commit(state, updateShape(state.doc, state.selectedId, {
-        x: s.x + delta.x,
-        y: s.y + delta.y,
-      }));
-    }
+  if (delta && state.selectedIds.length) {
+    return commit(state, translateItems(state.doc, state.selectedIds, delta.x, delta.y));
   }
   return state;
 }
@@ -516,7 +602,9 @@ function commitInsert(state: EditorState, label: string): EditorState {
     mode: 'normal',
     editingId: null,
     editingIsNew: false,
-    selectedId: state.doc.shapes.some((s) => s.id === id) || conn ? state.selectedId : null,
+    selectedIds: state.selectedIds.filter(
+      (sid) => doc.shapes.some((s) => s.id === sid) || doc.connectors.some((c) => c.id === sid),
+    ),
   };
 }
 
@@ -534,10 +622,23 @@ export function reduce(state: EditorState, action: Action): EditorState {
       if (state.mode === 'draw') return confirmDraw({ ...state, cursor: p });
       if (state.mode === 'arrow') return confirmArrow({ ...state, cursor: action.p });
       const conn = action.id ? undefined : connectorAt(state.doc, action.p);
+      const hit = action.id ?? conn?.id ?? null;
+      if (action.shift) {
+        if (!hit) return { ...state, cursor: p, count: '' };
+        const has = state.selectedIds.includes(hit);
+        return {
+          ...state,
+          cursor: p,
+          selectedIds: has
+            ? state.selectedIds.filter((i) => i !== hit)
+            : [...state.selectedIds, hit],
+          count: '',
+        };
+      }
       return {
         ...state,
         cursor: p,
-        selectedId: action.id ?? conn?.id ?? null,
+        selectedIds: hit ? [hit] : [],
         count: '',
       };
     }
@@ -560,7 +661,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         mode: 'insert',
         editingId: shape.id,
         editingIsNew: true,
-        selectedId: shape.id,
+        selectedIds: [shape.id],
       };
     }
 
@@ -570,10 +671,23 @@ export function reduce(state: EditorState, action: Action): EditorState {
     }
 
     case 'DRAG_START':
-      return { ...state, base: state.doc, selectedId: action.id };
+      return {
+        ...state,
+        base: state.doc,
+        // Dragging a selected item moves the whole selection; otherwise reselect.
+        selectedIds: state.selectedIds.includes(action.id) ? state.selectedIds : [action.id],
+      };
 
-    case 'DRAG_MOVE':
-      return { ...state, doc: updateShape(state.doc, action.id, { x: action.to.x, y: action.to.y }) };
+    case 'DRAG_MOVE': {
+      const src = state.base ?? state.doc;
+      const orig = findShape(src, action.id);
+      if (!orig) return state;
+      const ids = state.selectedIds.includes(action.id) ? state.selectedIds : [action.id];
+      return {
+        ...state,
+        doc: translateItems(src, ids, action.to.x - orig.x, action.to.y - orig.y),
+      };
+    }
 
     case 'DRAG_RESIZE':
       return {
@@ -619,7 +733,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         mode: 'draw',
         draw: { kind: action.kind, anchor: p },
         cursor: p,
-        selectedId: null,
+        selectedIds: [],
         count: '',
         msg: 'drag to size',
       };
@@ -635,7 +749,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         mode: 'arrow',
         arrowFrom: from,
         cursor: snapPt(action.p),
-        selectedId: null,
+        selectedIds: [],
         count: '',
         msg: 'drag to target',
       };
@@ -648,7 +762,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return cancelTransient(state, { msg: '' });
 
     case 'SKETCH_START':
-      return { ...state, sketch: [action.p], selectedId: null };
+      return { ...state, sketch: [action.p], selectedIds: [] };
 
     case 'SKETCH_POINT':
       return state.sketch ? { ...state, sketch: [...state.sketch, action.p] } : state;
@@ -674,7 +788,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         const c: Connector = { id: newId(), from, to, label: '' };
         return commit(state, addConnector(state.doc, c), {
           sketch: null,
-          selectedId: c.id,
+          selectedIds: [c.id],
           msg: 'auto: arrow',
         });
       }
@@ -689,9 +803,37 @@ export function reduce(state: EditorState, action: Action): EditorState {
       };
       return commit(state, addShape(state.doc, shape), {
         sketch: null,
-        selectedId: shape.id,
+        selectedIds: [shape.id],
         msg: `auto: ${res.kind}`,
       });
+    }
+
+    case 'MARQUEE_START':
+      return { ...state, marquee: { a: action.p, b: action.p }, count: '' };
+
+    case 'MARQUEE_MOVE':
+      return state.marquee ? { ...state, marquee: { ...state.marquee, b: action.p } } : state;
+
+    case 'MARQUEE_CANCEL':
+      return { ...state, marquee: null };
+
+    case 'MARQUEE_END': {
+      if (!state.marquee) return state;
+      const { a, b } = state.marquee;
+      const r = {
+        x: Math.min(a.x, b.x),
+        y: Math.min(a.y, b.y),
+        w: Math.abs(b.x - a.x),
+        h: Math.abs(b.y - a.y),
+      };
+      const ids = itemsInRect(state.doc, r);
+      return {
+        ...state,
+        marquee: null,
+        selectedIds: ids,
+        count: '',
+        msg: ids.length ? `${ids.length} selected` : '',
+      };
     }
 
     case 'PAN':
@@ -725,7 +867,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         doc: prev,
         undo: state.undo.slice(0, -1),
         redo: [...state.redo, state.doc],
-        selectedId: null,
+        selectedIds: [],
         count: '',
         msg: 'undo',
       };
@@ -739,18 +881,18 @@ export function reduce(state: EditorState, action: Action): EditorState {
         doc: next,
         redo: state.redo.slice(0, -1),
         undo: [...state.undo, state.doc],
-        selectedId: null,
+        selectedIds: [],
         count: '',
         msg: 'redo',
       };
     }
 
     case 'NEW':
-      return commit(state, emptyDoc(), { selectedId: null, fileName: null, msg: 'new document' });
+      return commit(state, emptyDoc(), { selectedIds: [], fileName: null, msg: 'new document' });
 
     case 'LOAD':
       return commit(state, action.doc, {
-        selectedId: null,
+        selectedIds: [],
         fileName: action.fileName,
         msg: action.fileName ? `opened ${action.fileName}` : 'opened',
       });

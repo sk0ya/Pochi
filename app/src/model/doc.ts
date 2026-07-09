@@ -68,6 +68,63 @@ export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - qx, p.y - qy);
 }
 
+/** Translate selected shapes; selected connectors move their free endpoints. */
+export function translateItems(doc: Doc, ids: string[], dx: number, dy: number): Doc {
+  const sel = new Set(ids);
+  return {
+    shapes: doc.shapes.map((s) => (sel.has(s.id) ? { ...s, x: s.x + dx, y: s.y + dy } : s)),
+    connectors: doc.connectors.map((c) => {
+      if (!sel.has(c.id)) return c;
+      const move = (e: Endpoint): Endpoint => (e.shapeId ? e : { x: e.x + dx, y: e.y + dy });
+      return { ...c, from: move(c.from), to: move(c.to) };
+    }),
+  };
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function segsIntersect(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  const cross = (o: Pt, p: Pt, q: Pt) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  return d1 > 0 !== d2 > 0 && d3 > 0 !== d4 > 0;
+}
+
+function segIntersectsRect(a: Pt, b: Pt, r: Rect): boolean {
+  const inside = (p: Pt) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  if (inside(a) || inside(b)) return true;
+  const corners = [
+    { x: r.x, y: r.y },
+    { x: r.x + r.w, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h },
+    { x: r.x, y: r.y + r.h },
+  ];
+  for (let i = 0; i < 4; i++) {
+    if (segsIntersect(a, b, corners[i], corners[(i + 1) % 4])) return true;
+  }
+  return false;
+}
+
+/** Ids of shapes and connectors touching the rectangle (marquee selection). */
+export function itemsInRect(doc: Doc, r: Rect): string[] {
+  const ids: string[] = [];
+  for (const s of doc.shapes) {
+    if (s.x < r.x + r.w && s.x + s.w > r.x && s.y < r.y + r.h && s.y + s.h > r.y) ids.push(s.id);
+  }
+  for (const c of doc.connectors) {
+    const [a, b] = connectorEnds(doc, c);
+    if (segIntersectsRect(a, b, r)) ids.push(c.id);
+  }
+  return ids;
+}
+
 export function addShape(doc: Doc, s: Shape): Doc {
   return { ...doc, shapes: [...doc.shapes, s] };
 }

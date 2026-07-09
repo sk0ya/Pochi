@@ -132,6 +132,7 @@ body {
 .mode-draw, .mode-arrow { background: #6b4c1e; color: #ffd9a0; }
 .mode-move, .mode-resize { background: #4b2e6b; color: #ddc2ff; }
 .mode-insert { background: #2e6b3a; color: #baf5c8; }
+.mode-visual { background: #1e5f66; color: #a5ecf5; }
 .mode-plain { background: #333a45; color: var(--muted); }
 
 .count {

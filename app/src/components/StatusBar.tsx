@@ -44,10 +44,17 @@ export function StatusBar({
     );
   }
 
-  const modeLabel = state.vim ? state.mode.toUpperCase() : 'MOUSE';
+  // Selection lives above modes: a non-empty selection in normal mode reads as VISUAL.
+  const visual = state.mode === 'normal' && state.selectedIds.length > 0;
+  const modeKey = !state.vim ? 'plain' : visual ? 'visual' : state.mode;
+  const modeLabel = state.vim
+    ? visual
+      ? `VISUAL${state.selectedIds.length > 1 ? ` (${state.selectedIds.length})` : ''}`
+      : state.mode.toUpperCase()
+    : 'MOUSE';
   return (
     <div className="statusbar">
-      <span className={`mode mode-${state.vim ? state.mode : 'plain'}`}>{modeLabel}</span>
+      <span className={`mode mode-${modeKey}`}>{modeLabel}</span>
       {state.count && <span className="count">{state.count}</span>}
       <span className="msg">{state.msg}</span>
       <span className="spacer" />

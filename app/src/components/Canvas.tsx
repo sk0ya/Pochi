@@ -60,7 +60,7 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
 
 interface DragState {
   id: string;
-  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch';
+  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee';
   /** client px; used for pan deltas and click-vs-drag thresholds */
   startScreen: Pt;
   /** world coords at drag start (move/resize) */
@@ -112,7 +112,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const hotConn =
     vim && mode === 'normal' && !hotShape ? connectorAt(doc, cursor) : undefined;
 
-  const selectedShape = state.selectedId ? findShape(doc, state.selectedId) : undefined;
+  const selectedShape =
+    state.selectedIds.length === 1 ? findShape(doc, state.selectedIds[0]) : undefined;
 
   const newDrag = (
     kind: DragState['kind'],
@@ -139,10 +140,16 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (e.button !== 0) return;
     // Keyboard-initiated draw/arrow pending: mouseup confirms, no drag here.
     if (mode === 'draw' || mode === 'arrow') return;
+    // Shift+drag = rubber-band multi-select (shift+click toggles on mouseup).
+    if (e.shiftKey) {
+      drag.current = newDrag('marquee', e);
+      dispatch({ type: 'MARQUEE_START', p: toWorld(e) });
+      return;
+    }
 
     const id = hitId(e.target);
     const resize = (e.target as Element).getAttribute?.('data-handle') === 'resize';
-    const targetId = resize ? state.selectedId : id;
+    const targetId = resize ? state.selectedIds[0] : id;
 
     if (resize && targetId) {
       const s = findShape(doc, targetId);
@@ -157,7 +164,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: id });
       return;
     }
-    if (state.tool === 'sketch' && !(id && id === state.selectedId)) {
+    if (state.tool === 'sketch' && !(id && state.selectedIds.includes(id))) {
       // Freehand stroke; auto-detected on mouseup. Starting on an unselected
       // shape sketches too, so arrows can be drawn shape-to-shape. Moving a
       // shape = click to select, then drag.
@@ -214,6 +221,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'SKETCH_POINT', p: toWorld(e) });
       return;
     }
+    if (d.kind === 'marquee') {
+      if (Math.hypot(e.clientX - d.startScreen.x, e.clientY - d.startScreen.y) >= 4) d.moved = true;
+      dispatch({ type: 'MARQUEE_MOVE', p: toWorld(e) });
+      return;
+    }
     const world = toWorld(e);
     const dx = world.x - d.startWorld.x;
     const dy = world.y - d.startWorld.y;
@@ -254,6 +266,15 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           } else {
             dispatch({ type: 'SKETCH_CANCEL' });
             dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+          }
+          return;
+        case 'marquee':
+          if (d.moved) {
+            dispatch({ type: 'MARQUEE_END' });
+          } else {
+            // Shift+click without drag: toggle the item in the selection.
+            dispatch({ type: 'MARQUEE_CANCEL' });
+            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target), shift: true });
           }
           return;
         case 'move':
@@ -334,7 +355,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const connView = (c: Connector) => {
     const [a, b] = connectorEnds(doc, c);
-    const selected = state.selectedId === c.id;
+    const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
     const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : 'var(--shape-stroke)';
     return (
@@ -398,7 +419,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           <ShapeView
             key={s.id}
             s={s}
-            selected={state.selectedId === s.id}
+            selected={state.selectedIds.includes(s.id)}
             hot={hotShape?.id === s.id}
           />
         ))}
@@ -414,6 +435,20 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           />
         )}
         {drawPreview()}
+        {state.marquee && (
+          <rect
+            x={Math.min(state.marquee.a.x, state.marquee.b.x)}
+            y={Math.min(state.marquee.a.y, state.marquee.b.y)}
+            width={Math.abs(state.marquee.b.x - state.marquee.a.x)}
+            height={Math.abs(state.marquee.b.y - state.marquee.a.y)}
+            fill="var(--accent)"
+            fillOpacity={0.08}
+            stroke="var(--accent)"
+            strokeDasharray="4 3"
+            strokeWidth={1}
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
         {state.sketch && state.sketch.length > 1 && (
           <polyline
             points={state.sketch.map((p) => `${p.x},${p.y}`).join(' ')}
