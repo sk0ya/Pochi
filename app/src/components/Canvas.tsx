@@ -315,8 +315,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (e.button !== 0) return;
     // Keyboard-initiated draw/arrow pending: mouseup confirms, no drag here.
     if (mode === 'draw' || mode === 'arrow') return;
-    // Shift+drag = rubber-band multi-select (shift+click toggles on mouseup).
-    if (e.shiftKey) {
+    // Shift/Ctrl+drag = rubber-band multi-select (shift/ctrl+click toggles on mouseup).
+    if (e.shiftKey || e.ctrlKey) {
       drag.current = newDrag('marquee', e);
       dispatch({ type: 'MARQUEE_START', p: toWorld(e) });
       return;
@@ -469,6 +469,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const d = drag.current;
     drag.current = null;
     setGuides({});
+    // Right/middle-button releases with no active drag (e.g. a context-menu right-click)
+    // must not fall through to the plain-click handling below, or they'd collapse
+    // the current multi-selection to just the clicked item before the menu opens.
+    if (!d && e.button !== 0) return;
     if (d) {
       switch (d.kind) {
         case 'draw':
@@ -496,7 +500,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           if (d.moved) {
             dispatch({ type: 'MARQUEE_END' });
           } else {
-            // Shift+click without drag: toggle the item in the selection.
+            // Shift/Ctrl+click without drag: toggle the item in the selection.
             dispatch({ type: 'MARQUEE_CANCEL' });
             dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target), shift: true });
           }
