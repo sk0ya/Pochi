@@ -33,16 +33,27 @@ function Label({ label, cx, cy, color }: { label: string; cx: number; cy: number
 }
 
 function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boolean }) {
-  const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : s.color ?? 'var(--shape-stroke)';
+  // The shape's own color always stays visible; selection/hot is shown as a
+  // halo around it instead of overriding the stroke (otherwise you can't see
+  // the color you just picked while the item is still selected).
+  const trueStroke = s.color ?? 'var(--shape-stroke)';
   const common = {
     fill: s.color ? fillTint(s.color) : 'var(--shape-fill)',
-    stroke,
+    stroke: trueStroke,
     strokeWidth: selected ? 2 : 1.5,
   };
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
+  const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
+  const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
   return (
     <g data-id={s.id} style={{ cursor: 'move' }}>
+      {haloColor && s.kind === 'rect' && (
+        <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={6} {...halo} />
+      )}
+      {haloColor && s.kind === 'ellipse' && (
+        <ellipse cx={cx} cy={cy} rx={s.w / 2 + 3} ry={s.h / 2 + 3} {...halo} />
+      )}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
       {s.kind === 'text' && (
@@ -52,9 +63,9 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
           width={s.w}
           height={s.h}
           fill="transparent"
-          stroke={selected || hot || !s.label ? stroke : 'transparent'}
+          stroke={haloColor ?? (s.label ? 'transparent' : trueStroke)}
           strokeDasharray="4 3"
-          strokeWidth={1}
+          strokeWidth={haloColor ? 1.5 : 1}
         />
       )}
       <Label label={s.label} cx={cx} cy={cy} color={s.kind === 'text' ? s.color : undefined} />
@@ -372,18 +383,33 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const [a, b] = connectorEnds(doc, c);
     const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
-    const stroke = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : c.color ?? 'var(--shape-stroke)';
-    const marker =
-      selected || hot ? 'url(#arrow-accent)' : c.color ? `url(#arrow-${markerKey(c.color)})` : 'url(#arrow)';
+    // The connector's own color always stays visible; selection/hot is a
+    // translucent halo drawn underneath instead of overriding the color
+    // (otherwise the color you just picked is hidden while still selected).
+    const trueStroke = c.color ?? 'var(--shape-stroke)';
+    const marker = c.color ? `url(#arrow-${markerKey(c.color)})` : 'url(#arrow)';
+    const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
     return (
       <g key={c.id} data-id={c.id}>
         <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={12} />
+        {haloColor && (
+          <line
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke={haloColor}
+            strokeWidth={selected ? 6 : 5}
+            strokeLinecap="round"
+            opacity={0.5}
+          />
+        )}
         <line
           x1={a.x}
           y1={a.y}
           x2={b.x}
           y2={b.y}
-          stroke={stroke}
+          stroke={trueStroke}
           strokeWidth={selected ? 2 : 1.5}
           markerEnd={marker}
         />
