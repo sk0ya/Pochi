@@ -43,7 +43,7 @@ function diamondPoints(s: Shape, pad = 0): string {
   return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
 }
 
-function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boolean }) {
+function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; hot: boolean; tool: string }) {
   // The shape's own color always stays visible; selection/hot is shown as a
   // halo around it instead of overriding the stroke (otherwise you can't see
   // the color you just picked while the item is still selected).
@@ -57,8 +57,12 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
   const cy = s.y + s.h / 2;
   const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
   const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
+  // With the arrow tool active, dragging the shape body starts a new arrow
+  // from it instead of moving it (see onMouseDown), so the ring-matching
+  // "alias" cursor is the honest affordance here, not "move".
+  const bodyCursor = tool === 'arrow' ? 'alias' : 'move';
   return (
-    <g data-id={s.id} style={{ cursor: 'move' }}>
+    <g data-id={s.id} style={{ cursor: bodyCursor }}>
       {haloColor && (s.kind === 'rect' || s.kind === 'sticky' || s.kind === 'image') && (
         <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={6} {...halo} />
       )}
@@ -248,6 +252,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const space = useRef(false);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [guides, setGuides] = useState<{ vx?: number; hy?: number }>({});
+  // Mirrors `space`/pan-drag state into React state purely so the canvas
+  // cursor (grab/grabbing) re-renders; the refs stay authoritative for the
+  // drag logic itself since that runs per-mousemove and can't afford renders.
+  const [spaceDown, setSpaceDown] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
 
   const { doc, view, cursor, mode, vim } = state;
 
@@ -257,14 +266,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
       if (e.key === ' ') {
         space.current = true;
+        setSpaceDown(true);
         e.preventDefault();
       }
       if (e.key === 'Escape' && drag.current) {
         drag.current = null;
+        setIsPanning(false);
       }
     };
     const up = (e: KeyboardEvent) => {
-      if (e.key === ' ') space.current = false;
+      if (e.key === ' ') {
+        space.current = false;
+        setSpaceDown(false);
+      }
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -317,6 +331,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (e.button === 1 || (e.button === 0 && space.current)) {
       e.preventDefault();
       drag.current = newDrag('pan', e);
+      setIsPanning(true);
       return;
     }
     if (e.button !== 0) return;
@@ -484,6 +499,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const d = drag.current;
     drag.current = null;
     setGuides({});
+    if (isPanning) setIsPanning(false);
     // Right/middle-button releases with no active drag (e.g. a context-menu right-click)
     // must not fall through to the plain-click handling below, or they'd collapse
     // the current multi-selection to just the clicked item before the menu opens.
@@ -629,9 +645,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const trueStroke = c.color ?? 'var(--shape-stroke)';
     const marker = c.color ? `url(#arrow-${markerKey(c.color)})` : 'url(#arrow)';
     const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
+    // Same reasoning as the shape body: with the arrow tool active, dragging
+    // the connector's body starts a fresh arrow from that point rather than
+    // moving the connector, so it gets the same "creating" cursor.
+    const bodyCursor = state.tool === 'arrow' ? 'crosshair' : 'move';
     return (
       <g key={c.id} data-id={c.id}>
-        <polyline points={points} fill="none" stroke="transparent" strokeWidth={12} />
+        <polyline
+          points={points}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={12}
+          style={{ cursor: bodyCursor }}
+        />
         {haloColor && (
           <polyline
             points={points}
@@ -683,6 +709,28 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const isEmpty = doc.shapes.length === 0 && doc.connectors.length === 0;
 
+  // Fallback cursor for the canvas background (empty grid area); shapes,
+  // connectors, and handles set their own more specific cursor that wins
+  // wherever they're actually hovered.
+  const creationTool =
+    state.tool === 'rect' ||
+    state.tool === 'ellipse' ||
+    state.tool === 'diamond' ||
+    state.tool === 'sticky' ||
+    state.tool === 'arrow' ||
+    state.tool === 'sketch';
+  const bgCursor = isPanning
+    ? 'grabbing'
+    : drag.current?.kind === 'marquee'
+      ? 'crosshair'
+      : spaceDown
+        ? 'grab'
+        : mode === 'draw' || mode === 'arrow' || creationTool
+          ? 'crosshair'
+          : state.tool === 'text'
+            ? 'text'
+            : 'default';
+
   return (
     <>
     {isEmpty && mode === 'normal' && (
@@ -695,6 +743,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     <svg
       ref={svgRef}
       className="canvas"
+      style={{ cursor: bgCursor }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -753,6 +802,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             s={s}
             selected={state.selectedIds.includes(s.id)}
             hot={hotShape?.id === s.id}
+            tool={state.tool}
           />
         ))}
         {hoverShape &&
