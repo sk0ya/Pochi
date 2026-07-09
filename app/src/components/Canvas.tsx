@@ -130,6 +130,9 @@ function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | und
   return undefined;
 }
 
+/** Tooltip shown while hovering the connect ring's drag target. */
+const CONNECT_RING_TITLE = 'ドラッグして矢印を作成';
+
 /** Faint outline drawn just outside a hovered shape; dragging it draws a new
  * connector from that shape (a wide transparent stroke underneath is the
  * actual drag target, so the thin visible line stays easy to grab). */
@@ -151,8 +154,10 @@ function connectRing(s: Shape, offset: number) {
           fill="none"
           stroke="transparent"
           strokeWidth={14}
-          style={{ cursor: 'crosshair' }}
-        />
+          style={{ cursor: 'alias' }}
+        >
+          <title>{CONNECT_RING_TITLE}</title>
+        </ellipse>
         <ellipse
           cx={cx}
           cy={cy}
@@ -184,8 +189,10 @@ function connectRing(s: Shape, offset: number) {
         fill="none"
         stroke="transparent"
         strokeWidth={14}
-        style={{ cursor: 'crosshair' }}
-      />
+        style={{ cursor: 'alias' }}
+      >
+        <title>{CONNECT_RING_TITLE}</title>
+      </rect>
       <rect
         x={x}
         y={y}
