@@ -45,6 +45,29 @@ export interface Clipboard {
   connectors: Connector[];
 }
 
+/** Marks text we ourselves wrote to the OS clipboard, so a later paste can
+ * tell "our own shape copy echoed back" apart from real external text. */
+const CLIPBOARD_MARKER = 'pochi-clipboard-v1';
+
+export function serializeClipboard(clip: Clipboard): string {
+  return JSON.stringify({ app: CLIPBOARD_MARKER, clip });
+}
+
+/** Parses `text` back into a Clipboard if (and only if) it's our own
+ * serialized clipboard echoed back through the OS clipboard; null for any
+ * other text (i.e. real external content). */
+export function parseClipboard(text: string): Clipboard | null {
+  if (!text.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(text) as { app?: string; clip?: Clipboard };
+    if (parsed.app !== CLIPBOARD_MARKER || !parsed.clip) return null;
+    if (!Array.isArray(parsed.clip.shapes) || !Array.isArray(parsed.clip.connectors)) return null;
+    return parsed.clip;
+  } catch {
+    return null;
+  }
+}
+
 export interface EditorState {
   doc: Doc;
   undo: Doc[];
@@ -107,6 +130,8 @@ export type Action =
   | { type: 'START_ARROW_AT'; p: Pt; shapeId?: string }
   | { type: 'TEXT_AT'; p: Pt }
   | { type: 'ADD_IMAGE'; src: string; w: number; h: number }
+  | { type: 'ADD_TEXT'; text: string }
+  | { type: 'PASTE_CLIP'; clip: Clipboard }
   | { type: 'CANCEL' }
   | { type: 'SKETCH_START'; p: Pt }
   | { type: 'SKETCH_POINT'; p: Pt }
@@ -134,7 +159,6 @@ export type Action =
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
   | { type: 'COPY' }
-  | { type: 'PASTE_OFFSET' }
   | { type: 'PASTE_AT'; p: Pt }
   | { type: 'SELECT_ALL' }
   | { type: 'GROUP' }
@@ -1221,11 +1245,6 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     case 'COPY':
       return copySelection(state);
 
-    case 'PASTE_OFFSET': {
-      if (!state.clipboard) return { ...state, msg: 'clipboard empty' };
-      return pasteWithOffset(state, state.clipboard, GRID * 2);
-    }
-
     case 'PASTE_AT': {
       if (!state.clipboard) return { ...state, msg: 'clipboard empty' };
       return pasteClipboard(state, state.clipboard, action.p);
@@ -1308,6 +1327,30 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
       return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'image added' });
     }
+
+    case 'ADD_TEXT': {
+      const trimmed = action.text.replace(/\s+$/, '');
+      if (!trimmed) return state;
+      const at = snapPt(state.cursor);
+      const m = measureLabel(trimmed);
+      const shape: Shape = {
+        id: newId(),
+        kind: 'text',
+        x: at.x,
+        y: at.y,
+        w: Math.max(GRID * 2, snap(m.w + GRID)),
+        h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+        label: trimmed,
+      };
+      return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'text added' });
+    }
+
+    case 'PASTE_CLIP':
+      // Mirrors the vim 'p' vs. Ctrl+D/plain-Ctrl+V split: paste at the
+      // recorded cursor in vim-normal mode, offset-duplicate otherwise.
+      return state.vim && state.mode === 'normal'
+        ? pasteClipboard(state, action.clip)
+        : pasteWithOffset(state, action.clip, GRID * 2);
 
     case 'CONTEXT_MENU_OPEN': {
       let selectedIds = state.selectedIds;

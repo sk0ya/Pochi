@@ -18,7 +18,7 @@ import { Toolbar } from './components/Toolbar';
 import { exportSvg } from './model/svg';
 import type { Doc } from './model/types';
 import { GRID } from './model/types';
-import { IMAGE_MAX_DIM, initialState, reduce } from './state/reducer';
+import { IMAGE_MAX_DIM, initialState, parseClipboard, reduce, serializeClipboard } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
 const AUTOSAVE_KEY = 'pochi.autosave';
@@ -52,6 +52,17 @@ export default function App() {
   const [state, dispatch] = useReducer(reduce, undefined, init);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  /* Mirror the internal shape clipboard onto the real OS clipboard (tagged so
+   * we can recognize our own echo on paste) whenever it changes. This makes
+   * the OS clipboard the single source of truth for "what was copied last" -
+   * internal shape copy and external text copy can then alternate freely. */
+  useEffect(() => {
+    if (!state.clipboard) return;
+    navigator.clipboard?.writeText?.(serializeClipboard(state.clipboard)).catch(() => {
+      /* no permission; internal paste (vim p / Ctrl+V) still works via state.clipboard */
+    });
+  }, [state.clipboard]);
 
   /* autosave */
   useEffect(() => {
@@ -117,20 +128,24 @@ export default function App() {
     }
   }, []);
 
-  const importImage = useCallback(async () => {
-    const picked = isDesktop ? await openImageDialog() : await pickImageFile();
-    if (!picked) return;
+  const addImageFromDataUrl = useCallback(async (dataUrl: string) => {
     const dims = await new Promise<{ w: number; h: number }>((resolve) => {
       const img = new Image();
       img.onload = () => resolve({ w: img.naturalWidth || IMAGE_MAX_DIM, h: img.naturalHeight || IMAGE_MAX_DIM });
       img.onerror = () => resolve({ w: IMAGE_MAX_DIM, h: IMAGE_MAX_DIM });
-      img.src = picked.dataUrl;
+      img.src = dataUrl;
     });
     const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(dims.w, dims.h, 1));
     const w = Math.max(GRID, Math.round((dims.w * scale) / GRID) * GRID);
     const h = Math.max(GRID, Math.round((dims.h * scale) / GRID) * GRID);
-    dispatch({ type: 'ADD_IMAGE', src: picked.dataUrl, w, h });
+    dispatch({ type: 'ADD_IMAGE', src: dataUrl, w, h });
   }, []);
+
+  const importImage = useCallback(async () => {
+    const picked = isDesktop ? await openImageDialog() : await pickImageFile();
+    if (!picked) return;
+    await addImageFromDataUrl(picked.dataUrl);
+  }, [addImageFromDataUrl]);
 
   const runCommand = useCallback(
     async (raw: string) => {
@@ -202,12 +217,10 @@ export default function App() {
         dispatch({ type: 'COPY' });
         return;
       }
-      if (e.ctrlKey && e.key === 'v') {
-        e.preventDefault();
-        if (s.vim && s.mode === 'normal') dispatch({ type: 'KEY', key: 'p', ctrl: false });
-        else dispatch({ type: 'PASTE_OFFSET' });
-        return;
-      }
+      // Ctrl+V is handled entirely by the native 'paste' listener below (it
+      // has direct access to what's actually on the OS clipboard right now,
+      // so it can pick correctly between an image, our own shape copy, or
+      // fresh external text without guessing).
       if (e.ctrlKey && e.key === 'd') {
         e.preventDefault();
         dispatch({ type: 'DUPLICATE' });
@@ -278,6 +291,40 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [save, open]);
+
+  /* paste an image or plain text from the OS clipboard */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageItem = Array.from(items).find((it) => it.type.startsWith('image/'));
+      if (imageItem) {
+        const file = imageItem.getAsFile();
+        if (!file) return;
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => void addImageFromDataUrl(reader.result as string);
+        reader.readAsDataURL(file);
+        return;
+      }
+      const text = e.clipboardData?.getData('text/plain');
+      if (!text?.trim()) return;
+      // Our own shape copy, echoed back through the OS clipboard: paste it as
+      // shapes instead of literal text.
+      const clip = parseClipboard(text);
+      if (clip) {
+        e.preventDefault();
+        dispatch({ type: 'PASTE_CLIP', clip });
+        return;
+      }
+      e.preventDefault();
+      dispatch({ type: 'ADD_TEXT', text });
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [addImageFromDataUrl]);
 
   return (
     <div className="app">
