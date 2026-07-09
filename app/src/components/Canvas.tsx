@@ -6,6 +6,7 @@ import {
   connectorPath,
   findConnector,
   findShape,
+  labelCenter,
   resizeAnchor,
   resizeHandlePoint,
   resolveEndpoint,
@@ -74,6 +75,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   };
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
+  const labelPos = labelCenter(s);
   const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
   const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
   // With the arrow tool active, dragging the shape body starts a new arrow
@@ -128,8 +130,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       )}
       <Label
         label={s.label}
-        cx={cx}
-        cy={cy}
+        cx={labelPos.x}
+        cy={labelPos.y}
         color={s.kind === 'text' || s.kind === 'sticky' ? s.color : undefined}
       />
     </g>

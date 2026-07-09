@@ -1,4 +1,4 @@
-import { connectorPath, docBounds, triangleVertices } from './doc';
+import { connectorPath, docBounds, labelCenter, triangleVertices } from './doc';
 import { fillTint, STICKY_DEFAULT } from './palette';
 import type { Doc, Shape } from './types';
 
@@ -42,7 +42,8 @@ function shapeSvg(s: Shape): string {
     body = `<image href="${esc(s.src)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMid slice"/>`;
   }
   const labelColor = s.kind === 'text' || s.kind === 'sticky' ? s.color ?? '#222933' : '#222933';
-  return body + labelSvg(s.label, cx, cy, labelColor);
+  const labelPos = labelCenter(s);
+  return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor);
 }
 
 function markerDef(id: string, hex: string): string {

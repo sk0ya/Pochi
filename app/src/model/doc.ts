@@ -35,6 +35,19 @@ export function triangleVertices(box: {
   }
 }
 
+/** Point to center a shape's label on. For most shapes this is the bbox
+ * center, but a triangle's bbox center can sit right on (or outside) its
+ * slanted edges depending on apex direction — e.g. for a diagonal direction
+ * it's exactly on the hypotenuse — so triangles use their vertex centroid,
+ * which always lies inside the shape, instead. */
+export function labelCenter(s: { x: number; y: number; w: number; h: number; kind: string; direction?: TriangleDirection }): Pt {
+  if (s.kind === 'triangle') {
+    const [a, b, c] = triangleVertices(s);
+    return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+  }
+  return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+}
+
 /** Point that stays fixed while resizing: a lone triangle's own vertex (its
  * apex, or the right-angle corner for a diagonal direction), so the pointy
  * end doesn't drift; the bbox top-left for everything else (incl. multi-select). */
