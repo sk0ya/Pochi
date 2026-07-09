@@ -333,7 +333,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       handle === 'connect' ? ((e.target as Element).getAttribute('data-shape') ?? undefined) : undefined;
     const targetId = resize || endpointEnd ? state.selectedIds[0] : id;
 
-    if (connectShapeId) {
+    if (connectShapeId && state.tool !== 'select') {
       // Drag started on a hover connection dot: draw a new arrow from this shape.
       drag.current = newDrag('arrowdrag', e);
       dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: connectShapeId });
@@ -748,7 +748,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             hot={hotShape?.id === s.id}
           />
         ))}
-        {hoverShape && mode === 'normal' && !drag.current && connectRing(hoverShape, CONNECT_RING_OFFSET)}
+        {hoverShape &&
+          mode === 'normal' &&
+          !drag.current &&
+          state.tool !== 'select' &&
+          connectRing(hoverShape, CONNECT_RING_OFFSET)}
         {selectedBox && mode === 'normal' && (
           <rect
             data-handle="resize"

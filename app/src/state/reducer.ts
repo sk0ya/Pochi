@@ -32,7 +32,7 @@ export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' 
 export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'sticky';
 
 /** Active mouse tool: what a drag on empty canvas creates. */
-export type MouseTool = 'sketch' | 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'arrow' | 'text';
+export type MouseTool = 'select' | 'sketch' | 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'arrow' | 'text';
 
 export interface View {
   x: number;
