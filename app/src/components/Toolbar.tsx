@@ -40,6 +40,15 @@ export function Toolbar({
       <button onClick={() => dispatch({ type: 'UNDO' })} title="Undo (u / Ctrl+Z)">↶</button>
       <button onClick={() => dispatch({ type: 'REDO' })} title="Redo (Ctrl+R / Ctrl+Y)">↷</button>
       <span className="sep" />
+      <button
+        onClick={() =>
+          dispatch({ type: 'FIT', screenW: window.innerWidth, screenH: window.innerHeight })
+        }
+        title="全体を画面に収める"
+      >
+        ⤢ Fit
+      </button>
+      <span className="sep" />
       <button onClick={onOpen} title=":o">Open</button>
       <button onClick={onSave} title=":w / Ctrl+S">Save</button>
       <button onClick={onExportSvg} title=":svg">SVG</button>

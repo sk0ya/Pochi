@@ -397,7 +397,17 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     [doc.connectors],
   );
 
+  const isEmpty = doc.shapes.length === 0 && doc.connectors.length === 0;
+
   return (
+    <>
+    {isEmpty && mode === 'normal' && (
+      <div className="canvas-hint">
+        ドラッグで手描き → 図形を自動認識(✏ Auto)
+        <br />
+        ダブルクリックで四角を作成、または r / e / t キー
+      </div>
+    )}
     <svg
       ref={svgRef}
       className="canvas"
@@ -519,5 +529,6 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         )}
       </g>
     </svg>
+    </>
   );
 }

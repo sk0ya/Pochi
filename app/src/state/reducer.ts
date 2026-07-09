@@ -3,6 +3,7 @@ import {
   addShape,
   connectorAt,
   deleteItem,
+  docBounds,
   findShape,
   itemsInRect,
   measureLabel,
@@ -91,6 +92,8 @@ export type Action =
   | { type: 'MARQUEE_CANCEL' }
   | { type: 'PAN'; dx: number; dy: number }
   | { type: 'ZOOM'; factor: number; center: Pt }
+  | { type: 'RESET_ZOOM'; center: Pt }
+  | { type: 'FIT'; screenW: number; screenH: number }
   | { type: 'CENTER'; screenW: number; screenH: number }
   | { type: 'UNDO' }
   | { type: 'REDO' }
@@ -233,6 +236,22 @@ function confirmDraw(state: EditorState): EditorState {
   if (!state.draw) return state;
   const r = normRect(state.draw.anchor, state.cursor);
   const shape: Shape = { id: newId(), kind: state.draw.kind, ...r, label: '' };
+  // Mouse/plain-mode users have no 'i' muscle memory: drop straight into text
+  // edit. Vim users get the deliberate two-step create-then-insert flow.
+  if (!state.vim) {
+    return {
+      ...state,
+      base: state.doc,
+      doc: addShape(state.doc, shape),
+      mode: 'insert',
+      draw: null,
+      editingId: shape.id,
+      editingIsNew: true,
+      selectedIds: [shape.id],
+      count: '',
+      msg: '',
+    };
+  }
   return commit(state, addShape(state.doc, shape), {
     mode: 'normal',
     draw: null,
@@ -855,11 +874,19 @@ export function reduce(state: EditorState, action: Action): EditorState {
         h: Math.max(GRID * 2, snap(res.h)),
         label: '',
       };
-      return commit(state, addShape(state.doc, shape), {
+      // Freehand sketching has no vim keyboard equivalent, so always drop
+      // straight into text edit — same as double-click-to-create.
+      return {
+        ...state,
+        base: state.doc,
+        doc: addShape(state.doc, shape),
         sketch: null,
+        mode: 'insert',
+        editingId: shape.id,
+        editingIsNew: true,
         selectedIds: [shape.id],
         msg: `auto: ${res.kind}`,
-      });
+      };
     }
 
     case 'MARQUEE_START':
@@ -900,6 +927,33 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return {
         ...state,
         view: { scale, x: action.center.x - wx * scale, y: action.center.y - wy * scale },
+      };
+    }
+
+    case 'RESET_ZOOM': {
+      const wx = (action.center.x - state.view.x) / state.view.scale;
+      const wy = (action.center.y - state.view.y) / state.view.scale;
+      return {
+        ...state,
+        view: { scale: 1, x: action.center.x - wx, y: action.center.y - wy },
+        msg: '100%',
+      };
+    }
+
+    case 'FIT': {
+      const b = docBounds(state.doc);
+      if (!b) return { ...state, view: { x: 0, y: 0, scale: 1 }, msg: 'nothing to fit' };
+      const PAD = 60;
+      const scale = Math.min(
+        4,
+        Math.max(0.2, Math.min((action.screenW - PAD * 2) / Math.max(b.w, 1), (action.screenH - PAD * 2) / Math.max(b.h, 1))),
+      );
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      return {
+        ...state,
+        view: { scale, x: action.screenW / 2 - cx * scale, y: action.screenH / 2 - cy * scale },
+        msg: 'fit to content',
       };
     }
 

@@ -62,7 +62,18 @@ export function StatusBar({
       <span className="meta">
         {Math.round(state.cursor.x / GRID)},{Math.round(state.cursor.y / GRID)}
       </span>
-      <span className="meta">{Math.round(state.view.scale * 100)}%</span>
+      <button
+        className="zoom-btn"
+        onClick={() =>
+          dispatch({
+            type: 'RESET_ZOOM',
+            center: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+          })
+        }
+        title="クリックで100%にリセット"
+      >
+        {Math.round(state.view.scale * 100)}%
+      </button>
     </div>
   );
 }

@@ -107,6 +107,19 @@ body {
   background: var(--bg);
 }
 
+.canvas-hint {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.8;
+  font-size: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* status bar */
 .statusbar {
   display: flex;
@@ -149,6 +162,21 @@ body {
 
 .meta {
   color: var(--muted);
+}
+
+.zoom-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  font: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.zoom-btn:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 .cmd-colon {
