@@ -222,7 +222,7 @@ function bestAlign(moving: [number, number, number], candidates: number[], thres
 
 interface DragState {
   id: string;
-  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint' | 'waypoint';
+  kind: 'move' | 'moveconn' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint' | 'waypoint';
   /** which end of the connector is being dragged (kind === 'endpoint') */
   end?: 'from' | 'to';
   /** which waypoint index is being dragged (kind === 'waypoint') */
@@ -373,7 +373,13 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         dispatch({ type: 'DRAG_START', id: targetId });
         return;
       }
-      return; // connector clicked: selection happens on mouseup via CLICK
+      const c = findConnector(doc, targetId);
+      if (c) {
+        drag.current = newDrag('moveconn', e, targetId);
+        dispatch({ type: 'DRAG_START', id: targetId });
+        return;
+      }
+      return;
     }
     if (state.tool === 'text') {
       drag.current = newDrag('text', e);
@@ -462,6 +468,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       });
     } else if (d.kind === 'resize') {
       dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + dx, h: d.orig.h + dy });
+    } else if (d.kind === 'moveconn') {
+      dispatch({ type: 'CONNECTOR_DRAG_MOVE', id: d.id, dx, dy });
     }
   };
 
@@ -507,6 +515,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           return;
         case 'move':
         case 'resize':
+        case 'moveconn':
           dispatch({ type: 'DRAG_END' });
           if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: d.id });
           return;

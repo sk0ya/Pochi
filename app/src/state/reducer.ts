@@ -87,6 +87,7 @@ export type Action =
   | { type: 'MOUSE_CURSOR'; p: Pt }
   | { type: 'DRAG_START'; id: string }
   | { type: 'DRAG_MOVE'; id: string; to: Pt }
+  | { type: 'CONNECTOR_DRAG_MOVE'; id: string; dx: number; dy: number }
   | { type: 'DRAG_RESIZE'; w: number; h: number }
   | { type: 'DRAG_END' }
   | { type: 'ENDPOINT_DRAG_START'; id: string; end: 'from' | 'to' }
@@ -889,6 +890,12 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state,
         doc: translateItems(src, ids, action.to.x - orig.x, action.to.y - orig.y),
       };
+    }
+
+    case 'CONNECTOR_DRAG_MOVE': {
+      const src = state.base ?? state.doc;
+      const ids = state.selectedIds.includes(action.id) ? state.selectedIds : [action.id];
+      return { ...state, doc: translateItems(src, ids, action.dx, action.dy) };
     }
 
     case 'DRAG_RESIZE': {
