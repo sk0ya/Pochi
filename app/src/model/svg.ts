@@ -1,4 +1,4 @@
-import { connectorPath, docBounds } from './doc';
+import { connectorPath, docBounds, triangleVertices } from './doc';
 import { fillTint, STICKY_DEFAULT } from './palette';
 import type { Doc, Shape } from './types';
 
@@ -32,6 +32,9 @@ function shapeSvg(s: Shape): string {
     body = `<ellipse cx="${cx}" cy="${cy}" rx="${s.w / 2}" ry="${s.h / 2}" ${style}/>`;
   } else if (s.kind === 'diamond') {
     const points = `${cx},${s.y} ${s.x + s.w},${cy} ${cx},${s.y + s.h} ${s.x},${cy}`;
+    body = `<polygon points="${points}" ${style}/>`;
+  } else if (s.kind === 'triangle') {
+    const points = triangleVertices(s).map((p) => `${p.x},${p.y}`).join(' ');
     body = `<polygon points="${points}" ${style}/>`;
   } else if (s.kind === 'sticky') {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="${s.color ?? STICKY_DEFAULT}"/>`;

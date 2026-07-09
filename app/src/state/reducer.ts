@@ -18,21 +18,31 @@ import {
   scaleShapes,
   setConnectorEndpoint,
   setConnectorWaypoint,
+  resizeAnchor,
   shapeAt,
   translateItems,
   updateShape,
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
-import type { Connector, Doc, Endpoint, Pt, Shape } from '../model/types';
+import type { Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
 
 /** Shape kinds reachable via the hjkl-resize draw flow (excludes text/image, which use other flows). */
-export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'sticky';
+export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'triangle';
 
 /** Active mouse tool: what a drag on empty canvas creates. */
-export type MouseTool = 'select' | 'sketch' | 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'arrow' | 'text';
+export type MouseTool =
+  | 'select'
+  | 'sketch'
+  | 'rect'
+  | 'ellipse'
+  | 'diamond'
+  | 'sticky'
+  | 'triangle'
+  | 'arrow'
+  | 'text';
 
 export interface View {
   x: number;
@@ -155,6 +165,7 @@ export type Action =
   | { type: 'SET_VIM'; on: boolean }
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
+  | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
@@ -325,7 +336,13 @@ function startDraw(state: EditorState, kind: DrawKind): EditorState {
 function confirmDraw(state: EditorState): EditorState {
   if (!state.draw) return state;
   const r = normRect(state.draw.anchor, state.cursor);
-  const shape: Shape = { id: newId(), kind: state.draw.kind, ...r, label: '' };
+  const shape: Shape = {
+    id: newId(),
+    kind: state.draw.kind,
+    ...r,
+    label: '',
+    ...(state.draw.kind === 'triangle' ? { direction: 'up' as const } : {}),
+  };
   // Mouse/plain-mode users have no 'i' muscle memory: drop straight into text
   // edit. Vim users get the deliberate two-step create-then-insert flow.
   if (!state.vim) {
@@ -565,6 +582,8 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startDraw(state, 'diamond');
     case 'w':
       return startDraw(state, 'sticky');
+    case 'g':
+      return startDraw(state, 'triangle');
     case 'a':
       return startArrow(state);
     case 't':
@@ -709,9 +728,11 @@ function handleTransientKey(state: EditorState, key: string, shift: boolean): Ed
       const newBox = { w: Math.max(GRID, box.w + dw), h: Math.max(GRID, box.h + dh) };
       const origBox = bboxOf(base, ids);
       if (!origBox) return cancelTransient(state);
+      const shapes = ids.map((id) => findShape(base, id)).filter((s): s is Shape => !!s);
+      const anchor = resizeAnchor(shapes, origBox);
       return {
         ...state,
-        doc: scaleShapes(base, ids, newBox.w, newBox.h, { x: origBox.x, y: origBox.y }, origBox.w, origBox.h),
+        doc: scaleShapes(base, ids, newBox.w, newBox.h, anchor, origBox.w, origBox.h),
         resizeBox: newBox,
         count: '',
       };
@@ -929,9 +950,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       if (!box) return state;
       const newW = Math.max(GRID, snap(action.w));
       const newH = Math.max(GRID, snap(action.h));
+      const shapes = ids.map((id) => findShape(base, id)).filter((s): s is Shape => !!s);
+      const anchor = resizeAnchor(shapes, box);
       return {
         ...state,
-        doc: scaleShapes(base, ids, newW, newH, { x: box.x, y: box.y }, box.w, box.h),
+        doc: scaleShapes(base, ids, newW, newH, anchor, box.w, box.h),
       };
     }
 
@@ -1059,6 +1082,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         w: Math.max(GRID * 2, snap(res.w)),
         h: Math.max(GRID * 2, snap(res.h)),
         label: '',
+        ...(res.kind === 'triangle' ? { direction: res.direction } : {}),
       };
       // Freehand sketching has no vim keyboard equivalent, so always drop
       // straight into text edit — same as double-click-to-create.
@@ -1212,6 +1236,18 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, color } : c)),
       };
       return commit(state, doc, { msg: color ? 'color set' : 'color reset' });
+    }
+
+    case 'SET_TRIANGLE_DIRECTION': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const doc: Doc = {
+        ...state.doc,
+        shapes: state.doc.shapes.map((s) =>
+          idSet.has(s.id) && s.kind === 'triangle' ? { ...s, direction: action.direction } : s,
+        ),
+      };
+      return commit(state, doc, { msg: 'direction set' });
     }
 
     case 'REORDER': {

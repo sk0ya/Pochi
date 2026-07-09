@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { bboxOf, connectorAt, connectorPath, findConnector, findShape, resolveEndpoint, shapeAt } from '../model/doc';
+import {
+  bboxOf,
+  connectorAt,
+  connectorPath,
+  findConnector,
+  findShape,
+  resizeAnchor,
+  resizeHandlePoint,
+  resolveEndpoint,
+  shapeAt,
+  triangleVertices,
+} from '../model/doc';
 import { fillTint, STICKY_DEFAULT } from '../model/palette';
 import type { Connector, Pt, Shape } from '../model/types';
 import { GRID, snap } from '../model/types';
@@ -43,6 +54,14 @@ function diamondPoints(s: Shape, pad = 0): string {
   return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
 }
 
+/** Triangle polygon points for a bounding box + apex direction, optionally expanded by `pad` (for the halo). */
+function trianglePoints(box: { x: number; y: number; w: number; h: number; direction?: Shape['direction'] }, pad = 0): string {
+  const b = pad ? { ...box, x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 } : box;
+  return triangleVertices(b)
+    .map((p) => `${p.x},${p.y}`)
+    .join(' ');
+}
+
 function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; hot: boolean; tool: string }) {
   // The shape's own color always stays visible; selection/hot is shown as a
   // halo around it instead of overriding the stroke (otherwise you can't see
@@ -70,9 +89,11 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
         <ellipse cx={cx} cy={cy} rx={s.w / 2 + 3} ry={s.h / 2 + 3} {...halo} />
       )}
       {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, 3)} {...halo} />}
+      {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, 3)} {...halo} />}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
       {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
+      {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
       {s.kind === 'sticky' && (
         <rect
           x={s.x}
@@ -243,6 +264,9 @@ interface DragState {
   /** world coords at drag start (move/resize) */
   startWorld: Pt;
   orig: { x: number; y: number; w: number; h: number };
+  /** kind === 'resize': +1/-1 per axis, depending on which side of the anchor
+   * the handle sits on, so dragging it always grows the shape away from the anchor. */
+  resizeSign?: { x: number; y: number };
   moved: boolean;
 }
 
@@ -362,7 +386,16 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       return;
     }
     if (resize && selectedBox && targetId) {
-      drag.current = newDrag('resize', e, targetId, selectedBox);
+      const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);
+      const anchor = resizeAnchor(shapes, selectedBox);
+      const handle = resizeHandlePoint(selectedBox, anchor);
+      drag.current = {
+        ...newDrag('resize', e, targetId, selectedBox),
+        resizeSign: {
+          x: handle.x === selectedBox.x + selectedBox.w ? 1 : -1,
+          y: handle.y === selectedBox.y + selectedBox.h ? 1 : -1,
+        },
+      };
       dispatch({ type: 'DRAG_START', id: targetId });
       return;
     }
@@ -408,7 +441,13 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       return;
     }
     // Empty canvas: rubber-band draw with the active tool.
-    if (state.tool === 'rect' || state.tool === 'ellipse' || state.tool === 'diamond' || state.tool === 'sticky') {
+    if (
+      state.tool === 'rect' ||
+      state.tool === 'ellipse' ||
+      state.tool === 'diamond' ||
+      state.tool === 'sticky' ||
+      state.tool === 'triangle'
+    ) {
       drag.current = newDrag('draw', e);
       dispatch({ type: 'START_DRAW_AT', kind: state.tool, p: toWorld(e) });
     }
@@ -489,7 +528,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         to: { x: alignX ? alignX.value : snap(rect.x), y: alignY ? alignY.value : snap(rect.y) },
       });
     } else if (d.kind === 'resize') {
-      dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + dx, h: d.orig.h + dy });
+      const sign = d.resizeSign ?? { x: 1, y: 1 };
+      dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + sign.x * dx, h: d.orig.h + sign.y * dy });
     } else if (d.kind === 'moveconn') {
       dispatch({ type: 'CONNECTOR_DRAG_MOVE', id: d.id, dx, dy });
     }
@@ -611,6 +651,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         const cy = y + h / 2;
         return <polygon points={`${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`} {...common} />;
       }
+      if (state.draw.kind === 'triangle') {
+        return <polygon points={trianglePoints({ x, y, w, h, direction: 'up' })} {...common} />;
+      }
       return <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} {...common} />;
     }
     if (mode === 'arrow' && state.arrowFrom) {
@@ -717,6 +760,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     state.tool === 'ellipse' ||
     state.tool === 'diamond' ||
     state.tool === 'sticky' ||
+    state.tool === 'triangle' ||
     state.tool === 'arrow' ||
     state.tool === 'sketch';
   const bgCursor = isPanning
@@ -810,17 +854,25 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           !drag.current &&
           state.tool !== 'select' &&
           connectRing(hoverShape, CONNECT_RING_OFFSET)}
-        {selectedBox && mode === 'normal' && (
-          <rect
-            data-handle="resize"
-            x={selectedBox.x + selectedBox.w - 5}
-            y={selectedBox.y + selectedBox.h - 5}
-            width={10}
-            height={10}
-            fill="var(--accent)"
-            style={{ cursor: 'nwse-resize' }}
-          />
-        )}
+        {selectedBox && mode === 'normal' && (() => {
+          const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);
+          const anchor = resizeAnchor(shapes, selectedBox);
+          const handle = resizeHandlePoint(selectedBox, anchor);
+          const onRight = handle.x === selectedBox.x + selectedBox.w;
+          const onBottom = handle.y === selectedBox.y + selectedBox.h;
+          const cursor = onRight === onBottom ? 'nwse-resize' : 'nesw-resize';
+          return (
+            <rect
+              data-handle="resize"
+              x={handle.x - 5}
+              y={handle.y - 5}
+              width={10}
+              height={10}
+              fill="var(--accent)"
+              style={{ cursor }}
+            />
+          );
+        })()}
         {guides.vx !== undefined && (
           <line x1={guides.vx} y1={-50000} x2={guides.vx} y2={50000} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
         )}

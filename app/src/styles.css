@@ -302,6 +302,35 @@ body {
   transform: rotate(45deg);
 }
 
+.direction-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px 2px;
+}
+
+.direction-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.direction-swatch:hover {
+  background: #232a36;
+}
+
+.direction-swatch.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* help */
 .help-overlay {
   position: fixed;

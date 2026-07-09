@@ -2,7 +2,19 @@ import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import { PALETTE } from '../model/palette';
+import type { TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
+
+const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
+  ['up', '▲', '上向き'],
+  ['down', '▼', '下向き'],
+  ['left', '◀', '左向き'],
+  ['right', '▶', '右向き'],
+  ['up-left', '◤', '左上向き(斜め)'],
+  ['up-right', '◥', '右上向き(斜め)'],
+  ['down-left', '◣', '左下向き(斜め)'],
+  ['down-right', '◢', '右下向き(斜め)'],
+];
 
 export function ContextMenu({
   state,
@@ -52,9 +64,10 @@ export function ContextMenu({
   };
 
   // Clamp so the menu doesn't run off the viewport edge.
+  const menuHeight = hasTarget ? (singleShape?.kind === 'triangle' ? 470 : 420) : 90;
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
-    top: Math.min(menu.screen.y, window.innerHeight - (hasTarget ? 420 : 90)),
+    top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
   };
 
   return (
@@ -132,6 +145,24 @@ export function ContextMenu({
               />
             ))}
           </div>
+          {singleShape?.kind === 'triangle' && (
+            <>
+              <div className="context-sep" />
+              <div className="context-label">向き</div>
+              <div className="direction-row">
+                {TRIANGLE_DIRECTIONS.map(([dir, icon, title]) => (
+                  <button
+                    key={dir}
+                    className={`direction-swatch${(singleShape.direction ?? 'up') === dir ? ' active' : ''}`}
+                    title={title}
+                    onClick={() => run({ type: 'SET_TRIANGLE_DIRECTION', ids, direction: dir })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {singleShape && <div className="context-hint">{singleShape.kind}</div>}
         </>
       ) : (

@@ -1,5 +1,84 @@
 import { GRID } from './types';
-import type { Connector, Doc, Endpoint, Pt, Shape } from './types';
+import type { Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from './types';
+
+/** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
+ * directions put the apex at an edge midpoint (isosceles); diagonal directions
+ * put the right angle at that bbox corner. */
+export function triangleVertices(box: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  direction?: TriangleDirection;
+}): [Pt, Pt, Pt] {
+  const { x, y, w, h } = box;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  switch (box.direction) {
+    case 'down':
+      return [{ x: cx, y: y + h }, { x, y }, { x: x + w, y }];
+    case 'left':
+      return [{ x, y: cy }, { x: x + w, y }, { x: x + w, y: y + h }];
+    case 'right':
+      return [{ x: x + w, y: cy }, { x, y }, { x, y: y + h }];
+    case 'up-left':
+      return [{ x, y }, { x: x + w, y }, { x, y: y + h }];
+    case 'up-right':
+      return [{ x: x + w, y }, { x, y }, { x: x + w, y: y + h }];
+    case 'down-left':
+      return [{ x, y: y + h }, { x, y }, { x: x + w, y: y + h }];
+    case 'down-right':
+      return [{ x: x + w, y: y + h }, { x: x + w, y }, { x, y: y + h }];
+    case 'up':
+    default:
+      return [{ x: cx, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+  }
+}
+
+/** Point that stays fixed while resizing: a lone triangle's own vertex (its
+ * apex, or the right-angle corner for a diagonal direction), so the pointy
+ * end doesn't drift; the bbox top-left for everything else (incl. multi-select). */
+export function resizeAnchor(shapes: Shape[], box: { x: number; y: number; w: number; h: number }): Pt {
+  if (shapes.length === 1 && shapes[0].kind === 'triangle') {
+    return triangleVertices(shapes[0])[0];
+  }
+  return { x: box.x, y: box.y };
+}
+
+/** Resize-handle position: the bbox corner farthest from `anchor`, so the
+ * handle sits away from the fixed vertex instead of possibly right next to it. */
+export function resizeHandlePoint(box: { x: number; y: number; w: number; h: number }, anchor: Pt): Pt {
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  return {
+    x: anchor.x <= cx ? box.x + box.w : box.x,
+    y: anchor.y <= cy ? box.y + box.h : box.y,
+  };
+}
+
+/** Nearest point where the ray from `o` in direction `d` (t >= 0) crosses the
+ * polygon's boundary; null if it never does (shouldn't happen for `o` inside). */
+function rayPolygonBorder(o: Pt, d: Pt, verts: Pt[]): Pt | null {
+  let best: { t: number; p: Pt } | null = null;
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % verts.length];
+    const v1x = o.x - a.x;
+    const v1y = o.y - a.y;
+    const v2x = b.x - a.x;
+    const v2y = b.y - a.y;
+    const v3x = -d.y;
+    const v3y = d.x;
+    const denom = v2x * v3x + v2y * v3y;
+    if (Math.abs(denom) < 1e-9) continue;
+    const t = (v2x * v1y - v2y * v1x) / denom;
+    const u = (v1x * v3x + v1y * v3y) / denom;
+    if (t >= 0 && u >= 0 && u <= 1 && (!best || t < best.t)) {
+      best = { t, p: { x: o.x + d.x * t, y: o.y + d.y * t } };
+    }
+  }
+  return best?.p ?? null;
+}
 
 export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
@@ -80,6 +159,15 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
 
 /** Point on the border of a shape along the ray from its center toward `toward`. */
 export function borderPoint(s: Shape, toward: Pt): Pt {
+  if (s.kind === 'triangle') {
+    const verts = triangleVertices(s);
+    const ox = (verts[0].x + verts[1].x + verts[2].x) / 3;
+    const oy = (verts[0].y + verts[1].y + verts[2].y) / 3;
+    const dx = toward.x - ox;
+    const dy = toward.y - oy;
+    if (dx === 0 && dy === 0) return { x: ox, y: oy };
+    return rayPolygonBorder({ x: ox, y: oy }, { x: dx, y: dy }, verts) ?? { x: ox, y: oy };
+  }
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const dx = toward.x - cx;

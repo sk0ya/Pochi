@@ -1,15 +1,29 @@
-import type { Pt } from './types';
+import { distToSegment, triangleVertices } from './doc';
+import type { Pt, TriangleDirection } from './types';
 
 export type SketchResult =
   | { kind: 'rect' | 'ellipse'; x: number; y: number; w: number; h: number }
+  | { kind: 'triangle'; x: number; y: number; w: number; h: number; direction: TriangleDirection }
   | { kind: 'line'; a: Pt; b: Pt }
   | null;
 
+const TRIANGLE_DIRECTIONS: TriangleDirection[] = [
+  'up',
+  'down',
+  'left',
+  'right',
+  'up-left',
+  'up-right',
+  'down-left',
+  'down-right',
+];
+
 /**
- * Classify a freehand stroke as rect / ellipse / line(arrow).
+ * Classify a freehand stroke as rect / ellipse / triangle / line(arrow).
  *
  * - closed stroke (ends near each other, path much longer than the bbox
- *   diagonal) -> rect or ellipse, whichever border the points hug closer
+ *   diagonal) -> rect, ellipse, or triangle, whichever border the points hug
+ *   closer (triangle direction is whichever of the 8 candidates fits best)
  * - open stroke -> line from first to last point
  */
 export function classifyStroke(pts: Pt[]): SketchResult {
@@ -54,6 +68,29 @@ export function classifyStroke(pts: Pt[]): SketchResult {
     errRect += Math.min(p.x - minX, maxX - p.x, p.y - minY, maxY - p.y);
     const v = Math.sqrt(((p.x - cx) / rx) ** 2 + ((p.y - cy) / ry) ** 2);
     errEll += Math.abs(v - 1) * minR;
+  }
+
+  // Triangle: try all 8 apex directions and keep whichever hugs the stroke closest.
+  let errTri = Infinity;
+  let bestDir: TriangleDirection = 'up';
+  for (const direction of TRIANGLE_DIRECTIONS) {
+    const verts = triangleVertices({ x: minX, y: minY, w, h, direction });
+    let err = 0;
+    for (const p of pts) {
+      err += Math.min(
+        distToSegment(p, verts[0], verts[1]),
+        distToSegment(p, verts[1], verts[2]),
+        distToSegment(p, verts[2], verts[0]),
+      );
+    }
+    if (err < errTri) {
+      errTri = err;
+      bestDir = direction;
+    }
+  }
+
+  if (errTri <= errRect && errTri <= errEll) {
+    return { kind: 'triangle', x: minX, y: minY, w, h, direction: bestDir };
   }
   return { kind: errRect <= errEll ? 'rect' : 'ellipse', x: minX, y: minY, w, h };
 }
