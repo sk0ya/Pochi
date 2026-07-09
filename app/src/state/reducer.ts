@@ -1,15 +1,23 @@
 import {
   addConnector,
   addShape,
+  bboxOf,
+  clearConnectorWaypoints,
   connectorAt,
   deleteItem,
   docBounds,
   findConnector,
   findShape,
+  groupIdOf,
+  groupMembers,
+  insertConnectorWaypoint,
   itemsInRect,
   measureLabel,
+  type ReorderDir,
   reorderItems,
+  scaleShapes,
   setConnectorEndpoint,
+  setConnectorWaypoint,
   shapeAt,
   translateItems,
   updateShape,
@@ -20,8 +28,11 @@ import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
 
+/** Shape kinds reachable via the hjkl-resize draw flow (excludes text/image, which use other flows). */
+export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'sticky';
+
 /** Active mouse tool: what a drag on empty canvas creates. */
-export type MouseTool = 'sketch' | 'rect' | 'ellipse' | 'arrow' | 'text';
+export type MouseTool = 'sketch' | 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'arrow' | 'text';
 
 export interface View {
   x: number;
@@ -44,8 +55,10 @@ export interface EditorState {
   /** Selection lives above vim modes: normal-mode keys act on it when non-empty. */
   selectedIds: string[];
   mode: Mode;
-  draw: { kind: 'rect' | 'ellipse'; anchor: Pt } | null;
+  draw: { kind: DrawKind; anchor: Pt } | null;
   arrowFrom: Endpoint | null;
+  /** Target size of the selection's bounding box while in transient `resize` mode. */
+  resizeBox: { w: number; h: number } | null;
   /** Rubber-band selection rectangle being dragged (Shift+drag). */
   marquee: { a: Pt; b: Pt } | null;
   editingId: string | null;
@@ -66,25 +79,31 @@ export interface EditorState {
 }
 
 export type Action =
-  | { type: 'KEY'; key: string; ctrl: boolean }
+  | { type: 'KEY'; key: string; ctrl: boolean; shift?: boolean }
   | { type: 'CLICK'; p: Pt; id?: string; shift?: boolean }
   | { type: 'DBL_CLICK'; p: Pt; id?: string }
   | { type: 'MOUSE_CURSOR'; p: Pt }
   | { type: 'DRAG_START'; id: string }
   | { type: 'DRAG_MOVE'; id: string; to: Pt }
-  | { type: 'DRAG_RESIZE'; id: string; w: number; h: number }
+  | { type: 'DRAG_RESIZE'; w: number; h: number }
   | { type: 'DRAG_END' }
   | { type: 'ENDPOINT_DRAG_START'; id: string; end: 'from' | 'to' }
   | { type: 'ENDPOINT_DRAG_MOVE'; id: string; end: 'from' | 'to'; p: Pt }
+  | { type: 'WAYPOINT_DRAG_START'; id: string; index: number }
+  | { type: 'WAYPOINT_DRAG_MOVE'; id: string; index: number; p: Pt }
+  | { type: 'ADD_WAYPOINT'; id: string; p: Pt }
+  | { type: 'CLEAR_WAYPOINTS'; id: string }
+  | { type: 'SET_CONNECTOR_ROUTING'; id: string; routing: 'straight' | 'orthogonal' }
   | { type: 'START_INSERT'; id: string }
   | { type: 'INSERT_COMMIT'; label: string }
   | { type: 'CMD_OPEN' }
   | { type: 'CMD_SET'; text: string }
   | { type: 'CMD_CLOSE' }
   | { type: 'SET_TOOL'; tool: MouseTool }
-  | { type: 'START_DRAW_AT'; kind: 'rect' | 'ellipse'; p: Pt }
+  | { type: 'START_DRAW_AT'; kind: DrawKind; p: Pt }
   | { type: 'START_ARROW_AT'; p: Pt; shapeId?: string }
   | { type: 'TEXT_AT'; p: Pt }
+  | { type: 'ADD_IMAGE'; src: string; w: number; h: number }
   | { type: 'CANCEL' }
   | { type: 'SKETCH_START'; p: Pt }
   | { type: 'SKETCH_POINT'; p: Pt }
@@ -108,18 +127,26 @@ export type Action =
   | { type: 'SET_VIM'; on: boolean }
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
-  | { type: 'REORDER'; ids: string[]; dir: 'front' | 'back' }
+  | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
   | { type: 'COPY' }
   | { type: 'PASTE_OFFSET' }
   | { type: 'PASTE_AT'; p: Pt }
+  | { type: 'SELECT_ALL' }
+  | { type: 'GROUP' }
+  | { type: 'UNGROUP' }
+  | { type: 'TOGGLE_GROUP' }
   | { type: 'CONTEXT_MENU_OPEN'; screen: Pt; world: Pt; id?: string }
   | { type: 'CONTEXT_MENU_CLOSE' };
 
 const DEFAULT_W = GRID * 10;
 const DEFAULT_H = GRID * 6;
 const UNDO_LIMIT = 200;
+/** Shift+move multiplies the grid step by this factor (coordinates stay grid-aligned). */
+const BIG_STEP = 4;
+/** Max long edge (world px) a newly-imported image is scaled to fit within. */
+export const IMAGE_MAX_DIM = GRID * 20;
 
 export function initialState(doc: Doc | null, vim: boolean): EditorState {
   return {
@@ -135,6 +162,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     marquee: null,
     editingId: null,
     editingIsNew: false,
+    resizeBox: null,
     clipboard: null,
     tool: 'sketch',
     sketch: null,
@@ -171,6 +199,7 @@ function endTransient(state: EditorState, extra?: Partial<EditorState>): EditorS
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    resizeBox: null,
     count: '',
     ...extra,
   };
@@ -185,6 +214,7 @@ function cancelTransient(state: EditorState, extra?: Partial<EditorState>): Edit
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    resizeBox: null,
     editingId: null,
     editingIsNew: false,
     marquee: null,
@@ -225,7 +255,7 @@ function normRect(a: Pt, b: Pt): { x: number; y: number; w: number; h: number } 
   };
 }
 
-function startDraw(state: EditorState, kind: 'rect' | 'ellipse'): EditorState {
+function startDraw(state: EditorState, kind: DrawKind): EditorState {
   const anchor = snapPt(state.cursor);
   return {
     ...state,
@@ -448,7 +478,7 @@ function duplicateSelection(state: EditorState): EditorState {
   return pasteWithOffset(state, clip, GRID * 2);
 }
 
-function handleNormalKey(state: EditorState, key: string, ctrl: boolean): EditorState {
+function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
     if (key === 'r') return reduce(state, { type: 'REDO' });
     return state;
@@ -458,7 +488,7 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
     return { ...state, count: state.count + key };
   }
 
-  const delta = moveDelta(key, GRID * getCount(state));
+  const delta = moveDelta(key, GRID * getCount(state) * (shift ? BIG_STEP : 1));
   if (delta) {
     return {
       ...state,
@@ -477,6 +507,10 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
       return startDraw(state, 'rect');
     case 'e':
       return startDraw(state, 'ellipse');
+    case 'q':
+      return startDraw(state, 'diamond');
+    case 'w':
+      return startDraw(state, 'sticky');
     case 'a':
       return startArrow(state);
     case 't':
@@ -512,16 +546,24 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
     }
     case 's': {
       const sel = selectedShapes(state);
-      if (sel.length > 1) return { ...state, msg: 'resize: select a single shape', count: '' };
-      const shape = sel[0] ?? hotItem(state).shape;
-      if (!shape) return { ...state, msg: 'no shape under cursor', count: '' };
+      const ids = sel.length ? sel.map((s) => s.id) : (() => {
+        const hot = hotItem(state).shape;
+        return hot ? [hot.id] : [];
+      })();
+      if (!ids.length) return { ...state, msg: 'no shape under cursor', count: '' };
+      const box = bboxOf(state.doc, ids);
+      if (!box) return { ...state, msg: 'no shape under cursor', count: '' };
       return {
         ...state,
         mode: 'resize',
         base: state.doc,
-        selectedIds: [shape.id],
+        selectedIds: ids,
+        resizeBox: { w: box.w, h: box.h },
         count: '',
-        msg: 'RESIZE: l/h wider/narrower, j/k taller/shorter, Enter to done',
+        msg:
+          ids.length > 1
+            ? 'RESIZE (group): l/h wider/narrower, j/k taller/shorter, Enter to done'
+            : 'RESIZE: l/h wider/narrower, j/k taller/shorter, Enter to done',
       };
     }
     case 'd':
@@ -561,11 +603,11 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
   }
 }
 
-function handleTransientKey(state: EditorState, key: string): EditorState {
+function handleTransientKey(state: EditorState, key: string, shift: boolean): EditorState {
   if (/^[0-9]$/.test(key) && !(key === '0' && state.count === '')) {
     return { ...state, count: state.count + key };
   }
-  const step = GRID * getCount(state);
+  const step = GRID * getCount(state) * (shift ? BIG_STEP : 1);
 
   if (state.mode === 'draw' || state.mode === 'arrow') {
     const delta = moveDelta(key, step);
@@ -597,9 +639,10 @@ function handleTransientKey(state: EditorState, key: string): EditorState {
   }
 
   if (state.mode === 'resize') {
-    const id = state.selectedIds[0];
-    const s = id ? findShape(state.doc, id) : undefined;
-    if (!s || !id) return cancelTransient(state);
+    const ids = state.selectedIds;
+    const box = state.resizeBox;
+    const base = state.base;
+    if (!ids.length || !box || !base) return cancelTransient(state);
     let dw = 0;
     let dh = 0;
     if (key === 'l' || key === 'ArrowRight') dw = step;
@@ -607,12 +650,13 @@ function handleTransientKey(state: EditorState, key: string): EditorState {
     if (key === 'j' || key === 'ArrowDown') dh = step;
     if (key === 'k' || key === 'ArrowUp') dh = -step;
     if (dw !== 0 || dh !== 0) {
+      const newBox = { w: Math.max(GRID, box.w + dw), h: Math.max(GRID, box.h + dh) };
+      const origBox = bboxOf(base, ids);
+      if (!origBox) return cancelTransient(state);
       return {
         ...state,
-        doc: updateShape(state.doc, id, {
-          w: Math.max(GRID, s.w + dw),
-          h: Math.max(GRID, s.h + dh),
-        }),
+        doc: scaleShapes(base, ids, newBox.w, newBox.h, { x: origBox.x, y: origBox.y }, origBox.w, origBox.h),
+        resizeBox: newBox,
         count: '',
       };
     }
@@ -625,13 +669,13 @@ function handleTransientKey(state: EditorState, key: string): EditorState {
 }
 
 /** Simplified bindings when vim mode is off: arrows + Delete on the selection. */
-function handlePlainKey(state: EditorState, key: string, ctrl: boolean): EditorState {
+function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
     if (key === 'z') return reduce(state, { type: 'UNDO' });
     if (key === 'y') return reduce(state, { type: 'REDO' });
     return state;
   }
-  if (state.mode === 'draw' || state.mode === 'arrow') return handleTransientKey(state, key);
+  if (state.mode === 'draw' || state.mode === 'arrow') return handleTransientKey(state, key, shift);
   if (key === 'Escape') {
     if (state.base !== null || state.marquee !== null || state.sketch !== null) {
       return cancelTransient(state, { selectedIds: [], msg: 'cancelled', showHelp: false });
@@ -644,7 +688,7 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean): EditorS
     return commit(state, doc, { selectedIds: [], msg: 'deleted' });
   }
   if (key === 'F2' && state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
-  const delta = moveDelta(key, GRID);
+  const delta = moveDelta(key, GRID * (shift ? BIG_STEP : 1));
   if (delta && state.selectedIds.length) {
     return commit(state, translateItems(state.doc, state.selectedIds, delta.x, delta.y));
   }
@@ -701,9 +745,10 @@ export function reduce(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case 'KEY': {
       if (state.mode === 'insert' || state.mode === 'command') return state;
-      if (!state.vim) return handlePlainKey(state, action.key, action.ctrl);
-      if (state.mode === 'normal') return handleNormalKey(state, action.key, action.ctrl);
-      return handleTransientKey(state, action.key);
+      const shift = !!action.shift;
+      if (!state.vim) return handlePlainKey(state, action.key, action.ctrl, shift);
+      if (state.mode === 'normal') return handleNormalKey(state, action.key, action.ctrl, shift);
+      return handleTransientKey(state, action.key, shift);
     }
 
     case 'CLICK': {
@@ -724,10 +769,11 @@ export function reduce(state: EditorState, action: Action): EditorState {
           count: '',
         };
       }
+      const gid = hit ? groupIdOf(state.doc, hit) : undefined;
       return {
         ...state,
         cursor: p,
-        selectedIds: hit ? [hit] : [],
+        selectedIds: hit ? (gid ? groupMembers(state.doc, gid) : [hit]) : [],
         count: '',
       };
     }
@@ -759,13 +805,16 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return { ...state, cursor: snapPt(action.p) };
     }
 
-    case 'DRAG_START':
+    case 'DRAG_START': {
+      if (state.selectedIds.includes(action.id)) return { ...state, base: state.doc };
+      // Dragging an unselected item reselects it (or its whole group, if grouped).
+      const gid = groupIdOf(state.doc, action.id);
       return {
         ...state,
         base: state.doc,
-        // Dragging a selected item moves the whole selection; otherwise reselect.
-        selectedIds: state.selectedIds.includes(action.id) ? state.selectedIds : [action.id],
+        selectedIds: gid ? groupMembers(state.doc, gid) : [action.id],
       };
+    }
 
     case 'DRAG_MOVE': {
       const src = state.base ?? state.doc;
@@ -778,14 +827,18 @@ export function reduce(state: EditorState, action: Action): EditorState {
       };
     }
 
-    case 'DRAG_RESIZE':
+    case 'DRAG_RESIZE': {
+      const ids = state.selectedIds;
+      const base = state.base ?? state.doc;
+      const box = bboxOf(base, ids);
+      if (!box) return state;
+      const newW = Math.max(GRID, snap(action.w));
+      const newH = Math.max(GRID, snap(action.h));
       return {
         ...state,
-        doc: updateShape(state.doc, action.id, {
-          w: Math.max(GRID, snap(action.w)),
-          h: Math.max(GRID, snap(action.h)),
-        }),
+        doc: scaleShapes(base, ids, newW, newH, { x: box.x, y: box.y }, box.w, box.h),
       };
+    }
 
     case 'DRAG_END': {
       const changed = state.base !== null && state.base !== state.doc;
@@ -1068,9 +1121,13 @@ export function reduce(state: EditorState, action: Action): EditorState {
 
     case 'REORDER': {
       if (!action.ids.length) return state;
-      return commit(state, reorderItems(state.doc, action.ids, action.dir), {
-        msg: action.dir === 'front' ? 'brought to front' : 'sent to back',
-      });
+      const msg = {
+        front: 'brought to front',
+        back: 'sent to back',
+        forward: 'moved forward',
+        backward: 'moved backward',
+      }[action.dir];
+      return commit(state, reorderItems(state.doc, action.ids, action.dir), { msg });
     }
 
     case 'DUPLICATE':
@@ -1098,12 +1155,96 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return pasteClipboard(state, state.clipboard, action.p);
     }
 
-    case 'CONTEXT_MENU_OPEN':
+    case 'SELECT_ALL': {
+      const ids = [...state.doc.shapes.map((s) => s.id), ...state.doc.connectors.map((c) => c.id)];
+      if (!ids.length) return state;
+      return { ...state, selectedIds: ids, msg: `${ids.length} selected` };
+    }
+
+    case 'GROUP': {
+      if (state.selectedIds.length < 2) return { ...state, msg: 'select 2+ items to group' };
+      const gid = newId();
+      const idSet = new Set(state.selectedIds);
+      const doc: Doc = {
+        shapes: state.doc.shapes.map((s) => (idSet.has(s.id) ? { ...s, groupId: gid } : s)),
+        connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, groupId: gid } : c)),
+      };
+      return commit(state, doc, { msg: 'grouped' });
+    }
+
+    case 'UNGROUP': {
+      if (!state.selectedIds.length) return state;
+      const idSet = new Set(state.selectedIds);
+      const doc: Doc = {
+        shapes: state.doc.shapes.map((s) => (idSet.has(s.id) ? { ...s, groupId: undefined } : s)),
+        connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, groupId: undefined } : c)),
+      };
+      return commit(state, doc, { msg: 'ungrouped' });
+    }
+
+    case 'TOGGLE_GROUP': {
+      const ids = state.selectedIds;
+      if (ids.length < 2) return { ...state, msg: 'select 2+ items to group' };
+      const gids = new Set(ids.map((id) => groupIdOf(state.doc, id)).filter((g): g is string => !!g));
+      if (gids.size === 1) {
+        const [gid] = gids;
+        const members = groupMembers(state.doc, gid);
+        if (members.length === ids.length && members.every((m) => ids.includes(m))) {
+          return reduce(state, { type: 'UNGROUP' });
+        }
+      }
+      return reduce(state, { type: 'GROUP' });
+    }
+
+    case 'WAYPOINT_DRAG_START':
+      return { ...state, base: state.doc, selectedIds: [action.id] };
+
+    case 'WAYPOINT_DRAG_MOVE':
+      return { ...state, doc: setConnectorWaypoint(state.doc, action.id, action.index, snapPt(action.p)) };
+
+    case 'ADD_WAYPOINT':
+      return commit(state, insertConnectorWaypoint(state.doc, action.id, snapPt(action.p)), {
+        msg: 'bend point added',
+      });
+
+    case 'CLEAR_WAYPOINTS':
+      return commit(state, clearConnectorWaypoints(state.doc, action.id), { msg: 'bend points cleared' });
+
+    case 'SET_CONNECTOR_ROUTING': {
+      const doc: Doc = {
+        ...state.doc,
+        connectors: state.doc.connectors.map((c) => (c.id === action.id ? { ...c, routing: action.routing } : c)),
+      };
+      return commit(state, doc, { msg: action.routing === 'orthogonal' ? 'routing: orthogonal' : 'routing: straight' });
+    }
+
+    case 'ADD_IMAGE': {
+      const at = snapPt(state.cursor);
+      const shape: Shape = {
+        id: newId(),
+        kind: 'image',
+        x: at.x,
+        y: at.y,
+        w: Math.max(GRID, snap(action.w)),
+        h: Math.max(GRID, snap(action.h)),
+        label: '',
+        src: action.src,
+      };
+      return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'image added' });
+    }
+
+    case 'CONTEXT_MENU_OPEN': {
+      let selectedIds = state.selectedIds;
+      if (action.id && !state.selectedIds.includes(action.id)) {
+        const gid = groupIdOf(state.doc, action.id);
+        selectedIds = gid ? groupMembers(state.doc, gid) : [action.id];
+      }
       return {
         ...state,
         contextMenu: { screen: action.screen, world: action.world, id: action.id },
-        selectedIds: action.id && !state.selectedIds.includes(action.id) ? [action.id] : state.selectedIds,
+        selectedIds,
       };
+    }
 
     case 'CONTEXT_MENU_CLOSE':
       return state.contextMenu ? { ...state, contextMenu: null } : state;

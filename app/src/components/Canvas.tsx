@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { connectorAt, connectorEnds, findConnector, findShape, resolveEndpoint, shapeAt } from '../model/doc';
-import { fillTint } from '../model/palette';
+import { bboxOf, connectorAt, connectorPath, findConnector, findShape, resolveEndpoint, shapeAt } from '../model/doc';
+import { fillTint, STICKY_DEFAULT } from '../model/palette';
 import type { Connector, Pt, Shape } from '../model/types';
 import { GRID, snap } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -32,6 +32,17 @@ function Label({ label, cx, cy, color }: { label: string; cx: number; cy: number
   );
 }
 
+/** Diamond polygon points for a bounding box, optionally expanded by `pad` (for the halo). */
+function diamondPoints(s: Shape, pad = 0): string {
+  const cx = s.x + s.w / 2;
+  const cy = s.y + s.h / 2;
+  const x = s.x - pad;
+  const y = s.y - pad;
+  const w = s.w + pad * 2;
+  const h = s.h + pad * 2;
+  return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
+}
+
 function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boolean }) {
   // The shape's own color always stays visible; selection/hot is shown as a
   // halo around it instead of overriding the stroke (otherwise you can't see
@@ -48,14 +59,36 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
   const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
   return (
     <g data-id={s.id} style={{ cursor: 'move' }}>
-      {haloColor && s.kind === 'rect' && (
+      {haloColor && (s.kind === 'rect' || s.kind === 'sticky' || s.kind === 'image') && (
         <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={6} {...halo} />
       )}
       {haloColor && s.kind === 'ellipse' && (
         <ellipse cx={cx} cy={cy} rx={s.w / 2 + 3} ry={s.h / 2 + 3} {...halo} />
       )}
+      {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, 3)} {...halo} />}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
+      {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
+      {s.kind === 'sticky' && (
+        <rect
+          x={s.x}
+          y={s.y}
+          width={s.w}
+          height={s.h}
+          fill={s.color ?? STICKY_DEFAULT}
+          stroke="none"
+        />
+      )}
+      {s.kind === 'image' && s.src && (
+        <image
+          href={s.src}
+          x={s.x}
+          y={s.y}
+          width={s.w}
+          height={s.h}
+          preserveAspectRatio="xMidYMid slice"
+        />
+      )}
       {s.kind === 'text' && (
         <rect
           x={s.x}
@@ -68,7 +101,12 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
           strokeWidth={haloColor ? 1.5 : 1}
         />
       )}
-      <Label label={s.label} cx={cx} cy={cy} color={s.kind === 'text' ? s.color : undefined} />
+      <Label
+        label={s.label}
+        cx={cx}
+        cy={cy}
+        color={s.kind === 'text' || s.kind === 'sticky' ? s.color : undefined}
+      />
     </g>
   );
 }
@@ -164,11 +202,31 @@ function connectRing(s: Shape, offset: number) {
   );
 }
 
+/** Nearest edge/center match (within `threshold`) between the moving rect's left/center/right
+ * (or top/center/bottom) and any candidate value; returns the adjusted anchor coordinate. */
+function bestAlign(moving: [number, number, number], candidates: number[], threshold: number):
+  { value: number; guide: number } | null {
+  let best: { value: number; guide: number } | null = null;
+  let bestDist = threshold;
+  for (const m of moving) {
+    for (const c of candidates) {
+      const dist = Math.abs(m - c);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { value: c - (m - moving[0]), guide: c };
+      }
+    }
+  }
+  return best;
+}
+
 interface DragState {
   id: string;
-  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint';
+  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint' | 'waypoint';
   /** which end of the connector is being dragged (kind === 'endpoint') */
   end?: 'from' | 'to';
+  /** which waypoint index is being dragged (kind === 'waypoint') */
+  index?: number;
   /** client px; used for pan deltas and click-vs-drag thresholds */
   startScreen: Pt;
   /** world coords at drag start (move/resize) */
@@ -182,6 +240,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const drag = useRef<DragState | null>(null);
   const space = useRef(false);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [guides, setGuides] = useState<{ vx?: number; hy?: number }>({});
 
   const { doc, view, cursor, mode, vim } = state;
 
@@ -224,8 +283,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const hotConn =
     vim && mode === 'normal' && !hotShape ? connectorAt(doc, cursor) : undefined;
 
-  const selectedShape =
-    state.selectedIds.length === 1 ? findShape(doc, state.selectedIds[0]) : undefined;
+  const selectedShapeIds = state.selectedIds.filter((id) => findShape(doc, id));
+  const selectedBox = selectedShapeIds.length ? bboxOf(doc, selectedShapeIds) : null;
   const hoverShape = hoverId ? findShape(doc, hoverId) : undefined;
   const selectedConnector =
     state.selectedIds.length === 1 ? findConnector(doc, state.selectedIds[0]) : undefined;
@@ -268,6 +327,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const resize = handle === 'resize';
     const endpointEnd: 'from' | 'to' | null =
       handle === 'endpoint-from' ? 'from' : handle === 'endpoint-to' ? 'to' : null;
+    const waypointIndex =
+      handle === 'waypoint' ? Number((e.target as Element).getAttribute('data-index')) : null;
     const connectShapeId =
       handle === 'connect' ? ((e.target as Element).getAttribute('data-shape') ?? undefined) : undefined;
     const targetId = resize || endpointEnd ? state.selectedIds[0] : id;
@@ -278,17 +339,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: connectShapeId });
       return;
     }
-    if (resize && targetId) {
-      const s = findShape(doc, targetId);
-      if (s) {
-        drag.current = newDrag('resize', e, targetId, { x: s.x, y: s.y, w: s.w, h: s.h });
-        dispatch({ type: 'DRAG_START', id: targetId });
-        return;
-      }
+    if (resize && selectedBox && targetId) {
+      drag.current = newDrag('resize', e, targetId, selectedBox);
+      dispatch({ type: 'DRAG_START', id: targetId });
+      return;
     }
     if (endpointEnd && targetId) {
       drag.current = { ...newDrag('endpoint', e, targetId), end: endpointEnd };
       dispatch({ type: 'ENDPOINT_DRAG_START', id: targetId, end: endpointEnd });
+      return;
+    }
+    if (waypointIndex !== null && id) {
+      drag.current = { ...newDrag('waypoint', e, id), end: undefined, index: waypointIndex };
+      dispatch({ type: 'WAYPOINT_DRAG_START', id, index: waypointIndex });
       return;
     }
     if (state.tool === 'arrow') {
@@ -317,7 +380,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       return;
     }
     // Empty canvas: rubber-band draw with the active tool.
-    if (state.tool === 'rect' || state.tool === 'ellipse') {
+    if (state.tool === 'rect' || state.tool === 'ellipse' || state.tool === 'diamond' || state.tool === 'sticky') {
       drag.current = newDrag('draw', e);
       dispatch({ type: 'START_DRAW_AT', kind: state.tool, p: toWorld(e) });
     }
@@ -366,25 +429,46 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'ENDPOINT_DRAG_MOVE', id: d.id, end: d.end as 'from' | 'to', p: toWorld(e) });
       return;
     }
+    if (d.kind === 'waypoint') {
+      d.moved = true;
+      dispatch({ type: 'WAYPOINT_DRAG_MOVE', id: d.id, index: d.index as number, p: toWorld(e) });
+      return;
+    }
     const world = toWorld(e);
     const dx = world.x - d.startWorld.x;
     const dy = world.y - d.startWorld.y;
     if (!d.moved && Math.hypot(dx * view.scale, dy * view.scale) < 4) return;
     d.moved = true;
     if (d.kind === 'move') {
+      const rect = { x: d.orig.x + dx, y: d.orig.y + dy, w: d.orig.w, h: d.orig.h };
+      const excludeIds = new Set(state.selectedIds.length ? state.selectedIds : [d.id]);
+      const others = doc.shapes.filter((s) => !excludeIds.has(s.id));
+      const threshold = 6 / view.scale;
+      const alignX = bestAlign(
+        [rect.x, rect.x + rect.w / 2, rect.x + rect.w],
+        others.flatMap((s) => [s.x, s.x + s.w / 2, s.x + s.w]),
+        threshold,
+      );
+      const alignY = bestAlign(
+        [rect.y, rect.y + rect.h / 2, rect.y + rect.h],
+        others.flatMap((s) => [s.y, s.y + s.h / 2, s.y + s.h]),
+        threshold,
+      );
+      setGuides({ vx: alignX?.guide, hy: alignY?.guide });
       dispatch({
         type: 'DRAG_MOVE',
         id: d.id,
-        to: { x: snap(d.orig.x + dx), y: snap(d.orig.y + dy) },
+        to: { x: alignX ? alignX.value : snap(rect.x), y: alignY ? alignY.value : snap(rect.y) },
       });
     } else if (d.kind === 'resize') {
-      dispatch({ type: 'DRAG_RESIZE', id: d.id, w: d.orig.w + dx, h: d.orig.h + dy });
+      dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + dx, h: d.orig.h + dy });
     }
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
     const d = drag.current;
     drag.current = null;
+    setGuides({});
     if (d) {
       switch (d.kind) {
         case 'draw':
@@ -423,6 +507,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: d.id });
           return;
         case 'endpoint':
+        case 'waypoint':
           dispatch({ type: 'DRAG_END' });
           return;
         case 'pan':
@@ -482,11 +567,15 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         strokeDasharray: '6 4',
         strokeWidth: 1.5,
       };
-      return state.draw.kind === 'rect' ? (
-        <rect x={x} y={y} width={w} height={h} rx={4} {...common} />
-      ) : (
-        <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} {...common} />
-      );
+      if (state.draw.kind === 'rect' || state.draw.kind === 'sticky') {
+        return <rect x={x} y={y} width={w} height={h} rx={4} {...common} />;
+      }
+      if (state.draw.kind === 'diamond') {
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        return <polygon points={`${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`} {...common} />;
+      }
+      return <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} {...common} />;
     }
     if (mode === 'arrow' && state.arrowFrom) {
       const from = resolveEndpoint(doc, state.arrowFrom);
@@ -508,7 +597,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   };
 
   const connView = (c: Connector) => {
-    const [a, b] = connectorEnds(doc, c);
+    const path = connectorPath(doc, c);
+    const points = path.map((p) => `${p.x},${p.y}`).join(' ');
+    const mid = path[Math.floor((path.length - 1) / 2)];
+    const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
     const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
     // The connector's own color always stays visible; selection/hot is a
@@ -519,29 +611,47 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
     return (
       <g key={c.id} data-id={c.id}>
-        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={12} />
+        <polyline points={points} fill="none" stroke="transparent" strokeWidth={12} />
         {haloColor && (
-          <line
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
+          <polyline
+            points={points}
+            fill="none"
             stroke={haloColor}
             strokeWidth={selected ? 6 : 5}
             strokeLinecap="round"
+            strokeLinejoin="round"
             opacity={0.5}
           />
         )}
-        <line
-          x1={a.x}
-          y1={a.y}
-          x2={b.x}
-          y2={b.y}
+        <polyline
+          points={points}
+          fill="none"
           stroke={trueStroke}
           strokeWidth={selected ? 2 : 1.5}
+          strokeLinejoin="round"
           markerEnd={marker}
         />
-        <Label label={c.label} cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2 - 12} color={c.color ?? 'var(--muted)'} />
+        {selected &&
+          c.waypoints?.map((wp, i) => (
+            <circle
+              key={i}
+              data-handle="waypoint"
+              data-index={i}
+              cx={wp.x}
+              cy={wp.y}
+              r={5}
+              fill="var(--bg)"
+              stroke="var(--accent)"
+              strokeWidth={1.5}
+              style={{ cursor: 'move' }}
+            />
+          ))}
+        <Label
+          label={c.label}
+          cx={(mid.x + midNext.x) / 2}
+          cy={(mid.y + midNext.y) / 2 - 12}
+          color={c.color ?? 'var(--muted)'}
+        />
       </g>
     );
   };
@@ -626,19 +736,27 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           />
         ))}
         {hoverShape && mode === 'normal' && !drag.current && connectRing(hoverShape, CONNECT_RING_OFFSET)}
-        {selectedShape && mode === 'normal' && (
+        {selectedBox && mode === 'normal' && (
           <rect
             data-handle="resize"
-            x={selectedShape.x + selectedShape.w - 5}
-            y={selectedShape.y + selectedShape.h - 5}
+            x={selectedBox.x + selectedBox.w - 5}
+            y={selectedBox.y + selectedBox.h - 5}
             width={10}
             height={10}
             fill="var(--accent)"
             style={{ cursor: 'nwse-resize' }}
           />
         )}
+        {guides.vx !== undefined && (
+          <line x1={guides.vx} y1={-50000} x2={guides.vx} y2={50000} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
+        )}
+        {guides.hy !== undefined && (
+          <line x1={-50000} y1={guides.hy} x2={50000} y2={guides.hy} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
+        )}
         {selectedConnector && mode === 'normal' && (() => {
-          const [a, b] = connectorEnds(doc, selectedConnector);
+          const path = connectorPath(doc, selectedConnector);
+          const a = path[0];
+          const b = path[path.length - 1];
           return (
             <>
               <circle

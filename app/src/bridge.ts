@@ -60,6 +60,11 @@ export function openFileDialog(
   return call('openFileDialog', { kind });
 }
 
+/** Show a native image-open dialog; returns the file as a data URL, or null. */
+export function openImageDialog(): Promise<{ name: string; dataUrl: string } | null> {
+  return call('openImageDialog', {});
+}
+
 /* ---- web fallbacks ---- */
 
 export function downloadFile(name: string, content: string, mime: string): void {
@@ -81,6 +86,25 @@ export function pickFile(accept: string): Promise<{ name: string; content: strin
       const f = input.files?.[0];
       if (!f) return resolve(null);
       resolve({ name: f.name, content: await f.text() });
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
+}
+
+/** Web fallback for image import: opens a file picker and reads the image as a data URL. */
+export function pickImageFile(): Promise<{ name: string; dataUrl: string } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return resolve(null);
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: f.name, dataUrl: reader.result as string });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(f);
     };
     input.oncancel = () => resolve(null);
     input.click();

@@ -213,6 +213,8 @@ body {
   position: fixed;
   z-index: 20;
   min-width: 168px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;

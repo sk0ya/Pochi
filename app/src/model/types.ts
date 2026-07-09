@@ -3,7 +3,7 @@ export interface Pt {
   y: number;
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'text';
+export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'sticky' | 'image';
 
 export interface Shape {
   id: string;
@@ -15,6 +15,10 @@ export interface Shape {
   label: string;
   /** Accent color (hex); undefined = theme default. */
   color?: string;
+  /** Data URL for kind: 'image'. */
+  src?: string;
+  /** Shared id linking items that move/select/delete/color together. */
+  groupId?: string;
 }
 
 /** Arrow endpoint: bound to a shape (follows it) or a fixed point. */
@@ -31,6 +35,12 @@ export interface Connector {
   label: string;
   /** Accent color (hex); undefined = theme default. */
   color?: string;
+  /** Auto-routing style; undefined = straight. Ignored when `waypoints` is set. */
+  routing?: 'straight' | 'orthogonal';
+  /** Manual bend points, in order from `from` to `to`. */
+  waypoints?: Pt[];
+  /** Shared id linking items that move/select/delete/color together. */
+  groupId?: string;
 }
 
 export interface Doc {

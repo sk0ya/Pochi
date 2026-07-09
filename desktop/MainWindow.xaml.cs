@@ -62,7 +62,18 @@ public partial class MainWindow : Window
     private static string FilterFor(string? kind) => kind switch
     {
         "svg" => "SVG image (*.svg)|*.svg|All files (*.*)|*.*",
+        "image" => "Image (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|All files (*.*)|*.*",
         _ => "Pochi diagram (*.pochi.json)|*.pochi.json|JSON (*.json)|*.json|All files (*.*)|*.*",
+    };
+
+    private static string MimeFor(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".bmp" => "image/bmp",
+        ".webp" => "image/webp",
+        _ => "application/octet-stream",
     };
 
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -111,6 +122,20 @@ public partial class MainWindow : Window
                     if (dlg.ShowDialog(this) == true)
                     {
                         result = new { name = dlg.FileName, content = File.ReadAllText(dlg.FileName) };
+                    }
+                    break;
+                }
+                case "openImageDialog":
+                {
+                    var dlg = new OpenFileDialog
+                    {
+                        Filter = FilterFor("image"),
+                    };
+                    if (dlg.ShowDialog(this) == true)
+                    {
+                        var bytes = File.ReadAllBytes(dlg.FileName);
+                        var dataUrl = $"data:{MimeFor(dlg.FileName)};base64,{Convert.ToBase64String(bytes)}";
+                        result = new { name = dlg.FileName, dataUrl };
                     }
                     break;
                 }

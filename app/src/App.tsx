@@ -3,7 +3,9 @@ import {
   downloadFile,
   isDesktop,
   openFileDialog,
+  openImageDialog,
   pickFile,
+  pickImageFile,
   saveFileDialog,
   writeFile,
 } from './bridge';
@@ -15,7 +17,8 @@ import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
 import { exportSvg } from './model/svg';
 import type { Doc } from './model/types';
-import { initialState, reduce } from './state/reducer';
+import { GRID } from './model/types';
+import { IMAGE_MAX_DIM, initialState, reduce } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
 const AUTOSAVE_KEY = 'pochi.autosave';
@@ -39,7 +42,7 @@ function init(): EditorState {
 
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
-  'h', 'j', 'k', 'l', 'r', 'e', 'a', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
+  'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -112,6 +115,21 @@ export default function App() {
       downloadFile('diagram.svg', svg, 'image/svg+xml');
       dispatch({ type: 'MSG', msg: 'exported diagram.svg' });
     }
+  }, []);
+
+  const importImage = useCallback(async () => {
+    const picked = isDesktop ? await openImageDialog() : await pickImageFile();
+    if (!picked) return;
+    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || IMAGE_MAX_DIM, h: img.naturalHeight || IMAGE_MAX_DIM });
+      img.onerror = () => resolve({ w: IMAGE_MAX_DIM, h: IMAGE_MAX_DIM });
+      img.src = picked.dataUrl;
+    });
+    const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(dims.w, dims.h, 1));
+    const w = Math.max(GRID, Math.round((dims.w * scale) / GRID) * GRID);
+    const h = Math.max(GRID, Math.round((dims.h * scale) / GRID) * GRID);
+    dispatch({ type: 'ADD_IMAGE', src: picked.dataUrl, w, h });
   }, []);
 
   const runCommand = useCallback(
@@ -205,6 +223,23 @@ export default function App() {
         void open();
         return;
       }
+      if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault();
+        dispatch({ type: 'SELECT_ALL' });
+        return;
+      }
+      if (e.ctrlKey && e.key === 'g') {
+        e.preventDefault();
+        dispatch({ type: 'TOGGLE_GROUP' });
+        return;
+      }
+      if (e.ctrlKey && (e.key === ']' || e.key === '[')) {
+        e.preventDefault();
+        if (s.selectedIds.length) {
+          dispatch({ type: 'REORDER', ids: s.selectedIds, dir: e.key === ']' ? 'forward' : 'backward' });
+        }
+        return;
+      }
       if (s.showHelp && (e.key === 'Escape' || e.key === '?')) {
         e.preventDefault();
         dispatch({ type: 'TOGGLE_HELP' });
@@ -237,7 +272,7 @@ export default function App() {
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       if (HANDLED.has(e.key)) {
         e.preventDefault();
-        dispatch({ type: 'KEY', key: e.key, ctrl: false });
+        dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -252,6 +287,7 @@ export default function App() {
         onSave={() => void save()}
         onOpen={() => void open()}
         onExportSvg={() => void doExportSvg()}
+        onImportImage={() => void importImage()}
       />
       <div className="canvas-wrap">
         <Canvas state={state} dispatch={dispatch} />

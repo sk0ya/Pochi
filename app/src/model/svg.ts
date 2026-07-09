@@ -1,5 +1,5 @@
-import { connectorEnds, docBounds } from './doc';
-import { fillTint } from './palette';
+import { connectorPath, docBounds } from './doc';
+import { fillTint, STICKY_DEFAULT } from './palette';
 import type { Doc, Shape } from './types';
 
 const esc = (s: string): string =>
@@ -30,8 +30,16 @@ function shapeSvg(s: Shape): string {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4" ${style}/>`;
   } else if (s.kind === 'ellipse') {
     body = `<ellipse cx="${cx}" cy="${cy}" rx="${s.w / 2}" ry="${s.h / 2}" ${style}/>`;
+  } else if (s.kind === 'diamond') {
+    const points = `${cx},${s.y} ${s.x + s.w},${cy} ${cx},${s.y + s.h} ${s.x},${cy}`;
+    body = `<polygon points="${points}" ${style}/>`;
+  } else if (s.kind === 'sticky') {
+    body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="${s.color ?? STICKY_DEFAULT}"/>`;
+  } else if (s.kind === 'image' && s.src) {
+    body = `<image href="${esc(s.src)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMid slice"/>`;
   }
-  return body + labelSvg(s.label, cx, cy, s.kind === 'text' && s.color ? s.color : '#222933');
+  const labelColor = s.kind === 'text' || s.kind === 'sticky' ? s.color ?? '#222933' : '#222933';
+  return body + labelSvg(s.label, cx, cy, labelColor);
 }
 
 function markerDef(id: string, hex: string): string {
@@ -51,15 +59,18 @@ export function exportSvg(doc: Doc): string {
   const parts: string[] = [];
   for (const s of doc.shapes) parts.push(shapeSvg(s));
   for (const c of doc.connectors) {
-    const [a, bp] = connectorEnds(doc, c);
+    const path = connectorPath(doc, c);
     const stroke = c.color ?? '#333a45';
     const markerId = c.color ? `arrow-${markerKey(c.color)}` : 'arrow';
+    const points = path.map((p) => `${p.x},${p.y}`).join(' ');
     parts.push(
-      `<line x1="${a.x}" y1="${a.y}" x2="${bp.x}" y2="${bp.y}" stroke="${stroke}" stroke-width="1.5" marker-end="url(#${markerId})"/>`,
+      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#${markerId})"/>`,
     );
     if (c.label) {
-      const mx = (a.x + bp.x) / 2;
-      const my = (a.y + bp.y) / 2 - 10;
+      const mid = path[Math.floor((path.length - 1) / 2)];
+      const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
+      const mx = (mid.x + midNext.x) / 2;
+      const my = (mid.y + midNext.y) / 2 - 10;
       parts.push(labelSvg(c.label, mx, my, c.color ?? '#4a5568'));
     }
   }

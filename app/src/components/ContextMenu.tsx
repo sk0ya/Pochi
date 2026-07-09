@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
-import { findShape } from '../model/doc';
+import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { Action, EditorState } from '../state/reducer';
 
@@ -36,7 +36,15 @@ export function ContextMenu({
   const ids = menu.id && state.selectedIds.includes(menu.id) ? state.selectedIds : menu.id ? [menu.id] : [];
   const hasTarget = ids.length > 0;
   const singleShape = ids.length === 1 ? findShape(state.doc, ids[0]) : undefined;
+  const singleConnector = ids.length === 1 ? findConnector(state.doc, ids[0]) : undefined;
   const canEditText = ids.length === 1;
+
+  const targetGroupId = ids.length ? groupIdOf(state.doc, ids[0]) : undefined;
+  const isFullGroup =
+    !!targetGroupId && (() => {
+      const members = groupMembers(state.doc, targetGroupId);
+      return members.length === ids.length && members.every((m) => ids.includes(m));
+    })();
 
   const run = (action: Action) => {
     dispatch(action);
@@ -46,7 +54,7 @@ export function ContextMenu({
   // Clamp so the menu doesn't run off the viewport edge.
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
-    top: Math.min(menu.screen.y, window.innerHeight - (hasTarget ? 300 : 90)),
+    top: Math.min(menu.screen.y, window.innerHeight - (hasTarget ? 420 : 90)),
   };
 
   return (
@@ -74,6 +82,38 @@ export function ContextMenu({
           <div className="context-sep" />
           <button onClick={() => run({ type: 'REORDER', ids, dir: 'front' })}>最前面へ</button>
           <button onClick={() => run({ type: 'REORDER', ids, dir: 'back' })}>最背面へ</button>
+          <button onClick={() => run({ type: 'REORDER', ids, dir: 'forward' })}>ひとつ前面へ (Ctrl+])</button>
+          <button onClick={() => run({ type: 'REORDER', ids, dir: 'backward' })}>ひとつ背面へ (Ctrl+[)</button>
+          <div className="context-sep" />
+          {ids.length >= 2 && !isFullGroup && (
+            <button onClick={() => run({ type: 'GROUP' })}>グループ化 (Ctrl+G)</button>
+          )}
+          {targetGroupId && (
+            <button onClick={() => run({ type: 'UNGROUP' })}>グループ解除 (Ctrl+G)</button>
+          )}
+          {singleConnector && (
+            <>
+              <button
+                onClick={() =>
+                  run({
+                    type: 'SET_CONNECTOR_ROUTING',
+                    id: ids[0],
+                    routing: singleConnector.routing === 'orthogonal' ? 'straight' : 'orthogonal',
+                  })
+                }
+              >
+                経路: {singleConnector.routing === 'orthogonal' ? '直角→直線' : '直線→直角'}
+              </button>
+              <button onClick={() => run({ type: 'ADD_WAYPOINT', id: ids[0], p: menu.world })}>
+                ベンドポイント追加
+              </button>
+              {singleConnector.waypoints && singleConnector.waypoints.length > 0 && (
+                <button onClick={() => run({ type: 'CLEAR_WAYPOINTS', id: ids[0] })}>
+                  ベンドポイントを全て削除
+                </button>
+              )}
+            </>
+          )}
           <div className="context-sep" />
           <div className="context-label">色</div>
           <div className="color-row">

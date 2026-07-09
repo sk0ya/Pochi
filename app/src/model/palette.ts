@@ -17,3 +17,6 @@ export const PALETTE: PaletteColor[] = [
 
 /** Light fill tint for a stroke color (low-opacity hex suffix). */
 export const fillTint = (hex: string): string => `${hex}22`;
+
+/** Default flat fill for sticky-note shapes when no explicit color is set. */
+export const STICKY_DEFAULT = '#f6e58d';

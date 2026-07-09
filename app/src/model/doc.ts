@@ -1,3 +1,4 @@
+import { GRID } from './types';
 import type { Connector, Doc, Endpoint, Pt, Shape } from './types';
 
 export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
@@ -11,8 +12,10 @@ export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
 export function connectorAt(doc: Doc, p: Pt): Connector | undefined {
   for (let i = doc.connectors.length - 1; i >= 0; i--) {
     const c = doc.connectors[i];
-    const [a, b] = connectorEnds(doc, c);
-    if (distToSegment(p, a, b) < 8) return c;
+    const path = connectorPath(doc, c);
+    for (let j = 0; j < path.length - 1; j++) {
+      if (distToSegment(p, path[j], path[j + 1]) < 8) return c;
+    }
   }
   return undefined;
 }
@@ -31,10 +34,43 @@ export function resolveEndpoint(doc: Doc, e: Endpoint): { p: Pt; shape?: Shape }
   return { p: { x: e.x, y: e.y } };
 }
 
-/** Visible segment of a connector, trimmed at shape borders. */
+/** Visible segment of a connector, trimmed at shape borders (endpoints only; ignores routing/waypoints). */
 export function connectorEnds(doc: Doc, c: Connector): [Pt, Pt] {
   const from = resolveEndpoint(doc, c.from);
   const to = resolveEndpoint(doc, c.to);
+  let a = from.p;
+  let b = to.p;
+  if (from.shape) a = borderPoint(from.shape, to.p);
+  if (to.shape) b = borderPoint(to.shape, from.p);
+  return [a, b];
+}
+
+/** Full ordered point list for drawing/hit-testing: straight, orthogonal-routed, or manual waypoints. */
+export function connectorPath(doc: Doc, c: Connector): Pt[] {
+  const from = resolveEndpoint(doc, c.from);
+  const to = resolveEndpoint(doc, c.to);
+  if (c.waypoints && c.waypoints.length) {
+    const first = c.waypoints[0];
+    const last = c.waypoints[c.waypoints.length - 1];
+    const a = from.shape ? borderPoint(from.shape, first) : from.p;
+    const b = to.shape ? borderPoint(to.shape, last) : to.p;
+    return [a, ...c.waypoints, b];
+  }
+  if (c.routing === 'orthogonal') {
+    const dx = to.p.x - from.p.x;
+    const dy = to.p.y - from.p.y;
+    let bend: [Pt, Pt];
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const midX = from.p.x + dx / 2;
+      bend = [{ x: midX, y: from.p.y }, { x: midX, y: to.p.y }];
+    } else {
+      const midY = from.p.y + dy / 2;
+      bend = [{ x: from.p.x, y: midY }, { x: to.p.x, y: midY }];
+    }
+    const a = from.shape ? borderPoint(from.shape, bend[0]) : from.p;
+    const b = to.shape ? borderPoint(to.shape, bend[1]) : to.p;
+    return [a, ...bend, b];
+  }
   let a = from.p;
   let b = to.p;
   if (from.shape) a = borderPoint(from.shape, to.p);
@@ -53,6 +89,13 @@ export function borderPoint(s: Shape, toward: Pt): Pt {
     const rx = s.w / 2;
     const ry = s.h / 2;
     const t = 1 / Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+    return { x: cx + dx * t, y: cy + dy * t };
+  }
+  if (s.kind === 'diamond') {
+    const rx = s.w / 2;
+    const ry = s.h / 2;
+    const denom = Math.abs(dx) / rx + Math.abs(dy) / ry;
+    const t = denom === 0 ? 0 : 1 / denom;
     return { x: cx + dx * t, y: cy + dy * t };
   }
   const sx = dx !== 0 ? s.w / 2 / Math.abs(dx) : Infinity;
@@ -123,8 +166,13 @@ export function itemsInRect(doc: Doc, r: Rect): string[] {
     if (s.x < r.x + r.w && s.x + s.w > r.x && s.y < r.y + r.h && s.y + s.h > r.y) ids.push(s.id);
   }
   for (const c of doc.connectors) {
-    const [a, b] = connectorEnds(doc, c);
-    if (segIntersectsRect(a, b, r)) ids.push(c.id);
+    const path = connectorPath(doc, c);
+    for (let j = 0; j < path.length - 1; j++) {
+      if (segIntersectsRect(path[j], path[j + 1], r)) {
+        ids.push(c.id);
+        break;
+      }
+    }
   }
   return ids;
 }
@@ -149,16 +197,141 @@ export function setConnectorEndpoint(doc: Doc, id: string, end: 'from' | 'to', e
   };
 }
 
-/** Move shapes/connectors to the front or back of their own draw-order array. */
-export function reorderItems(doc: Doc, ids: string[], dir: 'front' | 'back'): Doc {
+export type ReorderDir = 'front' | 'back' | 'forward' | 'backward';
+
+/** Move shapes/connectors within their own draw-order array: to the front/back,
+ * or one slot toward the front/back (skipping past other selected items already adjacent). */
+export function reorderItems(doc: Doc, ids: string[], dir: ReorderDir): Doc {
   const idSet = new Set(ids);
-  const reorder = <T extends { id: string }>(arr: T[]): T[] => {
-    const sel = arr.filter((x) => idSet.has(x.id));
-    if (!sel.length) return arr;
-    const rest = arr.filter((x) => !idSet.has(x.id));
-    return dir === 'front' ? [...rest, ...sel] : [...sel, ...rest];
+  if (dir === 'front' || dir === 'back') {
+    const reorder = <T extends { id: string }>(arr: T[]): T[] => {
+      const sel = arr.filter((x) => idSet.has(x.id));
+      if (!sel.length) return arr;
+      const rest = arr.filter((x) => !idSet.has(x.id));
+      return dir === 'front' ? [...rest, ...sel] : [...sel, ...rest];
+    };
+    return { shapes: reorder(doc.shapes), connectors: reorder(doc.connectors) };
+  }
+  const stepOnce = <T extends { id: string }>(arr: T[]): T[] => {
+    const a = [...arr];
+    if (dir === 'forward') {
+      for (let i = a.length - 2; i >= 0; i--) {
+        if (idSet.has(a[i].id) && !idSet.has(a[i + 1].id)) {
+          [a[i], a[i + 1]] = [a[i + 1], a[i]];
+        }
+      }
+    } else {
+      for (let i = 1; i < a.length; i++) {
+        if (idSet.has(a[i].id) && !idSet.has(a[i - 1].id)) {
+          [a[i], a[i - 1]] = [a[i - 1], a[i]];
+        }
+      }
+    }
+    return a;
   };
-  return { shapes: reorder(doc.shapes), connectors: reorder(doc.connectors) };
+  return { shapes: stepOnce(doc.shapes), connectors: stepOnce(doc.connectors) };
+}
+
+/** Bounding box of a subset of shapes (used for group resize). */
+export function bboxOf(doc: Doc, ids: string[]): { x: number; y: number; w: number; h: number } | null {
+  const idSet = new Set(ids);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of doc.shapes) {
+    if (!idSet.has(s.id)) continue;
+    minX = Math.min(minX, s.x);
+    minY = Math.min(minY, s.y);
+    maxX = Math.max(maxX, s.x + s.w);
+    maxY = Math.max(maxY, s.y + s.h);
+  }
+  if (minX === Infinity) return null;
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** Scale shapes in `ids` proportionally around `anchor` (top-left), from `origW`x`origH` to `newW`x`newH`.
+ * For a single shape with anchor = its own x/y this reduces to a direct w/h resize. */
+export function scaleShapes(
+  doc: Doc,
+  ids: string[],
+  newW: number,
+  newH: number,
+  anchor: Pt,
+  origW: number,
+  origH: number,
+): Doc {
+  const idSet = new Set(ids);
+  const sx = origW > 0 ? newW / origW : 1;
+  const sy = origH > 0 ? newH / origH : 1;
+  return {
+    ...doc,
+    shapes: doc.shapes.map((s) => {
+      if (!idSet.has(s.id)) return s;
+      return {
+        ...s,
+        x: anchor.x + (s.x - anchor.x) * sx,
+        y: anchor.y + (s.y - anchor.y) * sy,
+        w: Math.max(GRID, s.w * sx),
+        h: Math.max(GRID, s.h * sy),
+      };
+    }),
+  };
+}
+
+/** All shape/connector ids sharing a groupId. */
+export function groupMembers(doc: Doc, groupId: string): string[] {
+  const ids: string[] = [];
+  for (const s of doc.shapes) if (s.groupId === groupId) ids.push(s.id);
+  for (const c of doc.connectors) if (c.groupId === groupId) ids.push(c.id);
+  return ids;
+}
+
+/** The groupId of a shape or connector, if any. */
+export function groupIdOf(doc: Doc, id: string): string | undefined {
+  return findShape(doc, id)?.groupId ?? findConnector(doc, id)?.groupId;
+}
+
+/** Move (or add) one bend point of a connector. */
+export function setConnectorWaypoint(doc: Doc, id: string, index: number, p: Pt): Doc {
+  return {
+    ...doc,
+    connectors: doc.connectors.map((c) => {
+      if (c.id !== id || !c.waypoints) return c;
+      const waypoints = c.waypoints.slice();
+      waypoints[index] = p;
+      return { ...c, waypoints };
+    }),
+  };
+}
+
+/** Insert a new bend point into the segment of `connectorPath` nearest to `p`. */
+export function insertConnectorWaypoint(doc: Doc, id: string, p: Pt): Doc {
+  const c = findConnector(doc, id);
+  if (!c) return doc;
+  const path = connectorPath(doc, c);
+  let bestSeg = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = distToSegment(p, path[i], path[i + 1]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestSeg = i;
+    }
+  }
+  // bestSeg indexes into `path` (border points + existing waypoints); the new
+  // waypoint's index within c.waypoints is bestSeg (path[0] is the border, not a waypoint).
+  const waypoints = (c.waypoints ?? []).slice();
+  waypoints.splice(bestSeg, 0, p);
+  return {
+    ...doc,
+    connectors: doc.connectors.map((x) => (x.id === id ? { ...x, waypoints } : x)),
+  };
+}
+
+/** Remove all manual bend points from a connector. */
+export function clearConnectorWaypoints(doc: Doc, id: string): Doc {
+  return {
+    ...doc,
+    connectors: doc.connectors.map((c) => (c.id === id ? { ...c, waypoints: undefined } : c)),
+  };
 }
 
 /** Delete a shape (and connectors bound to it) or a connector. */

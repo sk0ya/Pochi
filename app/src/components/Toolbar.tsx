@@ -5,6 +5,8 @@ const TOOLS: Array<[MouseTool, string, string]> = [
   ['sketch', '✏ Auto', '手描きで図形を自動判定(丸→楕円、角→四角、線→矢印)'],
   ['rect', '▭ Rect', 'ドラッグで四角を描く (r)'],
   ['ellipse', '◯ Ellipse', 'ドラッグで楕円を描く (e)'],
+  ['diamond', '◇ Diamond', 'ドラッグでひし形を描く (q)'],
+  ['sticky', '▨ Sticky', 'ドラッグで付箋を描く (w)'],
   ['arrow', '→ Arrow', '図形から図形へドラッグで矢印 (a)'],
   ['text', 'T Text', 'クリックでテキスト (t)'],
 ];
@@ -15,12 +17,14 @@ export function Toolbar({
   onSave,
   onOpen,
   onExportSvg,
+  onImportImage,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
   onSave: () => void;
   onOpen: () => void;
   onExportSvg: () => void;
+  onImportImage: () => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
   return (
@@ -48,6 +52,8 @@ export function Toolbar({
       >
         ⤢ Fit
       </button>
+      <span className="sep" />
+      <button onClick={onImportImage} title="画像ファイルを取り込む">🖼 Image</button>
       <span className="sep" />
       <button onClick={onOpen} title=":o">Open</button>
       <button onClick={onSave} title=":w / Ctrl+S">Save</button>
