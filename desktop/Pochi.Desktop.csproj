@@ -14,9 +14,34 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>
 
-  <!-- Bundle the built React app when it exists (publish/run from any location) -->
-  <ItemGroup Condition="Exists('..\app\dist\index.html')">
-    <None Include="..\app\dist\**" LinkBase="wwwroot" CopyToOutputDirectory="PreserveNewest" TargetPath="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" />
+  <PropertyGroup>
+    <!-- Normalized (no "..") so %(RecursiveDir) resolves correctly below. -->
+    <FrontendDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\app'))\</FrontendDir>
+  </PropertyGroup>
+
+  <!-- Items (not a raw wildcard string) so Target Inputs actually expands "**". -->
+  <ItemGroup>
+    <FrontendSrcFiles Include="$(FrontendDir)src\**\*.*;$(FrontendDir)index.html;$(FrontendDir)vite.config.ts;$(FrontendDir)package.json" />
   </ItemGroup>
+
+  <!-- Rebuild the React frontend (npm run build) whenever app/src or its config
+       is newer than app/dist, so the bundled UI never goes stale. -->
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild"
+          Inputs="@(FrontendSrcFiles)"
+          Outputs="$(FrontendDir)dist\index.html">
+    <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
+  </Target>
+
+  <!-- Bundle the built React app into wwwroot (publish/run from any location).
+       Uses a target-scoped item so a dist created just now by BuildFrontend is
+       picked up on this same build, not just the next one. -->
+  <Target Name="CopyFrontendDist" AfterTargets="BuildFrontend" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <FrontendDist Include="$(FrontendDir)dist\**" Condition="Exists('$(FrontendDir)dist\index.html')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDist)"
+          DestinationFiles="@(FrontendDist->'$(OutDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

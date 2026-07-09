@@ -4,10 +4,12 @@ import {
   connectorAt,
   deleteItem,
   docBounds,
+  findConnector,
   findShape,
   itemsInRect,
   measureLabel,
   reorderItems,
+  setConnectorEndpoint,
   shapeAt,
   translateItems,
   updateShape,
@@ -72,6 +74,8 @@ export type Action =
   | { type: 'DRAG_MOVE'; id: string; to: Pt }
   | { type: 'DRAG_RESIZE'; id: string; w: number; h: number }
   | { type: 'DRAG_END' }
+  | { type: 'ENDPOINT_DRAG_START'; id: string; end: 'from' | 'to' }
+  | { type: 'ENDPOINT_DRAG_MOVE'; id: string; end: 'from' | 'to'; p: Pt }
   | { type: 'START_INSERT'; id: string }
   | { type: 'INSERT_COMMIT'; label: string }
   | { type: 'CMD_OPEN' }
@@ -183,6 +187,8 @@ function cancelTransient(state: EditorState, extra?: Partial<EditorState>): Edit
     arrowFrom: null,
     editingId: null,
     editingIsNew: false,
+    marquee: null,
+    sketch: null,
     count: '',
     ...extra,
   };
@@ -463,6 +469,9 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
 
   switch (key) {
     case 'Escape':
+      if (state.base !== null || state.marquee !== null || state.sketch !== null) {
+        return cancelTransient(state, { selectedIds: [], msg: '', showHelp: false });
+      }
       return { ...state, selectedIds: [], count: '', msg: '', showHelp: false };
     case 'r':
       return startDraw(state, 'rect');
@@ -516,7 +525,9 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean): Editor
       };
     }
     case 'd':
-    case 'x': {
+    case 'x':
+    case 'Delete':
+    case 'Backspace': {
       let ids = state.selectedIds;
       if (!ids.length) {
         const { shape, connector } = hotItem(state);
@@ -621,7 +632,12 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean): EditorS
     return state;
   }
   if (state.mode === 'draw' || state.mode === 'arrow') return handleTransientKey(state, key);
-  if (key === 'Escape') return { ...state, selectedIds: [], msg: '', showHelp: false };
+  if (key === 'Escape') {
+    if (state.base !== null || state.marquee !== null || state.sketch !== null) {
+      return cancelTransient(state, { selectedIds: [], msg: 'cancelled', showHelp: false });
+    }
+    return { ...state, selectedIds: [], msg: '', showHelp: false };
+  }
   if (key === 'Delete' || key === 'Backspace') {
     if (!state.selectedIds.length) return state;
     const doc = state.selectedIds.reduce((d, id) => deleteItem(d, id), state.doc);
@@ -778,6 +794,28 @@ export function reduce(state: EditorState, action: Action): EditorState {
         undo: changed ? [...state.undo, state.base as Doc].slice(-UNDO_LIMIT) : state.undo,
         redo: changed ? [] : state.redo,
         base: null,
+      };
+    }
+
+    case 'ENDPOINT_DRAG_START':
+      return {
+        ...state,
+        base: state.doc,
+        selectedIds: [action.id],
+      };
+
+    case 'ENDPOINT_DRAG_MOVE': {
+      const conn = findConnector(state.doc, action.id);
+      if (!conn) return state;
+      const other = action.end === 'from' ? conn.to : conn.from;
+      const target = shapeAt(state.doc, action.p);
+      const endpoint: Endpoint =
+        target && target.id !== other.shapeId
+          ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2 }
+          : snapPt(action.p);
+      return {
+        ...state,
+        doc: setConnectorEndpoint(state.doc, action.id, action.end, endpoint),
       };
     }
 

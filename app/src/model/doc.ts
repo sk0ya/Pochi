@@ -21,6 +21,10 @@ export function findShape(doc: Doc, id: string): Shape | undefined {
   return doc.shapes.find((s) => s.id === id);
 }
 
+export function findConnector(doc: Doc, id: string): Connector | undefined {
+  return doc.connectors.find((c) => c.id === id);
+}
+
 export function resolveEndpoint(doc: Doc, e: Endpoint): { p: Pt; shape?: Shape } {
   const s = e.shapeId ? findShape(doc, e.shapeId) : undefined;
   if (s) return { p: { x: s.x + s.w / 2, y: s.y + s.h / 2 }, shape: s };
@@ -135,6 +139,14 @@ export function addConnector(doc: Doc, c: Connector): Doc {
 
 export function updateShape(doc: Doc, id: string, patch: Partial<Shape>): Doc {
   return { ...doc, shapes: doc.shapes.map((s) => (s.id === id ? { ...s, ...patch } : s)) };
+}
+
+/** Re-point one end of a connector, binding it to a shape or a fixed point. */
+export function setConnectorEndpoint(doc: Doc, id: string, end: 'from' | 'to', endpoint: Endpoint): Doc {
+  return {
+    ...doc,
+    connectors: doc.connectors.map((c) => (c.id === id ? { ...c, [end]: endpoint } : c)),
+  };
 }
 
 /** Move shapes/connectors to the front or back of their own draw-order array. */

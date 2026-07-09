@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { connectorAt, connectorEnds, findShape, resolveEndpoint, shapeAt } from '../model/doc';
+import { connectorAt, connectorEnds, findConnector, findShape, resolveEndpoint, shapeAt } from '../model/doc';
 import { fillTint } from '../model/palette';
 import type { Connector, Pt, Shape } from '../model/types';
 import { GRID, snap } from '../model/types';
@@ -73,9 +73,102 @@ function ShapeView({ s, selected, hot }: { s: Shape; selected: boolean; hot: boo
   );
 }
 
+/** Gap between a shape's border and its hover halo, so the halo doesn't
+ * overlap the shape's own move-drag hit area. */
+const CONNECT_RING_OFFSET = 8;
+/** Margin around a shape (beyond its bounds) that still counts as "hovering"
+ * it, so the pointer can travel from the shape out to the halo ring without
+ * the hover state dropping in between. Must exceed CONNECT_RING_OFFSET. */
+const HOVER_MARGIN = 20;
+
+/** Topmost shape whose bounds, expanded by `margin`, contain `p`. */
+function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | undefined {
+  for (let i = doc.shapes.length - 1; i >= 0; i--) {
+    const s = doc.shapes[i];
+    if (p.x >= s.x - margin && p.x <= s.x + s.w + margin && p.y >= s.y - margin && p.y <= s.y + s.h + margin) {
+      return s;
+    }
+  }
+  return undefined;
+}
+
+/** Faint outline drawn just outside a hovered shape; dragging it draws a new
+ * connector from that shape (a wide transparent stroke underneath is the
+ * actual drag target, so the thin visible line stays easy to grab). */
+function connectRing(s: Shape, offset: number) {
+  if (s.kind === 'ellipse') {
+    const cx = s.x + s.w / 2;
+    const cy = s.y + s.h / 2;
+    const rx = s.w / 2 + offset;
+    const ry = s.h / 2 + offset;
+    return (
+      <>
+        <ellipse
+          data-handle="connect"
+          data-shape={s.id}
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={ry}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={14}
+          style={{ cursor: 'crosshair' }}
+        />
+        <ellipse
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={ry}
+          fill="none"
+          stroke="var(--accent-dim)"
+          strokeWidth={1.5}
+          opacity={0.7}
+          style={{ pointerEvents: 'none' }}
+        />
+      </>
+    );
+  }
+  const x = s.x - offset;
+  const y = s.y - offset;
+  const w = s.w + offset * 2;
+  const h = s.h + offset * 2;
+  return (
+    <>
+      <rect
+        data-handle="connect"
+        data-shape={s.id}
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        rx={8}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={14}
+        style={{ cursor: 'crosshair' }}
+      />
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        rx={8}
+        fill="none"
+        stroke="var(--accent-dim)"
+        strokeWidth={1.5}
+        opacity={0.7}
+        style={{ pointerEvents: 'none' }}
+      />
+    </>
+  );
+}
+
 interface DragState {
   id: string;
-  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee';
+  kind: 'move' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint';
+  /** which end of the connector is being dragged (kind === 'endpoint') */
+  end?: 'from' | 'to';
   /** client px; used for pan deltas and click-vs-drag thresholds */
   startScreen: Pt;
   /** world coords at drag start (move/resize) */
@@ -88,6 +181,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<DragState | null>(null);
   const space = useRef(false);
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   const { doc, view, cursor, mode, vim } = state;
 
@@ -98,6 +192,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       if (e.key === ' ') {
         space.current = true;
         e.preventDefault();
+      }
+      if (e.key === 'Escape' && drag.current) {
+        drag.current = null;
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -129,6 +226,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const selectedShape =
     state.selectedIds.length === 1 ? findShape(doc, state.selectedIds[0]) : undefined;
+  const hoverShape = hoverId ? findShape(doc, hoverId) : undefined;
+  const selectedConnector =
+    state.selectedIds.length === 1 ? findConnector(doc, state.selectedIds[0]) : undefined;
 
   const newDrag = (
     kind: DragState['kind'],
@@ -146,6 +246,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (mode === 'insert') return;
+    setHoverId(null);
     // Middle button / space+drag = pan (left drag draws instead).
     if (e.button === 1 || (e.button === 0 && space.current)) {
       e.preventDefault();
@@ -163,9 +264,20 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     }
 
     const id = hitId(e.target);
-    const resize = (e.target as Element).getAttribute?.('data-handle') === 'resize';
-    const targetId = resize ? state.selectedIds[0] : id;
+    const handle = (e.target as Element).getAttribute?.('data-handle');
+    const resize = handle === 'resize';
+    const endpointEnd: 'from' | 'to' | null =
+      handle === 'endpoint-from' ? 'from' : handle === 'endpoint-to' ? 'to' : null;
+    const connectShapeId =
+      handle === 'connect' ? ((e.target as Element).getAttribute('data-shape') ?? undefined) : undefined;
+    const targetId = resize || endpointEnd ? state.selectedIds[0] : id;
 
+    if (connectShapeId) {
+      // Drag started on a hover connection dot: draw a new arrow from this shape.
+      drag.current = newDrag('arrowdrag', e);
+      dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: connectShapeId });
+      return;
+    }
     if (resize && targetId) {
       const s = findShape(doc, targetId);
       if (s) {
@@ -174,15 +286,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         return;
       }
     }
+    if (endpointEnd && targetId) {
+      drag.current = { ...newDrag('endpoint', e, targetId), end: endpointEnd };
+      dispatch({ type: 'ENDPOINT_DRAG_START', id: targetId, end: endpointEnd });
+      return;
+    }
     if (state.tool === 'arrow') {
       drag.current = newDrag('arrowdrag', e);
       dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: id });
       return;
     }
-    if (state.tool === 'sketch' && !(id && state.selectedIds.includes(id))) {
-      // Freehand stroke; auto-detected on mouseup. Starting on an unselected
-      // shape sketches too, so arrows can be drawn shape-to-shape. Moving a
-      // shape = click to select, then drag.
+    if (state.tool === 'sketch' && !id) {
+      // Freehand stroke on empty canvas; auto-detected on mouseup as a shape
+      // or line. Dragging an existing shape always moves it instead.
       drag.current = newDrag('sketch', e);
       dispatch({ type: 'SKETCH_START', p: toWorld(e) });
       return;
@@ -209,6 +325,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const onMouseMove = (e: React.MouseEvent) => {
     const d = drag.current;
+    if (!d && mode === 'normal') {
+      const near = shapeNear(doc, toWorld(e), HOVER_MARGIN);
+      setHoverId(near?.id ?? null);
+    }
     if (mode === 'draw' || mode === 'arrow') {
       if (d && !d.moved) {
         const dist = Math.hypot(e.clientX - d.startScreen.x, e.clientY - d.startScreen.y);
@@ -239,6 +359,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (d.kind === 'marquee') {
       if (Math.hypot(e.clientX - d.startScreen.x, e.clientY - d.startScreen.y) >= 4) d.moved = true;
       dispatch({ type: 'MARQUEE_MOVE', p: toWorld(e) });
+      return;
+    }
+    if (d.kind === 'endpoint') {
+      d.moved = true;
+      dispatch({ type: 'ENDPOINT_DRAG_MOVE', id: d.id, end: d.end as 'from' | 'to', p: toWorld(e) });
       return;
     }
     const world = toWorld(e);
@@ -296,6 +421,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         case 'resize':
           dispatch({ type: 'DRAG_END' });
           if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: d.id });
+          return;
+        case 'endpoint':
+          dispatch({ type: 'DRAG_END' });
           return;
         case 'pan':
           if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
@@ -443,6 +571,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       onDoubleClick={onDoubleClick}
       onWheel={onWheel}
       onContextMenu={onContextMenu}
+      onMouseLeave={() => setHoverId(null)}
     >
       <defs>
         <pattern id="grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
@@ -496,6 +625,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             hot={hotShape?.id === s.id}
           />
         ))}
+        {hoverShape && mode === 'normal' && !drag.current && connectRing(hoverShape, CONNECT_RING_OFFSET)}
         {selectedShape && mode === 'normal' && (
           <rect
             data-handle="resize"
@@ -507,6 +637,33 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             style={{ cursor: 'nwse-resize' }}
           />
         )}
+        {selectedConnector && mode === 'normal' && (() => {
+          const [a, b] = connectorEnds(doc, selectedConnector);
+          return (
+            <>
+              <circle
+                data-handle="endpoint-from"
+                cx={a.x}
+                cy={a.y}
+                r={6}
+                fill="var(--accent)"
+                stroke="var(--bg)"
+                strokeWidth={1.5}
+                style={{ cursor: 'crosshair' }}
+              />
+              <circle
+                data-handle="endpoint-to"
+                cx={b.x}
+                cy={b.y}
+                r={6}
+                fill="var(--accent)"
+                stroke="var(--bg)"
+                strokeWidth={1.5}
+                style={{ cursor: 'crosshair' }}
+              />
+            </>
+          );
+        })()}
         {drawPreview()}
         {state.marquee && (
           <rect
