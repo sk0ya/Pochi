@@ -118,7 +118,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
   const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
   // With the arrow tool active, dragging the shape body starts a new arrow
-  // from it instead of moving it (see onMouseDown), so the ring-matching
+  // from it instead of moving it (see onMouseDown), so the dot-matching
   // "alias" cursor is the honest affordance here, not "move".
   const bodyCursor = tool === 'arrow' ? 'alias' : 'move';
   return (
@@ -173,12 +173,12 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   );
 }
 
-/** Gap between a shape's border and its hover halo, so the halo doesn't
+/** How far outside the shape's edge each connect dot floats, so it doesn't
  * overlap the shape's own move-drag hit area. */
-const CONNECT_RING_OFFSET = 8;
+const CONNECT_DOT_OFFSET = 10;
 /** Margin around a shape (beyond its bounds) that still counts as "hovering"
- * it, so the pointer can travel from the shape out to the halo ring without
- * the hover state dropping in between. Must exceed CONNECT_RING_OFFSET. */
+ * it, so the pointer can travel from the shape out to the connect dots
+ * without the hover state dropping in between. Must exceed CONNECT_DOT_OFFSET. */
 const HOVER_MARGIN = 20;
 
 /** Topmost shape whose bounds, expanded by `margin`, contain `p`. */
@@ -192,110 +192,67 @@ function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | und
   return undefined;
 }
 
-/** Tooltip shown while hovering the connect ring's drag target. */
-const CONNECT_RING_TITLE = 'ドラッグして矢印を作成';
+/** Tooltip shown while hovering a connect dot. */
+const CONNECT_DOT_TITLE = 'ドラッグして矢印を作成';
 
-/** Faint outline drawn just outside a hovered shape; dragging it draws a new
- * connector from that shape (a wide transparent stroke underneath is the
- * actual drag target, so the thin visible line stays easy to grab). */
-function connectRing(s: Shape, offset: number) {
-  if (s.kind === 'ellipse') {
-    const cx = s.x + s.w / 2;
-    const cy = s.y + s.h / 2;
-    const rx = s.w / 2 + offset;
-    const ry = s.h / 2 + offset;
-    return (
-      <>
-        <ellipse
-          data-handle="connect"
-          data-shape={s.id}
-          cx={cx}
-          cy={cy}
-          rx={rx}
-          ry={ry}
-          fill="none"
-          stroke="transparent"
-          strokeWidth={14}
-          style={{ cursor: 'alias' }}
-        >
-          <title>{CONNECT_RING_TITLE}</title>
-        </ellipse>
-        <ellipse
-          cx={cx}
-          cy={cy}
-          rx={rx}
-          ry={ry}
-          fill="none"
-          stroke="var(--accent-dim)"
-          strokeWidth={1.5}
-          opacity={0.7}
-          style={{ pointerEvents: 'none' }}
-        />
-      </>
-    );
+/** Points (already pushed outward by `offset`) where connect dots sit for a
+ * hovered shape: the four edge midpoints for box-ish shapes — which are also
+ * exactly the diamond's four vertices, since a diamond's points already sit
+ * on those same axes — or the triangle's three vertices, pushed out from its
+ * centroid instead since they aren't axis-aligned. */
+function connectPoints(s: Shape, offset: number): Pt[] {
+  if (s.kind === 'triangle') {
+    const verts = triangleVertices(s);
+    const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
+    const cy = (verts[0].y + verts[1].y + verts[2].y) / 3;
+    return verts.map((v) => {
+      const dx = v.x - cx;
+      const dy = v.y - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      return { x: v.x + (dx / len) * offset, y: v.y + (dy / len) * offset };
+    });
   }
-  const points =
-    s.kind === 'triangle' ? trianglePoints(s, offset) : s.kind === 'diamond' ? diamondPoints(s, offset) : undefined;
-  if (points) {
-    return (
-      <>
-        <polygon
-          data-handle="connect"
-          data-shape={s.id}
-          points={points}
-          fill="none"
-          stroke="transparent"
-          strokeWidth={14}
-          strokeLinejoin="round"
-          style={{ cursor: 'alias' }}
-        >
-          <title>{CONNECT_RING_TITLE}</title>
-        </polygon>
-        <polygon
-          points={points}
-          fill="none"
-          stroke="var(--accent-dim)"
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-          opacity={0.7}
-          style={{ pointerEvents: 'none' }}
-        />
-      </>
-    );
-  }
-  const x = s.x - offset;
-  const y = s.y - offset;
-  const w = s.w + offset * 2;
-  const h = s.h + offset * 2;
+  const cx = s.x + s.w / 2;
+  const cy = s.y + s.h / 2;
+  return [
+    { x: cx, y: s.y - offset },
+    { x: s.x + s.w + offset, y: cy },
+    { x: cx, y: s.y + s.h + offset },
+    { x: s.x - offset, y: cy },
+  ];
+}
+
+/** Small round handles shown at a hovered shape's cardinal connect points;
+ * dragging one draws a new connector from that shape. Each dot is a bigger
+ * invisible hit circle (the actual drag target) under a small visible one,
+ * so it stays easy to grab without looking oversized. */
+function connectDots(s: Shape) {
   return (
     <>
-      <rect
-        data-handle="connect"
-        data-shape={s.id}
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx={8}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={14}
-        style={{ cursor: 'alias' }}
-      >
-        <title>{CONNECT_RING_TITLE}</title>
-      </rect>
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx={8}
-        fill="none"
-        stroke="var(--accent-dim)"
-        strokeWidth={1.5}
-        opacity={0.7}
-        style={{ pointerEvents: 'none' }}
-      />
+      {connectPoints(s, CONNECT_DOT_OFFSET).map((p, i) => (
+        <g key={i}>
+          <circle
+            data-handle="connect"
+            data-shape={s.id}
+            cx={p.x}
+            cy={p.y}
+            r={10}
+            fill="transparent"
+            style={{ cursor: 'alias' }}
+          >
+            <title>{CONNECT_DOT_TITLE}</title>
+          </circle>
+          <circle
+            cx={p.x}
+            cy={p.y}
+            r={5}
+            fill="var(--accent-dim)"
+            stroke="var(--bg)"
+            strokeWidth={1.5}
+            style={{ pointerEvents: 'none' }}
+          />
+        </g>
+      ))}
     </>
   );
 }
@@ -922,7 +879,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           mode === 'normal' &&
           !drag.current &&
           state.tool !== 'select' &&
-          connectRing(hoverShape, CONNECT_RING_OFFSET)}
+          connectDots(hoverShape)}
         {selectedBox && mode === 'normal' && (() => {
           const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);
           const anchor = resizeAnchor(shapes, selectedBox);
