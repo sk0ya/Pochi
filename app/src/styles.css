@@ -1,3 +1,6 @@
+/* Dark is the default theme; App.tsx stamps data-theme="light" on <html> to switch.
+ * The four --shape-* / --bg canvas colors of each theme intentionally match the same
+ * theme in model/svg.ts THEMES, so an export looks like the canvas it came from. */
 :root {
   --bg: #12151a;
   --panel: #1a1f27;
@@ -11,6 +14,35 @@
   --shape-fill: #202839;
   --shape-stroke: #a9b7d0;
   --shape-text: #dbe2ee;
+  --hover: #232a36;
+  --active-bg: #274b73;
+  --active-text: #bcd8ff;
+  --danger-bg: #4a1f24;
+  --danger-text: #ff9aa3;
+  --overlay-bg: rgba(18, 21, 26, 0.92);
+  --swatch-border: rgba(255, 255, 255, 0.25);
+}
+
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --panel: #f4f6fa;
+  --border: #d6dce6;
+  --text: #222933;
+  --muted: #8794a8;
+  --accent: #2f80d6;
+  --accent-dim: #8fbceb;
+  --cursor: #c47b00;
+  --grid-dot: #dfe4ec;
+  --shape-fill: #ffffff;
+  --shape-stroke: #333a45;
+  --shape-text: #222933;
+  --hover: #e6ebf3;
+  --active-bg: #dbe9fb;
+  --active-text: #1c5fa8;
+  --danger-bg: #fbe3e5;
+  --danger-text: #b3262e;
+  --overlay-bg: rgba(255, 255, 255, 0.94);
+  --swatch-border: rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -67,7 +99,7 @@ body {
 }
 
 .toolbar button:hover {
-  background: #232a36;
+  background: var(--hover);
   border-color: var(--border);
 }
 
@@ -77,9 +109,9 @@ body {
 }
 
 .toolbar button.active {
-  background: #274b73;
+  background: var(--active-bg);
   border-color: var(--accent-dim);
-  color: #bcd8ff;
+  color: var(--active-text);
 }
 
 .sep {
@@ -197,7 +229,7 @@ body {
 
 /* text editing overlay */
 .text-edit {
-  background: rgba(18, 21, 26, 0.92);
+  background: var(--overlay-bg);
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: 4px;
@@ -238,7 +270,7 @@ body {
 }
 
 .context-menu button:hover:not(:disabled) {
-  background: #232a36;
+  background: var(--hover);
 }
 
 .context-menu button:disabled {
@@ -247,8 +279,8 @@ body {
 }
 
 .context-menu button.danger:hover {
-  background: #4a1f24;
-  color: #ff9aa3;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .context-sep {
@@ -280,7 +312,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid var(--swatch-border);
   padding: 0;
   cursor: pointer;
 }
@@ -324,7 +356,7 @@ body {
 }
 
 .direction-swatch:hover {
-  background: #232a36;
+  background: var(--hover);
 }
 
 .direction-swatch.active {

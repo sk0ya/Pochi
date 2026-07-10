@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   downloadFile,
   isDesktop,
@@ -16,7 +16,8 @@ import { StatusBar } from './components/StatusBar';
 import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
 import { subsetDoc } from './model/doc';
-import { exportSvg, exportViewport } from './model/svg';
+import { exportBackground, exportSvg, exportViewport } from './model/svg';
+import type { ExportTheme } from './model/svg';
 import type { Doc } from './model/types';
 import { GRID } from './model/types';
 import { copySvgAsPng } from './pngClipboard';
@@ -26,6 +27,7 @@ import type { EditorState } from './state/reducer';
 
 const AUTOSAVE_KEY = 'pochi.autosave';
 const VIM_KEY = 'pochi.vim';
+const THEME_KEY = 'pochi.theme';
 const SHARE_HASH_PREFIX = '#d=';
 // The desktop shell hosts app/dist at a local virtual origin (see bridge.ts's `isDesktop`
 // detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
@@ -61,6 +63,13 @@ function init(): EditorState {
   return initialState(doc, vim);
 }
 
+/** Optional export-theme argument of :svg / :png / :export — absent (undefined) means
+ * "follow the app theme" (WYSIWYG); anything other than light/dark is a usage error (null). */
+function parseExportTheme(arg: string | undefined): ExportTheme | undefined | null {
+  if (arg === undefined) return undefined;
+  return arg === 'light' || arg === 'dark' ? arg : null;
+}
+
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
   'h', 'j', 'k', 'l', 'r', 'e', 'q', 'g', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u', 'o',
@@ -84,6 +93,29 @@ export default function App() {
   // effects, and run #1 clears the hash synchronously, so an unlatched run #2 would decode
   // the now-empty hash to null and race a stale autosave-fallback LOAD against the real one.
   const hashLoadStartedRef = useRef(false);
+
+  /* App-wide theme (editor UI + canvas), persisted like the vim toggle. Defaults to dark
+   * (the historical look). Exports follow it for WYSIWYG — what you see on the canvas is
+   * what :svg / :png produce — unless an explicit `:svg dark` / `:png light` argument
+   * overrides it for that one export. The CSS lives in styles.css: the light values are
+   * selected by the data-theme attribute stamped on <html> below. */
+  const [theme, setTheme] = useState<ExportTheme>(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [theme]);
 
   /* Mirror the internal shape clipboard onto the real OS clipboard (tagged so
    * we can recognize our own echo on paste) whenever it changes. This makes
@@ -178,8 +210,8 @@ export default function App() {
     }
   }, []);
 
-  const doExportSvg = useCallback(async () => {
-    const svg = exportSvg(stateRef.current.doc);
+  const doExportSvg = useCallback(async (themeArg?: ExportTheme) => {
+    const svg = exportSvg(stateRef.current.doc, themeArg ?? themeRef.current);
     if (isDesktop) {
       const path = await saveFileDialog('diagram.svg', 'svg', svg);
       if (path) dispatch({ type: 'MSG', msg: `exported ${path}` });
@@ -191,13 +223,14 @@ export default function App() {
 
   /** Copies the current selection (or, absent one, the whole doc) as a PNG to the OS
    * clipboard, falling back to a download; reuses the :svg serializer for pixel parity. */
-  const doCopyPng = useCallback(async () => {
+  const doCopyPng = useCallback(async (themeArg?: ExportTheme) => {
+    const theme = themeArg ?? themeRef.current;
     const s = stateRef.current;
     const target = s.selectedIds.length ? subsetDoc(s.doc, s.selectedIds) : s.doc;
-    const svg = exportSvg(target);
+    const svg = exportSvg(target, theme);
     const { w, h } = exportViewport(target);
     try {
-      const result = await copySvgAsPng(svg, { w, h });
+      const result = await copySvgAsPng(svg, { w, h }, exportBackground(theme));
       dispatch({
         type: 'MSG',
         msg: result === 'clipboard' ? 'copied PNG to clipboard' : 'clipboard unavailable, downloaded diagram.png',
@@ -281,19 +314,24 @@ export default function App() {
           await open();
           break;
         case 'svg':
-          await doExportSvg();
+        case 'png': {
+          const theme = parseExportTheme(rest[0]);
+          if (theme === null) dispatch({ type: 'MSG', msg: `usage: :${cmd} [light|dark]` });
+          else if (cmd === 'svg') await doExportSvg(theme);
+          else await doCopyPng(theme);
           break;
-        case 'png':
-          await doCopyPng();
-          break;
+        }
         case 'share':
           await doShare();
           break;
-        case 'export':
-          if (rest[0] === 'svg') await doExportSvg();
-          else if (rest[0] === 'png') await doCopyPng();
-          else dispatch({ type: 'MSG', msg: 'usage: :export svg|png' });
+        case 'export': {
+          const theme = parseExportTheme(rest[1]);
+          if ((rest[0] !== 'svg' && rest[0] !== 'png') || theme === null) {
+            dispatch({ type: 'MSG', msg: 'usage: :export svg|png [light|dark]' });
+          } else if (rest[0] === 'svg') await doExportSvg(theme);
+          else await doCopyPng(theme);
           break;
+        }
         case 'new':
         case 'clear':
           dispatch({ type: 'NEW' });
@@ -303,6 +341,11 @@ export default function App() {
             type: 'SET_VIM',
             on: rest[0] ? rest[0] === 'on' : !stateRef.current.vim,
           });
+          break;
+        case 'theme':
+          if (rest[0] === undefined) setTheme((t) => (t === 'light' ? 'dark' : 'light'));
+          else if (rest[0] === 'light' || rest[0] === 'dark') setTheme(rest[0]);
+          else dispatch({ type: 'MSG', msg: 'usage: :theme [light|dark]' });
           break;
         case 'q':
         case 'quit':
@@ -501,6 +544,8 @@ export default function App() {
         onExportSvg={() => void doExportSvg()}
         onCopyPng={() => void doCopyPng()}
         onImportImage={() => void importImage()}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
       />
       <div className="canvas-wrap">
         <Canvas state={state} dispatch={dispatch} />

@@ -15,6 +15,53 @@ const esc = (s: string): string =>
 
 const markerKey = (hex: string): string => hex.replace('#', '');
 
+export type ExportTheme = 'light' | 'dark';
+
+/** Resolved colors for one export theme. The app canvas renders with CSS variables
+ * (styles.css :root), but an exported SVG must be self-contained, so each theme
+ * carries concrete hex values: `light` is the historical export look (white paper
+ * for pasting into documents); `dark` mirrors the app canvas's variables so the
+ * export matches what the user sees while editing. */
+interface ThemeColors {
+  bg: string;
+  /** Default stroke + arrow marker for shapes/connectors with no explicit color. */
+  stroke: string;
+  /** Background of an unfilled, uncolored shape (canvas: --shape-fill). */
+  shapeFill: string;
+  /** Default label color (canvas: --shape-text). */
+  text: string;
+  /** Default connector-label color (canvas: --muted). */
+  connectorLabel: string;
+  /** Default frame stroke/label — matches --muted in both themes, so frames keep
+   * reading as quiet containers next to the brighter default shape stroke. */
+  frameStroke: string;
+  /** Opacity of a filled frame's interior tint. The same alpha reads lighter against
+   * white than against a dark background, so light uses a slightly stronger value
+   * while dark matches the app canvas (Canvas.tsx FRAME_TINT_OPACITY_APP). */
+  frameTintOpacity: number;
+}
+
+const THEMES: Record<ExportTheme, ThemeColors> = {
+  light: {
+    bg: '#ffffff',
+    stroke: '#333a45',
+    shapeFill: '#ffffff',
+    text: '#222933',
+    connectorLabel: '#4a5568',
+    frameStroke: '#8794a8',
+    frameTintOpacity: 0.1,
+  },
+  dark: {
+    bg: '#12151a',
+    stroke: '#a9b7d0',
+    shapeFill: '#202839',
+    text: '#dbe2ee',
+    connectorLabel: '#8794a8',
+    frameStroke: '#8794a8',
+    frameTintOpacity: 0.16,
+  },
+};
+
 function labelSvg(
   label: string,
   x: number,
@@ -35,27 +82,17 @@ function labelSvg(
   return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="${FONT_SIZE_PX[fontSize ?? 'm']}" text-anchor="${anchor}" dominant-baseline="${baseline}">${tspans}</text>`;
 }
 
-/** Subdued default stroke for a frame (no explicit color) — matches the app's --muted
- * theme color, distinguishing it from the brighter #333a45 used by every other shape kind. */
-const FRAME_STROKE_DEFAULT = '#8794a8';
-
-/** Opacity for a filled frame's interior tint in the exported SVG (white light-theme
- * background). Chosen higher than the app canvas's FRAME_TINT_OPACITY_APP (Canvas.tsx) —
- * the same alpha reads lighter against white than against the app's dark background, so a
- * slightly stronger value keeps the tint visible without looking like a solid fill. */
-const FRAME_TINT_OPACITY_SVG = 0.1;
-
-function shapeSvg(s: Shape): string {
+function shapeSvg(s: Shape, t: ThemeColors): string {
   if (s.kind === 'frame') {
     // Border only, no fill (mirrors the canvas: an open interior, subtly rounded) — plus an
     // optional low-opacity interior tint when `filled` is set (purely visual; SVG export has
     // no hit-testing to preserve, but this still matches the canvas's click-through look).
-    const stroke = s.color ?? FRAME_STROKE_DEFAULT;
+    const stroke = s.color ?? t.frameStroke;
     const tint = s.filled
-      ? `<rect x="${s.x + 1.5}" y="${s.y + 1.5}" width="${Math.max(s.w - 3, 0)}" height="${Math.max(s.h - 3, 0)}" rx="7" fill="${stroke}" fill-opacity="${FRAME_TINT_OPACITY_SVG}" stroke="none"/>`
+      ? `<rect x="${s.x + 1.5}" y="${s.y + 1.5}" width="${Math.max(s.w - 3, 0)}" height="${Math.max(s.h - 3, 0)}" rx="7" fill="${stroke}" fill-opacity="${t.frameTintOpacity}" stroke="none"/>`
       : '';
     const body = `${tint}<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
-    const labelColor = s.color ?? FRAME_STROKE_DEFAULT;
+    const labelColor = s.color ?? t.frameStroke;
     return (
       body +
       labelSvg(s.label, s.x + FRAME_LABEL_PAD_X, s.y + FRAME_LABEL_PAD_Y, labelColor, s.fontSize, 'start')
@@ -63,10 +100,10 @@ function shapeSvg(s: Shape): string {
   }
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
-  const stroke = s.color ?? '#333a45';
+  const stroke = s.color ?? t.stroke;
   const style = s.filled
     ? `fill="${s.color ?? FLAT_FILL_DEFAULT}" stroke="none"`
-    : `fill="${s.color ? fillTint(s.color) : '#ffffff'}" stroke="${stroke}" stroke-width="1.5"`;
+    : `fill="${s.color ? fillTint(s.color) : t.shapeFill}" stroke="${stroke}" stroke-width="1.5"`;
   let body = '';
   if (s.kind === 'rect') {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4" ${style}/>`;
@@ -84,8 +121,8 @@ function shapeSvg(s: Shape): string {
   const labelColor = s.filled
     ? readableTextColor(s.color ?? FLAT_FILL_DEFAULT)
     : s.kind === 'text'
-      ? s.color ?? '#222933'
-      : '#222933';
+      ? s.color ?? t.text
+      : t.text;
   const labelPos = labelCenter(s);
   return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor, s.fontSize);
 }
@@ -93,6 +130,10 @@ function shapeSvg(s: Shape): string {
 function markerDef(id: string, hex: string): string {
   return `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${hex}"/></marker>`;
 }
+
+/** Background color exportSvg paints for `theme` — the PNG rasterizer's canvas backing
+ * must be filled with the same color (see pngClipboard.ts). */
+export const exportBackground = (theme: ExportTheme): string => THEMES[theme].bg;
 
 const PAD = 24;
 
@@ -102,16 +143,17 @@ export function exportViewport(doc: Doc): { x: number; y: number; w: number; h: 
   return { x: b.x - PAD, y: b.y - PAD, w: b.w + PAD * 2, h: b.h + PAD * 2 };
 }
 
-export function exportSvg(doc: Doc): string {
+export function exportSvg(doc: Doc, theme: ExportTheme = 'light'): string {
+  const t = THEMES[theme];
   const { x, y, w, h } = exportViewport(doc);
 
   const connectorColors = Array.from(new Set(doc.connectors.map((c) => c.color).filter((v): v is string => !!v)));
 
   const parts: string[] = [];
-  for (const s of doc.shapes) parts.push(shapeSvg(s));
+  for (const s of doc.shapes) parts.push(shapeSvg(s, t));
   for (const c of doc.connectors) {
     const path = connectorPath(doc, c);
-    const stroke = c.color ?? '#333a45';
+    const stroke = c.color ?? t.stroke;
     const markerId = c.color ? `arrow-${markerKey(c.color)}` : 'arrow';
     const points = path.map((p) => `${p.x},${p.y}`).join(' ');
     const arrowDir = c.arrowDirection ?? 'end';
@@ -126,19 +168,19 @@ export function exportSvg(doc: Doc): string {
       const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
       const mx = (mid.x + midNext.x) / 2;
       const my = (mid.y + midNext.y) / 2 - 10;
-      parts.push(labelSvg(c.label, mx, my, c.color ?? '#4a5568', c.fontSize));
+      parts.push(labelSvg(c.label, mx, my, c.color ?? t.connectorLabel, c.fontSize));
     }
   }
 
   const markers = [
-    markerDef('arrow', '#333a45'),
+    markerDef('arrow', t.stroke),
     ...connectorColors.map((hex) => markerDef(`arrow-${markerKey(hex)}`, hex)),
   ].join('');
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}" font-family="system-ui, sans-serif">`,
     `<defs>${markers}</defs>`,
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${t.bg}"/>`,
     ...parts,
     `</svg>`,
   ].join('\n');

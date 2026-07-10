@@ -1,4 +1,5 @@
 import type { Dispatch } from 'react';
+import type { ExportTheme } from '../model/svg';
 import type { Action, EditorState, MouseTool } from '../state/reducer';
 
 const TOOLS: Array<[MouseTool, string, string]> = [
@@ -21,6 +22,8 @@ export function Toolbar({
   onExportSvg,
   onCopyPng,
   onImportImage,
+  theme,
+  onToggleTheme,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
@@ -29,6 +32,8 @@ export function Toolbar({
   onExportSvg: () => void;
   onCopyPng: () => void;
   onImportImage: () => void;
+  theme: ExportTheme;
+  onToggleTheme: () => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
   return (
@@ -64,6 +69,12 @@ export function Toolbar({
       <button onClick={onExportSvg} title=":svg">SVG</button>
       <button onClick={onCopyPng} title=":png / Ctrl+Alt+C">📋 PNG</button>
       <span className="spacer" />
+      <button
+        onClick={onToggleTheme}
+        title="画面と書き出しのテーマを切替 (:theme)。書き出しのみ変えるなら :svg dark / :png light"
+      >
+        {theme === 'dark' ? '🌙 Dark' : '☀ Light'}
+      </button>
       <button
         className={state.vim ? 'vim-on' : ''}
         onClick={() => setVim(!state.vim)}

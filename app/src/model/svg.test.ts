@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { subsetDoc } from './doc';
-import { exportSvg, exportViewport } from './svg';
+import { exportBackground, exportSvg, exportViewport } from './svg';
 import type { Doc } from './types';
 
 describe('exportSvg', () => {
@@ -30,6 +30,39 @@ describe('exportSvg', () => {
 
   it('always renders a white background rect so the PNG rasterization has no transparency', () => {
     expect(exportSvg(doc)).toContain('fill="#ffffff"');
+  });
+});
+
+describe('exportSvg: dark theme', () => {
+  const doc: Doc = {
+    shapes: [
+      { id: 'a', kind: 'rect', x: 0, y: 0, w: 100, h: 50, label: 'hi' },
+      { id: 'c', kind: 'rect', x: 200, y: 0, w: 100, h: 50, label: '', color: '#e5484d' },
+    ],
+    connectors: [{ id: 'k', from: { shapeId: 'a', x: 100, y: 25 }, to: { shapeId: 'c', x: 200, y: 25 }, label: '' }],
+  };
+
+  it('paints the canvas background color instead of white', () => {
+    const svg = exportSvg(doc, 'dark');
+    expect(svg).toContain('fill="#12151a"');
+    expect(svg).not.toContain('#ffffff');
+  });
+
+  it('uses the canvas default stroke/fill/text colors for uncolored elements', () => {
+    const svg = exportSvg(doc, 'dark');
+    expect(svg).toContain('stroke="#a9b7d0"'); // shape + connector default stroke
+    expect(svg).toContain('fill="#202839"'); // unfilled shape background
+    expect(svg).toContain('fill="#dbe2ee"'); // label text
+  });
+
+  it('keeps explicit accent colors as-is in both themes', () => {
+    expect(exportSvg(doc, 'dark')).toContain('stroke="#e5484d"');
+    expect(exportSvg(doc)).toContain('stroke="#e5484d"');
+  });
+
+  it('exportBackground matches the background rect each theme paints', () => {
+    expect(exportSvg(doc, 'dark')).toContain(`fill="${exportBackground('dark')}"`);
+    expect(exportSvg(doc)).toContain(`fill="${exportBackground('light')}"`);
   });
 });
 

@@ -10,11 +10,17 @@
 
 const EXPORT_SCALE = 2;
 
-/** SVG string -> PNG blob, rendered at `scale`x onto a white canvas backing for crispness
- * and to avoid transparency (the SVG already paints its own white background rect, but the
- * canvas fill guards against any gaps at the rasterized edges). `size` is the SVG's own
+/** SVG string -> PNG blob, rendered at `scale`x onto a `background`-colored canvas backing
+ * for crispness and to avoid transparency (the SVG already paints its own background rect in
+ * the same theme color, but the canvas fill guards against any gaps at the rasterized edges,
+ * so it must match the SVG's background or those edges fringe). `size` is the SVG's own
  * pixel size (exportViewport), passed explicitly rather than re-parsed out of the markup. */
-async function rasterizePng(svg: string, size: { w: number; h: number }, scale: number): Promise<Blob> {
+async function rasterizePng(
+  svg: string,
+  size: { w: number; h: number },
+  scale: number,
+  background: string,
+): Promise<Blob> {
   const { w, h } = size;
   // Object URLs are same-origin to the document that created them (unlike a
   // fetched cross-origin image), so drawing this into a canvas never taints
@@ -33,7 +39,7 @@ async function rasterizePng(svg: string, size: { w: number; h: number }, scale: 
     canvas.height = Math.max(1, Math.round(h * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no 2d context');
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -55,13 +61,15 @@ function downloadBlob(blob: Blob, name: string): void {
 
 /** Renders `svg` (whose pixel size is `size`) to a PNG (2x scale) and copies it to the OS
  * clipboard; downloads `downloadName` instead if the Clipboard API is unavailable or the
- * write throws. */
+ * write throws. `background` must match the SVG's own background color (exportBackground
+ * in model/svg.ts) — see rasterizePng. */
 export async function copySvgAsPng(
   svg: string,
   size: { w: number; h: number },
+  background = '#ffffff',
   downloadName = 'diagram.png',
 ): Promise<'clipboard' | 'download'> {
-  const blob = await rasterizePng(svg, size, EXPORT_SCALE);
+  const blob = await rasterizePng(svg, size, EXPORT_SCALE, background);
   try {
     if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
