@@ -5,6 +5,17 @@ export interface Pt {
 
 export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle';
 
+/** Label font size: 's' / 'm' / 'l'; undefined = 'm' (the original, pre-feature default). */
+export type FontSize = 's' | 'm' | 'l';
+
+/** Label font-size in px per level. 'm' (14) matches the size Pochi always rendered
+ * labels at before this option existed, so undefined/'m' looks identical to before. */
+export const FONT_SIZE_PX: Record<FontSize, number> = { s: 11, m: 14, l: 21 };
+
+/** Per-line height in px per level, scaled proportionally to FONT_SIZE_PX so multi-line
+ * labels keep the same visual line spacing ratio at every size. */
+export const FONT_LINE_H: Record<FontSize, number> = { s: 16, m: 20, l: 30 };
+
 /** Apex direction for kind: 'triangle'. Cardinal directions produce an isosceles
  * triangle (apex at the midpoint of one bbox edge); diagonal directions produce
  * a right triangle occupying that corner of the bbox. */
@@ -34,6 +45,8 @@ export interface Shape {
   direction?: TriangleDirection;
   /** Flat-fill style (solid background, no stroke) for rect/ellipse/diamond/triangle; undefined = outlined. */
   filled?: boolean;
+  /** Label font size; undefined = 'm'. */
+  fontSize?: FontSize;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }
@@ -63,6 +76,8 @@ export interface Connector {
   dashed?: boolean;
   /** Arrowhead placement; undefined = 'end'. */
   arrowDirection?: ArrowDirection;
+  /** Label font size; undefined = 'm'. */
+  fontSize?: FontSize;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }

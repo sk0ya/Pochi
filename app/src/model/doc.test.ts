@@ -6,6 +6,7 @@ import {
   distToSegment,
   inscribedBox,
   labelCenter,
+  measureLabel,
   reorderItems,
   resizeAnchor,
   scaleShapes,
@@ -14,6 +15,16 @@ import {
   triangleVertices,
 } from './doc';
 import type { Connector, Doc, Shape } from './types';
+
+// This suite runs under vitest's `node` environment (no DOM). `measureLabel` falls back to a
+// character-count width estimate when it can't get a canvas 2D context, so a minimal `document`
+// stub is enough to exercise it deterministically without pulling in jsdom (mirrors the same
+// stub in state/reducer.test.ts).
+if (typeof document === 'undefined') {
+  (globalThis as unknown as { document: unknown }).document = {
+    createElement: () => ({ getContext: () => null }),
+  };
+}
 
 const rect = (id: string, x: number, y: number, w: number, h: number, extra: Partial<Shape> = {}): Shape => ({
   id,
@@ -224,6 +235,28 @@ describe('subsetDoc', () => {
       connectors: [{ id: 'c1', from: { shapeId: 'a', x: 5, y: 5 }, to: { x: 50, y: 50 }, label: '' }],
     };
     expect(subsetDoc(free, ['a']).connectors).toEqual([]);
+  });
+});
+
+describe('measureLabel', () => {
+  it('defaults to "m" sizing when fontSize is omitted', () => {
+    expect(measureLabel('hello')).toEqual(measureLabel('hello', 'm'));
+  });
+
+  it('produces a narrower/shorter box for "s" than "m", and a wider/taller one for "l"', () => {
+    const s = measureLabel('hello world', 's');
+    const m = measureLabel('hello world', 'm');
+    const l = measureLabel('hello world', 'l');
+    expect(s.w).toBeLessThan(m.w);
+    expect(m.w).toBeLessThan(l.w);
+    expect(s.h).toBeLessThan(m.h);
+    expect(m.h).toBeLessThan(l.h);
+  });
+
+  it('scales height with the number of lines at each font size', () => {
+    const oneLine = measureLabel('a', 'l');
+    const twoLines = measureLabel('a\nb', 'l');
+    expect(twoLines.h).toBe(oneLine.h * 2);
   });
 });
 

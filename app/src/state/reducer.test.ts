@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { initialState, reduce } from './reducer';
 import type { EditorState } from './reducer';
 import { labelCenter } from '../model/doc';
-import type { Doc, Shape } from '../model/types';
+import type { Connector, Doc, Shape } from '../model/types';
 import { GRID } from '../model/types';
 
 // This suite runs under vitest's `node` environment (no DOM). `measureLabel` — used when
@@ -770,5 +770,69 @@ describe('marks: m (set) and \' (jump)', () => {
     state = reduce(state, { type: 'CONTEXT_MENU_OPEN', screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
     expect(state.pending).toBeNull();
     expect(state.marks).toEqual({});
+  });
+});
+
+describe('SET_FONT_SIZE', () => {
+  const conn = (id: string): Connector => ({
+    id,
+    from: { x: 0, y: 0 },
+    to: { x: 100, y: 100 },
+    label: '',
+  });
+
+  it('sets fontSize on a single selected shape, storing "m" as undefined (the default)', () => {
+    const s1 = rect('s1', 0, 0);
+    let state = vimState({ shapes: [s1], connectors: [] });
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['s1'], fontSize: 'l' });
+    expect(state.doc.shapes[0].fontSize).toBe('l');
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['s1'], fontSize: 'm' });
+    expect(state.doc.shapes[0].fontSize).toBeUndefined();
+  });
+
+  it('applies to every id across shapes and connectors when multiple are targeted', () => {
+    const s1 = rect('s1', 0, 0);
+    const s2 = rect('s2', 100, 100);
+    const c1 = conn('c1');
+    let state = vimState({ shapes: [s1, s2], connectors: [c1] });
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['s1', 's2', 'c1'], fontSize: 's' });
+    expect(state.doc.shapes[0].fontSize).toBe('s');
+    expect(state.doc.shapes[1].fontSize).toBe('s');
+    expect(state.doc.connectors[0].fontSize).toBe('s');
+  });
+
+  it('is a no-op for an empty id list', () => {
+    const state = vimState({ shapes: [rect('s1', 0, 0)], connectors: [] });
+    const next = reduce(state, { type: 'SET_FONT_SIZE', ids: [], fontSize: 'l' });
+    expect(next).toBe(state);
+  });
+
+  it('re-fits a text shape\'s box to the new size, mirroring how label edits resize it', () => {
+    const text: Shape = { id: 't1', kind: 'text', x: 0, y: 0, w: 32, h: 32, label: 'hello world' };
+    let state = vimState({ shapes: [text], connectors: [] });
+    const mSize = state.doc.shapes[0];
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['t1'], fontSize: 'l' });
+    const lSize = state.doc.shapes[0];
+    // 'l' renders bigger than 'm', so the re-fitted box must grow, not just tag fontSize.
+    expect(lSize.w).toBeGreaterThan(mSize.w);
+    expect(lSize.h).toBeGreaterThanOrEqual(mSize.h);
+  });
+
+  it('leaves a non-text shape\'s box untouched (user-controlled size)', () => {
+    const s1 = rect('s1', 0, 0, 64, 64);
+    let state = vimState({ shapes: [s1], connectors: [] });
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['s1'], fontSize: 'l' });
+    expect(state.doc.shapes[0]).toMatchObject({ w: 64, h: 64 });
+  });
+
+  it('undoes back to the prior fontSize as one step', () => {
+    const s1 = rect('s1', 0, 0);
+    let state = vimState({ shapes: [s1], connectors: [] });
+    state = reduce(state, { type: 'SET_FONT_SIZE', ids: ['s1'], fontSize: 'l' });
+    expect(state.doc.shapes[0].fontSize).toBe('l');
+    state = reduce(state, { type: 'UNDO' });
+    expect(state.doc.shapes[0].fontSize).toBeUndefined();
+    state = reduce(state, { type: 'REDO' });
+    expect(state.doc.shapes[0].fontSize).toBe('l');
   });
 });

@@ -15,29 +15,40 @@ import {
   triangleVertices,
 } from '../model/doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
-import type { Connector, Pt, Shape } from '../model/types';
-import { GRID, snap } from '../model/types';
+import type { Connector, FontSize, Pt, Shape } from '../model/types';
+import { FONT_LINE_H, FONT_SIZE_PX, GRID, snap } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 /** Turn a hex color into a safe DOM id fragment for a per-color arrow marker. */
 const markerKey = (hex: string): string => hex.replace('#', '');
 
-const LINE_H = 20;
-
-function Label({ label, cx, cy, color }: { label: string; cx: number; cy: number; color?: string }) {
+function Label({
+  label,
+  cx,
+  cy,
+  color,
+  fontSize,
+}: {
+  label: string;
+  cx: number;
+  cy: number;
+  color?: string;
+  fontSize?: FontSize;
+}) {
   if (!label) return null;
+  const lineH = FONT_LINE_H[fontSize ?? 'm'];
   const lines = label.split('\n');
-  const startY = cy - ((lines.length - 1) * LINE_H) / 2;
+  const startY = cy - ((lines.length - 1) * lineH) / 2;
   return (
     <text
       fill={color ?? 'var(--shape-text)'}
-      fontSize={14}
+      fontSize={FONT_SIZE_PX[fontSize ?? 'm']}
       textAnchor="middle"
       dominantBaseline="middle"
       style={{ userSelect: 'none', pointerEvents: 'none' }}
     >
       {lines.map((line, i) => (
-        <tspan key={i} x={cx} y={startY + i * LINE_H}>
+        <tspan key={i} x={cx} y={startY + i * lineH}>
           {line}
         </tspan>
       ))}
@@ -169,6 +180,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
               ? s.color
               : undefined
         }
+        fontSize={s.fontSize}
       />
     </g>
   );
@@ -808,6 +820,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           cx={labelPos.x}
           cy={labelPos.y - 12}
           color={c.color ?? 'var(--muted)'}
+          fontSize={c.fontSize}
         />
       </g>
     );

@@ -1,5 +1,5 @@
-import { GRID } from './types';
-import type { Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from './types';
+import { FONT_LINE_H, FONT_SIZE_PX, GRID } from './types';
+import type { Connector, Doc, Endpoint, FontSize, Pt, Shape, TriangleDirection } from './types';
 
 /** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
  * directions put the apex at an edge midpoint (isosceles); diagonal directions
@@ -583,18 +583,19 @@ export function subsetDoc(doc: Doc, ids: string[]): Doc {
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
-/** Approximate pixel size of a (possibly multi-line) label at 14px. */
-export function measureLabel(label: string): { w: number; h: number } {
+/** Approximate pixel size of a (possibly multi-line) label at the given font size (default 'm' = 14px). */
+export function measureLabel(label: string, fontSize?: FontSize): { w: number; h: number } {
   if (!measureCtx) {
     measureCtx = document.createElement('canvas').getContext('2d');
   }
+  const px = FONT_SIZE_PX[fontSize ?? 'm'];
   const lines = label.split('\n');
   let w = 0;
   if (measureCtx) {
-    measureCtx.font = '14px system-ui, sans-serif';
+    measureCtx.font = `${px}px system-ui, sans-serif`;
     for (const line of lines) w = Math.max(w, measureCtx.measureText(line).width);
   } else {
-    for (const line of lines) w = Math.max(w, line.length * 14);
+    for (const line of lines) w = Math.max(w, line.length * px);
   }
-  return { w: Math.ceil(w), h: lines.length * 20 };
+  return { w: Math.ceil(w), h: lines.length * FONT_LINE_H[fontSize ?? 'm'] };
 }

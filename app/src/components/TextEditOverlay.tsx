@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { findShape, inscribedBox } from '../model/doc';
+import { FONT_SIZE_PX } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 /** Textarea floated over the shape being edited (insert mode). */
@@ -34,13 +35,14 @@ export function TextEditOverlay({
     // connector label: small box at the midpoint
     rect = { x: state.cursor.x - 80, y: state.cursor.y - 20, w: 160, h: 40 };
   }
+  const fontSize = shape?.fontSize ?? conn?.fontSize;
   const style: React.CSSProperties = {
     position: 'absolute',
     left: rect.x * view.scale + view.x,
     top: rect.y * view.scale + view.y,
     width: rect.w * view.scale,
     height: rect.h * view.scale,
-    fontSize: 14 * view.scale,
+    fontSize: FONT_SIZE_PX[fontSize ?? 'm'] * view.scale,
   };
 
   const commit = () => {

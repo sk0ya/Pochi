@@ -3,7 +3,7 @@ import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import type { AlignEdge } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { ArrowDirection, ShapeKind, TriangleDirection } from '../model/types';
+import type { ArrowDirection, FontSize, ShapeKind, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
@@ -32,6 +32,12 @@ const LINE_STYLES: Array<[boolean, string, string]> = [
 const FILL_STYLES: Array<[boolean, string, string]> = [
   [false, '▢', 'アウトライン'],
   [true, '▩', 'ベタ塗り'],
+];
+
+const FONT_SIZES: Array<[FontSize, string, string]> = [
+  ['s', 'S', '小'],
+  ['m', 'M', '標準'],
+  ['l', 'L', '大'],
 ];
 
 const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle']);
@@ -103,6 +109,9 @@ export function ContextMenu({
   const canChangeShape = !!singleShape && singleShape.kind !== 'image';
   const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
   const canAlign = alignableCount >= 2;
+  // Only a single-item target has one unambiguous "current" size to highlight;
+  // a multi-selection may mix sizes, so none of the buttons is shown active then.
+  const currentFontSize = ids.length === 1 ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
 
   // Clamp so the menu doesn't run off the viewport edge.
   const menuHeight =
@@ -112,7 +121,7 @@ export function ContextMenu({
         : singleConnector
           ? 540
           : 420
-      : 90) + (isFillable ? 60 : 0) + (canChangeShape ? 60 : 0) + (canAlign ? 90 : 0);
+      : 90) + (isFillable ? 60 : 0) + (canChangeShape ? 60 : 0) + (canAlign ? 90 : 0) + (hasTarget ? 60 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -237,6 +246,20 @@ export function ContextMenu({
               </div>
             </>
           )}
+          <div className="context-sep" />
+          <div className="context-label">文字サイズ</div>
+          <div className="direction-row">
+            {FONT_SIZES.map(([size, icon, title]) => (
+              <button
+                key={size}
+                className={`direction-swatch${currentFontSize === size ? ' active' : ''}`}
+                title={title}
+                onClick={() => run({ type: 'SET_FONT_SIZE', ids, fontSize: size })}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
           <div className="context-sep" />
           <div className="context-label">色</div>
           <div className="color-row">

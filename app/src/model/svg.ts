@@ -1,22 +1,22 @@
 import { connectorPath, docBounds, labelCenter, triangleVertices } from './doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from './palette';
-import type { Doc, Shape } from './types';
+import { FONT_LINE_H, FONT_SIZE_PX } from './types';
+import type { Doc, FontSize, Shape } from './types';
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const markerKey = (hex: string): string => hex.replace('#', '');
 
-const LINE_H = 20;
-
-function labelSvg(label: string, cx: number, cy: number, color: string): string {
+function labelSvg(label: string, cx: number, cy: number, color: string, fontSize?: FontSize): string {
   if (!label) return '';
+  const lineH = FONT_LINE_H[fontSize ?? 'm'];
   const lines = label.split('\n');
-  const startY = cy - ((lines.length - 1) * LINE_H) / 2;
+  const startY = cy - ((lines.length - 1) * lineH) / 2;
   const tspans = lines
-    .map((line, i) => `<tspan x="${cx}" y="${startY + i * LINE_H}">${esc(line)}</tspan>`)
+    .map((line, i) => `<tspan x="${cx}" y="${startY + i * lineH}">${esc(line)}</tspan>`)
     .join('');
-  return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle" dominant-baseline="middle">${tspans}</text>`;
+  return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="${FONT_SIZE_PX[fontSize ?? 'm']}" text-anchor="middle" dominant-baseline="middle">${tspans}</text>`;
 }
 
 function shapeSvg(s: Shape): string {
@@ -46,7 +46,7 @@ function shapeSvg(s: Shape): string {
       ? s.color ?? '#222933'
       : '#222933';
   const labelPos = labelCenter(s);
-  return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor);
+  return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor, s.fontSize);
 }
 
 function markerDef(id: string, hex: string): string {
@@ -85,7 +85,7 @@ export function exportSvg(doc: Doc): string {
       const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
       const mx = (mid.x + midNext.x) / 2;
       const my = (mid.y + midNext.y) / 2 - 10;
-      parts.push(labelSvg(c.label, mx, my, c.color ?? '#4a5568'));
+      parts.push(labelSvg(c.label, mx, my, c.color ?? '#4a5568', c.fontSize));
     }
   }
 

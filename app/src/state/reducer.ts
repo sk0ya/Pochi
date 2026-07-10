@@ -28,7 +28,7 @@ import {
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
 import type { AlignEdge } from '../model/doc';
-import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
@@ -219,6 +219,7 @@ export type Action =
   | { type: 'SET_VIM'; on: boolean }
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
+  | { type: 'SET_FONT_SIZE'; ids: string[]; fontSize: FontSize }
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
   | { type: 'SET_SHAPE_KIND'; ids: string[]; kind: ShapeKind }
@@ -1125,7 +1126,7 @@ function commitInsert(state: EditorState, label: string): EditorState {
     } else {
       let patch: Partial<Shape> = { label: trimmed };
       if (s.kind === 'text' && trimmed !== '') {
-        const m = measureLabel(trimmed);
+        const m = measureLabel(trimmed, s.fontSize);
         patch = {
           ...patch,
           w: Math.max(GRID * 2, snap(m.w + GRID)),
@@ -1570,6 +1571,33 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, color } : c)),
       };
       return commit(state, doc, { msg: color ? 'color set' : 'color reset' });
+    }
+
+    case 'SET_FONT_SIZE': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const fontSize = action.fontSize === 'm' ? undefined : action.fontSize;
+      const doc: Doc = {
+        shapes: state.doc.shapes.map((s) => {
+          if (!idSet.has(s.id)) return s;
+          // Text shapes auto-size their box from the label (like commitInsert does on
+          // every label edit); a font-size change must re-fit the box the same way, or
+          // the label would visually overflow/underflow it. Other kinds keep a
+          // user-controlled box, so only fontSize changes for them.
+          if (s.kind === 'text' && s.label) {
+            const m = measureLabel(s.label, fontSize);
+            return {
+              ...s,
+              fontSize,
+              w: Math.max(GRID * 2, snap(m.w + GRID)),
+              h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+            };
+          }
+          return { ...s, fontSize };
+        }),
+        connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, fontSize } : c)),
+      };
+      return commit(state, doc, { msg: `font size: ${action.fontSize}` });
     }
 
     case 'SET_TRIANGLE_DIRECTION': {
