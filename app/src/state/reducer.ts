@@ -13,6 +13,7 @@ import {
   groupMembers,
   insertConnectorWaypoint,
   itemsInRect,
+  labelCenter,
   measureLabel,
   type ReorderDir,
   reorderItems,
@@ -29,7 +30,14 @@ import type { AlignEdge } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
-export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
+export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint';
+
+/** A shape's assigned EasyMotion-style jump label, and where its badge/cursor should land. */
+export interface HintEntry {
+  id: string;
+  label: string;
+  center: Pt;
+}
 
 /** Shape kinds reachable via the hjkl-resize draw flow (excludes text/image, which use other flows). */
 export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'triangle';
@@ -99,6 +107,8 @@ export interface EditorState {
   marquee: { a: Pt; b: Pt } | null;
   editingId: string | null;
   editingIsNew: boolean;
+  /** Active `f` hint-jump: every shape's assigned label plus the prefix typed so far. */
+  hint: { entries: HintEntry[]; typed: string } | null;
   clipboard: Clipboard | null;
   tool: MouseTool;
   /** Freehand stroke being drawn (sketch tool). */
@@ -208,6 +218,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     editingId: null,
     editingIsNew: false,
     resizeBox: null,
+    hint: null,
     clipboard: null,
     tool: 'sketch',
     sketch: null,
@@ -406,6 +417,85 @@ function confirmArrow(state: EditorState): EditorState {
   });
 }
 
+/** Home-row-first key order for hint labels: easiest keys assigned first. */
+const HINT_LETTERS = [
+  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'w', 'e', 'r', 'u', 'i', 'o', 'p', 'q', 't', 'y',
+  'z', 'x', 'c', 'v', 'b', 'n', 'm',
+];
+
+/** Most targets labelable with 1–2 letter prefix-free labels (every letter used as a prefix). */
+const HINT_CAPACITY = HINT_LETTERS.length * HINT_LETTERS.length;
+
+/**
+ * EasyMotion-style label assignment: up to `HINT_LETTERS.length` targets each get a single
+ * letter (in order, so the first entries — the nearest shapes — get the easiest keys). Beyond
+ * that, the last-assigned single letters are "demoted" to two-letter prefixes instead (combined
+ * with every letter as a second key), so no label is ever a prefix of another label.
+ * `n` must not exceed HINT_CAPACITY (callers clamp).
+ */
+function assignHintLabels(n: number): string[] {
+  const k = HINT_LETTERS.length;
+  if (n <= k) return HINT_LETTERS.slice(0, n);
+  let prefixCount = 1;
+  while (prefixCount < k && k - prefixCount + prefixCount * k < n) prefixCount++;
+  const singles = HINT_LETTERS.slice(0, k - prefixCount);
+  const prefixes = HINT_LETTERS.slice(k - prefixCount);
+  const labels = [...singles];
+  for (const prefix of prefixes) {
+    for (const second of HINT_LETTERS) {
+      if (labels.length >= n) return labels;
+      labels.push(prefix + second);
+    }
+  }
+  return labels;
+}
+
+/** Enters HINT mode: shapes get jump labels, nearest-to-cursor sorted first so it gets the
+ * easiest label. Connectors aren't hinted; past HINT_CAPACITY the farthest shapes get none. */
+function startHint(state: EditorState): EditorState {
+  const shapes = state.doc.shapes;
+  if (!shapes.length) return { ...state, msg: 'no shapes', count: '' };
+  const dist = (s: Shape) => {
+    const c = labelCenter(s);
+    return Math.hypot(c.x - state.cursor.x, c.y - state.cursor.y);
+  };
+  const sorted = [...shapes].sort((a, b) => dist(a) - dist(b)).slice(0, HINT_CAPACITY);
+  const labels = assignHintLabels(sorted.length);
+  const entries: HintEntry[] = sorted.map((s, i) => ({ id: s.id, label: labels[i], center: labelCenter(s) }));
+  return {
+    ...state,
+    mode: 'hint',
+    hint: { entries, typed: '' },
+    count: '',
+    msg: 'HINT: type a label, Esc to cancel',
+  };
+}
+
+/** Handles a keystroke while in HINT mode: Esc cancels, a matching letter narrows or (once a
+ * full label is typed) jumps the cursor to that shape's center and selects it — expanding to
+ * the whole group like a click would. Keys that match no remaining label are ignored. */
+function handleHintKey(state: EditorState, key: string): EditorState {
+  if (key === 'Escape') return { ...state, mode: 'normal', hint: null, msg: '' };
+  if (!state.hint) return state;
+  if (key.length !== 1 || !/[a-z]/i.test(key)) return state;
+  const typed = state.hint.typed + key.toLowerCase();
+  const hit = state.hint.entries.find((e) => e.label === typed);
+  if (hit) {
+    const gid = groupIdOf(state.doc, hit.id);
+    return {
+      ...state,
+      mode: 'normal',
+      hint: null,
+      cursor: snapPt(hit.center),
+      selectedIds: gid ? groupMembers(state.doc, gid) : [hit.id],
+      msg: '',
+    };
+  }
+  const stillPossible = state.hint.entries.some((e) => e.label.startsWith(typed));
+  if (!stillPossible) return state;
+  return { ...state, hint: { entries: state.hint.entries, typed } };
+}
+
 function startTextInsert(state: EditorState, p: Pt): EditorState {
   const at = snapPt(p);
   const shape: Shape = {
@@ -590,6 +680,8 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startDraw(state, 'triangle');
     case 'a':
       return startArrow(state);
+    case 'f':
+      return startHint(state);
     case 't':
       return startTextInsert(state, state.cursor);
     case 'i': {
@@ -855,13 +947,25 @@ export function reduce(state: EditorState, action: Action): EditorState {
   return { ...result, selectionHistory: pushSelectionHistory(state.selectionHistory, state.selectedIds) };
 }
 
+/** Mouse-initiated actions that implicitly cancel HINT mode (like other transient modes),
+ * so a click/drag never operates while stale hint badges are shown. */
+const HINT_CANCEL_ACTIONS = new Set<Action['type']>([
+  'CLICK', 'DBL_CLICK', 'DRAG_START', 'SKETCH_START', 'MARQUEE_START',
+  'ENDPOINT_DRAG_START', 'WAYPOINT_DRAG_START',
+  'START_DRAW_AT', 'START_ARROW_AT', 'TEXT_AT', 'CONTEXT_MENU_OPEN',
+]);
+
 function reduceCore(state: EditorState, action: Action): EditorState {
+  if (state.mode === 'hint' && HINT_CANCEL_ACTIONS.has(action.type)) {
+    state = { ...state, mode: 'normal', hint: null, msg: '' };
+  }
   switch (action.type) {
     case 'KEY': {
       if (state.mode === 'insert' || state.mode === 'command') return state;
       const shift = !!action.shift;
       if (!state.vim) return handlePlainKey(state, action.key, action.ctrl, shift);
       if (state.mode === 'normal') return handleNormalKey(state, action.key, action.ctrl, shift);
+      if (state.mode === 'hint') return handleHintKey(state, action.key);
       return handleTransientKey(state, action.key, shift);
     }
 

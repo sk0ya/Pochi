@@ -44,7 +44,7 @@ function init(): EditorState {
 
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
-  'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
+  'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -234,6 +234,16 @@ export default function App() {
       if (s.contextMenu) {
         dispatch({ type: 'CONTEXT_MENU_CLOSE' });
         if (e.key === 'Escape') return;
+      }
+      // HINT mode needs the full alphabet for two-letter labels, not just the
+      // fixed HANDLED set below.
+      if (s.mode === 'hint') {
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.key === 'Escape' || /^[a-zA-Z]$/.test(e.key)) {
+          e.preventDefault();
+          dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
+        }
+        return;
       }
 
       // Ctrl+Alt+C, not Ctrl+Shift+C: the latter is Chromium's "inspect element"

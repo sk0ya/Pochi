@@ -257,6 +257,47 @@ function connectDots(s: Shape) {
   );
 }
 
+/** `f` hint-jump badge background/text: reuses the vim-cursor amber so a hint label reads as
+ * "a keyboard-reachable cursor target," with a contrasting text color computed the same way
+ * flat-filled shape labels are. */
+const HINT_BADGE_BG = 'var(--cursor)';
+const HINT_BADGE_TEXT = readableTextColor('#ffb454');
+
+/** Renders each still-possible hint label as a small badge over its shape's center. Badges are
+ * wrapped in an inverse-scale transform so they stay a constant on-screen size regardless of
+ * zoom, the same way the world-space `<g scale(view.scale)>` wrapper would otherwise shrink/grow
+ * them with the diagram. */
+function hintBadges(hint: { entries: { id: string; label: string; center: Pt }[]; typed: string }, scale: number) {
+  const inv = 1 / scale;
+  return hint.entries
+    .filter((e) => e.label.startsWith(hint.typed))
+    .map((e) => {
+      const w = e.label.length > 1 ? 24 : 16;
+      return (
+        <g
+          key={e.id}
+          transform={`translate(${e.center.x} ${e.center.y}) scale(${inv})`}
+          style={{ pointerEvents: 'none' }}
+        >
+          <rect x={-w / 2} y={-10} width={w} height={20} rx={4} fill={HINT_BADGE_BG} stroke="var(--bg)" strokeWidth={1.5} />
+          <text
+            x={0}
+            y={1}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={12}
+            fontWeight={700}
+            fontFamily="ui-monospace, Consolas, monospace"
+            fill={HINT_BADGE_TEXT}
+            style={{ userSelect: 'none' }}
+          >
+            {e.label.toUpperCase()}
+          </text>
+        </g>
+      );
+    });
+}
+
 /** Nearest edge/center match (within `threshold`) between the moving rect's left/center/right
  * (or top/center/bottom) and any candidate value; returns the adjusted anchor coordinate. */
 function bestAlign(moving: [number, number, number], candidates: number[], threshold: number):
@@ -880,6 +921,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           !drag.current &&
           state.tool !== 'select' &&
           connectDots(hoverShape)}
+        {mode === 'hint' && state.hint && hintBadges(state.hint, view.scale)}
         {selectedBox && mode === 'normal' && (() => {
           const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);
           const anchor = resizeAnchor(shapes, selectedBox);

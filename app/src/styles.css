@@ -146,6 +146,7 @@ body {
 .mode-move, .mode-resize { background: #4b2e6b; color: #ddc2ff; }
 .mode-insert { background: #2e6b3a; color: #baf5c8; }
 .mode-visual { background: #1e5f66; color: #a5ecf5; }
+.mode-hint { background: #6b4a12; color: #ffd9a0; }
 .mode-plain { background: #333a45; color: var(--muted); }
 
 .count {
