@@ -850,6 +850,19 @@ describe('Frame: creation via o', () => {
   });
 });
 
+describe('Triangle: creation via g', () => {
+  it('g enters DRAW mode with kind "triangle"; Enter places a triangle shape', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'g');
+    expect(state.mode).toBe('draw');
+    expect(state.draw?.kind).toBe('triangle');
+    state = key(state, 'Enter');
+    expect(state.mode).toBe('normal');
+    expect(state.doc.shapes).toHaveLength(1);
+    expect(state.doc.shapes[0].kind).toBe('triangle');
+  });
+});
+
 describe('Frame: containment on move', () => {
   const frame = (id: string, x: number, y: number, w: number, h: number): Shape => ({
     id,
