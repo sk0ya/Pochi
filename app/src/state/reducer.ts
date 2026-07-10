@@ -26,7 +26,7 @@ import {
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
 import type { AlignEdge } from '../model/doc';
-import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
@@ -170,6 +170,7 @@ export type Action =
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
+  | { type: 'SET_SHAPE_KIND'; ids: string[]; kind: ShapeKind }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'ALIGN'; ids: string[]; edge: AlignEdge }
   | { type: 'DUPLICATE' }
@@ -893,24 +894,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'DBL_CLICK': {
       if (action.id) return startEdit(state, action.id);
-      const p = snapPt(action.p);
-      const shape: Shape = {
-        id: newId(),
-        kind: 'rect',
-        x: p.x,
-        y: p.y,
-        w: DEFAULT_W,
-        h: DEFAULT_H,
-        label: '',
-      };
-      const withShape = { ...state, base: state.doc, doc: addShape(state.doc, shape) };
-      return {
-        ...withShape,
-        mode: 'insert',
-        editingId: shape.id,
-        editingIsNew: true,
-        selectedIds: [shape.id],
-      };
+      return startTextInsert(state, action.p);
     }
 
     case 'MOUSE_CURSOR': {
@@ -1265,6 +1249,18 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ),
       };
       return commit(state, doc, { msg: action.filled ? '塗り: ベタ塗り' : '塗り: アウトライン' });
+    }
+
+    case 'SET_SHAPE_KIND': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const doc: Doc = {
+        ...state.doc,
+        shapes: state.doc.shapes.map((s) =>
+          idSet.has(s.id) && s.kind === 'text' ? { ...s, kind: action.kind } : s,
+        ),
+      };
+      return commit(state, doc, { msg: '図形を適用' });
     }
 
     case 'REORDER': {

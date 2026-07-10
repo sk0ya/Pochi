@@ -3,7 +3,7 @@ import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import type { AlignEdge } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { ArrowDirection, TriangleDirection } from '../model/types';
+import type { ArrowDirection, ShapeKind, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
@@ -35,6 +35,13 @@ const FILL_STYLES: Array<[boolean, string, string]> = [
 ];
 
 const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle']);
+
+const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
+  ['rect', '▭', '四角形'],
+  ['ellipse', '◯', '楕円'],
+  ['diamond', '◇', 'ひし形'],
+  ['triangle', '△', '三角形'],
+];
 
 const ALIGN_EDGES: Array<[AlignEdge, string, string]> = [
   ['left', '⇤', '左揃え'],
@@ -93,6 +100,7 @@ export function ContextMenu({
   };
 
   const isFillable = !!singleShape && FILLABLE_KINDS.has(singleShape.kind);
+  const isTextBox = singleShape?.kind === 'text';
   const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
   const canAlign = alignableCount >= 2;
 
@@ -104,7 +112,7 @@ export function ContextMenu({
         : singleConnector
           ? 540
           : 420
-      : 90) + (isFillable ? 60 : 0) + (canAlign ? 90 : 0);
+      : 90) + (isFillable ? 60 : 0) + (isTextBox ? 60 : 0) + (canAlign ? 90 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -144,6 +152,24 @@ export function ContextMenu({
             >
               テキスト編集
             </button>
+          )}
+          {isTextBox && (
+            <>
+              <div className="context-label">図形を適用</div>
+              <div className="direction-row">
+                {SHAPE_KINDS.map(([kind, icon, title]) => (
+                  <button
+                    key={kind}
+                    className="direction-swatch"
+                    title={title}
+                    onClick={() => run({ type: 'SET_SHAPE_KIND', ids, kind })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="context-sep" />
+            </>
           )}
           <button onClick={() => run({ type: 'COPY' })}>コピー (Ctrl+C)</button>
           <button onClick={() => run({ type: 'DUPLICATE' })}>複製 (Ctrl+D)</button>
