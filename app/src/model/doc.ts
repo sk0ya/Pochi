@@ -48,6 +48,55 @@ export function labelCenter(s: { x: number; y: number; w: number; h: number; kin
   return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
 }
 
+/** Largest axis-aligned rectangle that fits inside the shape's own outline,
+ * used to size the text-edit box so it doesn't spill past a rounded/pointed
+ * shape the way the raw bbox would. Rect/image/text fill their bbox exactly. */
+export function inscribedBox(s: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: string;
+  direction?: TriangleDirection;
+}): { x: number; y: number; w: number; h: number } {
+  const { x, y, w, h } = s;
+  if (s.kind === 'ellipse') {
+    const iw = w / Math.SQRT2;
+    const ih = h / Math.SQRT2;
+    return { x: x + (w - iw) / 2, y: y + (h - ih) / 2, w: iw, h: ih };
+  }
+  if (s.kind === 'diamond') {
+    return { x: x + w / 4, y: y + h / 4, w: w / 2, h: h / 2 };
+  }
+  if (s.kind === 'triangle') {
+    // Every direction's max inscribed axis-aligned rectangle is exactly
+    // half-width by half-height, sitting against the triangle's base (cardinal
+    // directions) or its right-angle corner (diagonal directions).
+    const halfW = w / 2;
+    const halfH = h / 2;
+    switch (s.direction) {
+      case 'down':
+        return { x: x + w / 4, y, w: halfW, h: halfH };
+      case 'left':
+        return { x: x + halfW, y: y + h / 4, w: halfW, h: halfH };
+      case 'right':
+        return { x, y: y + h / 4, w: halfW, h: halfH };
+      case 'up-left':
+        return { x, y, w: halfW, h: halfH };
+      case 'up-right':
+        return { x: x + halfW, y, w: halfW, h: halfH };
+      case 'down-left':
+        return { x, y: y + halfH, w: halfW, h: halfH };
+      case 'down-right':
+        return { x: x + halfW, y: y + halfH, w: halfW, h: halfH };
+      case 'up':
+      default:
+        return { x: x + w / 4, y: y + halfH, w: halfW, h: halfH };
+    }
+  }
+  return { x, y, w, h };
+}
+
 /** Point that stays fixed while resizing: a lone triangle's own vertex (its
  * apex, or the right-angle corner for a diagonal direction), so the pointy
  * end doesn't drift; the bbox top-left for everything else (incl. multi-select). */

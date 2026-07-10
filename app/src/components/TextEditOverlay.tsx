@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
-import { findShape } from '../model/doc';
+import { findShape, inscribedBox } from '../model/doc';
 import type { Action, EditorState } from '../state/reducer';
 
 /** Textarea floated over the shape being edited (insert mode). */
@@ -29,7 +29,7 @@ export function TextEditOverlay({
   const { view } = state;
   let rect: { x: number; y: number; w: number; h: number };
   if (shape) {
-    rect = { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
+    rect = inscribedBox(shape);
   } else {
     // connector label: small box at the midpoint
     rect = { x: state.cursor.x - 80, y: state.cursor.y - 20, w: 160, h: 40 };
@@ -38,8 +38,8 @@ export function TextEditOverlay({
     position: 'absolute',
     left: rect.x * view.scale + view.x,
     top: rect.y * view.scale + view.y,
-    width: Math.max(rect.w * view.scale, 80),
-    height: Math.max(rect.h * view.scale, 40),
+    width: rect.w * view.scale,
+    height: rect.h * view.scale,
     fontSize: 14 * view.scale,
   };
 
