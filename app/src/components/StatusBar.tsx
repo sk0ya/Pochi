@@ -82,6 +82,7 @@ export function StatusBar({
     <div className="statusbar">
       <span className={`mode mode-${modeKey}`}>{modeLabel}</span>
       {state.count && <span className="count">{state.count}</span>}
+      {state.pending && <span className="count">{state.pending === 'mark-set' ? 'm' : "'"}</span>}
       <span className="msg">{state.msg}</span>
       <span className="spacer" />
       <span className="meta">{state.fileName ?? '[No Name]'}</span>

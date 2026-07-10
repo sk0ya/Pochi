@@ -45,7 +45,7 @@ function init(): EditorState {
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
   'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
-  'n', 'N', '.',
+  'n', 'N', '.', 'm', "'",
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -245,6 +245,29 @@ export default function App() {
           dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
         }
         return;
+      }
+      // A pending `m`/`'` sequence (awaiting the mark letter) needs to see any key, not just
+      // the fixed HANDLED set, so a stray non-letter key can reach the reducer and silently
+      // cancel it (mirrors the HINT-mode bypass above). A successful `'{letter}` jump has no
+      // view-follow of its own (plain cursor movement doesn't pan/center the view either — see
+      // the `z` handler below), so it would leave the cursor off-screen on a large canvas; we
+      // re-center on it explicitly, the same way `z` does, right after the jump lands.
+      if (s.mode === 'normal' && s.pending) {
+        if (e.ctrlKey || e.altKey || e.metaKey) {
+          // A modifier combo means the user abandoned the mark sequence: cancel the
+          // pending state (silent Esc-equivalent in the reducer) and fall through so
+          // the combo still takes its normal path below (Ctrl+S must still save, etc.)
+          // rather than leaving `pending` dangling for the next plain keypress.
+          dispatch({ type: 'KEY', key: 'Escape', ctrl: false });
+        } else {
+          e.preventDefault();
+          const willJump = s.pending === 'mark-jump' && /^[a-z]$/.test(e.key) && !!s.marks[e.key];
+          dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
+          if (willJump) {
+            dispatch({ type: 'CENTER', screenW: window.innerWidth, screenH: window.innerHeight });
+          }
+          return;
+        }
       }
 
       // Ctrl+Alt+C, not Ctrl+Shift+C: the latter is Chromium's "inspect element"

@@ -123,6 +123,20 @@ export interface EditorState {
   editingIsNew: boolean;
   /** Active `f` hint-jump: every shape's assigned label plus the prefix typed so far. */
   hint: { entries: HintEntry[]; typed: string } | null;
+  /**
+   * Vim-style marks: `m{a-z}` records the cursor position under a letter, `'{a-z}` jumps back
+   * to it. Positions, not shape references — deleting the shape that was under the cursor
+   * doesn't invalidate the mark. Session-scoped only: unlike `doc`/`vim`, this field is never
+   * read out to localStorage (see AUTOSAVE_KEY/VIM_KEY in App.tsx, which persist only those two
+   * fields individually), so marks reset on reload same as undo history does.
+   */
+  marks: Record<string, Pt>;
+  /**
+   * Awaiting the second key of an `m` (mark-set) or `'` (mark-jump) sequence, vim's
+   * operator-pending style. Esc cancels; any key outside a-z cancels silently (vim marks are
+   * single lowercase letters, so there's nothing sensible to do with anything else).
+   */
+  pending: 'mark-set' | 'mark-jump' | null;
   clipboard: Clipboard | null;
   /** The last dot-repeatable edit; `.` replays it. Null until one is committed. */
   lastEdit: LastEdit | null;
@@ -246,6 +260,8 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     editingIsNew: false,
     resizeBox: null,
     hint: null,
+    marks: {},
+    pending: null,
     clipboard: null,
     lastEdit: null,
     tool: 'sketch',
@@ -839,7 +855,27 @@ function repeatLastEdit(state: EditorState): EditorState {
   }
 }
 
+/**
+ * Resolves the second key of a pending `m`/`'` sequence (started by the `m`/`'` cases in
+ * `handleNormalKey` below). Esc cancels with no message (matches HINT's Esc); any key that
+ * isn't a bare lowercase letter — digits, punctuation, Ctrl-combos, Shift+letter — cancels
+ * silently, same as vim ignoring a bogus mark key. `m` records the current cursor under that
+ * letter; `'` jumps the cursor to it, or reports "mark not set" if the letter was never used.
+ */
+function handlePendingKey(state: EditorState, key: string, ctrl: boolean): EditorState {
+  const pending = state.pending;
+  if (key === 'Escape') return { ...state, pending: null, msg: '' };
+  if (ctrl || !/^[a-z]$/.test(key)) return { ...state, pending: null };
+  if (pending === 'mark-set') {
+    return { ...state, pending: null, marks: { ...state.marks, [key]: state.cursor }, msg: `mark set: ${key}` };
+  }
+  const pos = state.marks[key];
+  if (!pos) return { ...state, pending: null, msg: `mark not set: ${key}` };
+  return { ...state, pending: null, cursor: pos, msg: '' };
+}
+
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
+  if (state.pending) return handlePendingKey(state, key, ctrl);
   if (ctrl) {
     if (key === 'r') return reduceCore(state, { type: 'REDO' });
     return state;
@@ -876,6 +912,10 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startArrow(state);
     case 'f':
       return startHint(state);
+    case 'm':
+      return { ...state, pending: 'mark-set', count: '', msg: '' };
+    case "'":
+      return { ...state, pending: 'mark-jump', count: '', msg: '' };
     case 't':
       return startTextInsert(state, state.cursor);
     case 'i': {
@@ -1148,16 +1188,21 @@ export function reduce(state: EditorState, action: Action): EditorState {
 }
 
 /** Mouse-initiated actions that implicitly cancel HINT mode (like other transient modes),
- * so a click/drag never operates while stale hint badges are shown. */
-const HINT_CANCEL_ACTIONS = new Set<Action['type']>([
+ * so a click/drag never operates while stale hint badges are shown. The same set also
+ * cancels a pending `m`/`'` mark sequence: after `m` → click-elsewhere, the user has moved
+ * on, and the next keypress must act normally instead of being swallowed as a mark letter. */
+const MOUSE_CANCEL_ACTIONS = new Set<Action['type']>([
   'CLICK', 'DBL_CLICK', 'DRAG_START', 'SKETCH_START', 'MARQUEE_START',
   'ENDPOINT_DRAG_START', 'WAYPOINT_DRAG_START',
   'START_DRAW_AT', 'START_ARROW_AT', 'TEXT_AT', 'CONTEXT_MENU_OPEN',
 ]);
 
 function reduceCore(state: EditorState, action: Action): EditorState {
-  if (state.mode === 'hint' && HINT_CANCEL_ACTIONS.has(action.type)) {
+  if (state.mode === 'hint' && MOUSE_CANCEL_ACTIONS.has(action.type)) {
     state = { ...state, mode: 'normal', hint: null, msg: '' };
+  }
+  if (state.pending && MOUSE_CANCEL_ACTIONS.has(action.type)) {
+    state = { ...state, pending: null };
   }
   switch (action.type) {
     case 'KEY': {

@@ -569,3 +569,206 @@ describe('. (dot repeat)', () => {
     expect(state.doc.shapes).toHaveLength(2);
   });
 });
+
+describe('marks: m (set) and \' (jump)', () => {
+  it('m enters a pending mark-set state without touching the doc/cursor', () => {
+    const before = vimState({ shapes: [], connectors: [] });
+    const state = key(before, 'm');
+    expect(state.pending).toBe('mark-set');
+    expect(state.mode).toBe('normal');
+    expect(state.cursor).toEqual(before.cursor);
+    expect(state.marks).toEqual({});
+  });
+
+  it('m then a letter records the current cursor under that letter and clears pending', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    const here = state.cursor;
+    state = type(state, 'ma');
+    expect(state.pending).toBeNull();
+    expect(state.marks.a).toEqual(here);
+    expect(state.msg).toBe('mark set: a');
+  });
+
+  it("' then a letter jumps the cursor back to the recorded mark", () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    const markedAt = state.cursor;
+    state = type(state, 'ma'); // mark a at the starting cursor
+    state = key(state, 'l');
+    state = key(state, 'l');
+    state = key(state, 'j');
+    expect(state.cursor).not.toEqual(markedAt); // moved away first
+
+    state = type(state, "'a");
+    expect(state.pending).toBeNull();
+    expect(state.cursor).toEqual(markedAt);
+    expect(state.msg).toBe('');
+  });
+
+  it("' to an unset mark reports 'mark not set' and leaves the cursor alone", () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    const cursor = state.cursor;
+    state = type(state, "'z");
+    expect(state.pending).toBeNull();
+    expect(state.cursor).toEqual(cursor);
+    expect(state.msg).toBe('mark not set: z');
+  });
+
+  it('Esc cancels a pending mark-set without recording anything', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'm');
+    expect(state.pending).toBe('mark-set');
+    state = key(state, 'Escape');
+    expect(state.pending).toBeNull();
+    expect(state.marks).toEqual({});
+  });
+
+  it('Esc cancels a pending mark-jump the same way', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = type(state, 'ma'); // so a jump *could* succeed if not cancelled
+    const cursor = state.cursor;
+    state = key(state, "'");
+    expect(state.pending).toBe('mark-jump');
+    state = key(state, 'Escape');
+    expect(state.pending).toBeNull();
+    expect(state.cursor).toEqual(cursor);
+  });
+
+  it('a non-letter key silently cancels a pending mark-set (no message, nothing recorded)', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'm');
+    state = key(state, '5'); // digit: not a-z
+    expect(state.pending).toBeNull();
+    expect(state.marks).toEqual({});
+    expect(state.msg).toBe(''); // silent: no "cancelled"-style message
+  });
+
+  it('a non-letter key silently cancels a pending mark-jump', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = type(state, 'ma'); // mark a at the starting cursor
+    state = key(state, 'l');
+    state = key(state, 'j'); // move away from the mark
+    const movedTo = state.cursor;
+    state = key(state, "'");
+    state = key(state, '.'); // punctuation-ish key, not a-z
+    expect(state.pending).toBeNull();
+    expect(state.cursor).toEqual(movedTo); // no jump happened; cursor stayed put
+    expect(state.cursor).not.toEqual(state.marks.a);
+  });
+
+  it('an uppercase letter (Shift+letter) also cancels silently, not treated as a-z', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'm');
+    state = reduce(state, { type: 'KEY', key: 'A', ctrl: false, shift: true });
+    expect(state.pending).toBeNull();
+    expect(state.marks).toEqual({});
+  });
+
+  it('marks survive deleting the shape that was under the cursor when set', () => {
+    const s = rect('s1', GRID * 10, GRID * 10);
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = { ...state, cursor: { x: GRID * 10, y: GRID * 10 } };
+    state = type(state, 'ma'); // mark recorded at the shape's position
+    const markedPos = state.marks.a;
+    state = key(state, 'd'); // delete the shape under the cursor
+    expect(state.doc.shapes).toHaveLength(0);
+    state = key(state, 'l'); // move away
+    state = type(state, "'a");
+    expect(state.cursor).toEqual(markedPos); // jump still works, unaffected by the deletion
+  });
+
+  it('multiple marks are independent of each other', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    const posA = state.cursor;
+    state = type(state, 'ma');
+    state = key(state, 'l');
+    state = key(state, 'l');
+    const posB = state.cursor;
+    state = type(state, 'mb');
+    state = key(state, 'j');
+
+    state = type(state, "'a");
+    expect(state.cursor).toEqual(posA);
+    state = type(state, "'b");
+    expect(state.cursor).toEqual(posB);
+  });
+
+  it('m/\' sequences leave count/other pending state uncorrupted afterward', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = type(state, '3'); // count prefix in progress
+    expect(state.count).toBe('3');
+    state = key(state, 'm'); // m cancels/consumes the count, starts pending
+    expect(state.count).toBe('');
+    state = key(state, 'a'); // resolves mark-set
+    expect(state.pending).toBeNull();
+    expect(state.count).toBe('');
+
+    // A plain, uncounted movement afterward should move by exactly one grid step,
+    // proving the earlier '3' didn't leak into a later move.
+    const before = state.cursor;
+    state = key(state, 'l');
+    expect(state.cursor.x - before.x).toBe(GRID);
+
+    // Same check for the jump side: a stray count before ' must not survive into
+    // the mark-jump resolution or beyond.
+    state = type(state, '2');
+    state = key(state, "'");
+    expect(state.count).toBe('');
+    state = key(state, 'a');
+    expect(state.pending).toBeNull();
+    expect(state.count).toBe('');
+  });
+
+  it('m then d sets mark "d" — the letter is consumed by the pending state, nothing is deleted', () => {
+    const cursor = initialState(null, true).cursor;
+    const s = rect('s1', cursor.x, cursor.y); // a shape under the cursor that d would normally delete
+    let state = vimState({ shapes: [s], connectors: [] });
+    const here = state.cursor;
+    state = type(state, 'md');
+    expect(state.pending).toBeNull();
+    expect(state.marks.d).toEqual(here);
+    expect(state.doc.shapes).toHaveLength(1); // NOT deleted
+    expect(state.msg).toBe('mark set: d');
+  });
+
+  it("' then f jumps to mark f — the letter is consumed by the pending state, no HINT mode", () => {
+    const cursor = initialState(null, true).cursor;
+    const s = rect('s1', cursor.x, cursor.y); // a shape exists, so f *could* enter HINT mode
+    let state = vimState({ shapes: [s], connectors: [] });
+    const markedAt = state.cursor;
+    state = type(state, 'mf'); // record mark f
+    state = key(state, 'l');
+    state = key(state, 'j');
+    state = type(state, "'f");
+    expect(state.mode).toBe('normal'); // NOT hint
+    expect(state.hint).toBeNull();
+    expect(state.pending).toBeNull();
+    expect(state.cursor).toEqual(markedAt);
+  });
+
+  it('a mouse click cancels a pending mark-set, so a following d deletes instead of marking', () => {
+    const cursor = initialState(null, true).cursor;
+    const s = rect('s1', cursor.x, cursor.y);
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = key(state, 'm');
+    expect(state.pending).toBe('mark-set');
+    state = reduce(state, { type: 'CLICK', p: state.cursor }); // click cancels the pending sequence
+    expect(state.pending).toBeNull();
+    state = key(state, 'd'); // ...so d acts normally again
+    expect(state.doc.shapes).toHaveLength(0); // deleted, not recorded as mark "d"
+    expect(state.marks.d).toBeUndefined();
+  });
+
+  it('other mouse-initiated actions also cancel a pending mark sequence', () => {
+    let state = vimState({ shapes: [rect('s1', 0, 0)], connectors: [] });
+    state = key(state, "'");
+    expect(state.pending).toBe('mark-jump');
+    state = reduce(state, { type: 'DRAG_START', id: 's1' });
+    expect(state.pending).toBeNull();
+
+    state = key(state, 'm');
+    expect(state.pending).toBe('mark-set');
+    state = reduce(state, { type: 'CONTEXT_MENU_OPEN', screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
+    expect(state.pending).toBeNull();
+    expect(state.marks).toEqual({});
+  });
+});
