@@ -967,12 +967,12 @@ describe('Frame: delete leaves contents', () => {
 });
 
 describe('Frame: SET_SHAPE_KIND conversion', () => {
-  it('converting a flat-filled shape to frame clears `filled` (frame interiors must never paint)', () => {
+  it('converting a flat-filled shape to frame keeps `filled` (frame interiors may now show a tint)', () => {
     const s: Shape = { ...rect('s1', 0, 0), filled: true };
     let state = vimState({ shapes: [s], connectors: [] });
     state = reduce(state, { type: 'SET_SHAPE_KIND', ids: ['s1'], kind: 'frame' });
     expect(state.doc.shapes[0].kind).toBe('frame');
-    expect(state.doc.shapes[0].filled).toBeUndefined();
+    expect(state.doc.shapes[0].filled).toBe(true);
   });
 
   it('converting to a non-frame kind keeps `filled` as-is', () => {
@@ -980,6 +980,15 @@ describe('Frame: SET_SHAPE_KIND conversion', () => {
     let state = vimState({ shapes: [s], connectors: [] });
     state = reduce(state, { type: 'SET_SHAPE_KIND', ids: ['s1'], kind: 'ellipse' });
     expect(state.doc.shapes[0].kind).toBe('ellipse');
+    expect(state.doc.shapes[0].filled).toBe(true);
+  });
+});
+
+describe('Frame: SET_FILLED', () => {
+  it('sets `filled` on a frame (tint is purely visual, never affects hit-testing)', () => {
+    const f: Shape = { id: 'f1', kind: 'frame', x: 0, y: 0, w: GRID * 10, h: GRID * 10, label: '' };
+    let state = vimState({ shapes: [f], connectors: [] });
+    state = reduce(state, { type: 'SET_FILLED', ids: ['f1'], filled: true });
     expect(state.doc.shapes[0].filled).toBe(true);
   });
 });

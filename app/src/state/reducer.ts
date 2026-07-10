@@ -1637,7 +1637,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const doc: Doc = {
         ...state.doc,
         shapes: state.doc.shapes.map((s) =>
-          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image' && s.kind !== 'frame'
+          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image'
             ? { ...s, filled: action.filled }
             : s,
         ),
@@ -1652,12 +1652,10 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state.doc,
         shapes: state.doc.shapes.map((s) => {
           if (!idSet.has(s.id) || s.kind === 'image') return s;
-          // A frame's interior must never paint (click-through hit-testing depends on it),
-          // so converting to 'frame' drops any flat-fill flag rather than carrying it as
-          // stale data a future render change could accidentally honor.
-          return action.kind === 'frame'
-            ? { ...s, kind: action.kind, filled: undefined }
-            : { ...s, kind: action.kind };
+          // `filled` carries straight through a kind change, including into/out of 'frame':
+          // a frame's interior tint is rendered pointer-events:none (see Canvas.tsx), so it
+          // stays purely visual and never affects the frame's click-through hit-testing.
+          return { ...s, kind: action.kind };
         }),
       };
       return commit(state, doc, { msg: '図形の種類を変更' });

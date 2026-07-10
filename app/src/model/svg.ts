@@ -39,11 +39,22 @@ function labelSvg(
  * theme color, distinguishing it from the brighter #333a45 used by every other shape kind. */
 const FRAME_STROKE_DEFAULT = '#8794a8';
 
+/** Opacity for a filled frame's interior tint in the exported SVG (white light-theme
+ * background). Chosen higher than the app canvas's FRAME_TINT_OPACITY_APP (Canvas.tsx) —
+ * the same alpha reads lighter against white than against the app's dark background, so a
+ * slightly stronger value keeps the tint visible without looking like a solid fill. */
+const FRAME_TINT_OPACITY_SVG = 0.1;
+
 function shapeSvg(s: Shape): string {
   if (s.kind === 'frame') {
-    // Border only, no fill (mirrors the canvas: an open interior, subtly rounded).
+    // Border only, no fill (mirrors the canvas: an open interior, subtly rounded) — plus an
+    // optional low-opacity interior tint when `filled` is set (purely visual; SVG export has
+    // no hit-testing to preserve, but this still matches the canvas's click-through look).
     const stroke = s.color ?? FRAME_STROKE_DEFAULT;
-    const body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+    const tint = s.filled
+      ? `<rect x="${s.x + 1.5}" y="${s.y + 1.5}" width="${Math.max(s.w - 3, 0)}" height="${Math.max(s.h - 3, 0)}" rx="7" fill="${stroke}" fill-opacity="${FRAME_TINT_OPACITY_SVG}" stroke="none"/>`
+      : '';
+    const body = `${tint}<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
     const labelColor = s.color ?? FRAME_STROKE_DEFAULT;
     return (
       body +

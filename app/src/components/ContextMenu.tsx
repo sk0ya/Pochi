@@ -34,13 +34,20 @@ const FILL_STYLES: Array<[boolean, string, string]> = [
   [true, '▩', 'ベタ塗り'],
 ];
 
+/** A frame's fill is a translucent interior tint (see Canvas.tsx), not the solid flat fill
+ * other shapes get — same `filled` flag, so the toggle labels say what it actually does. */
+const FRAME_FILL_STYLES: Array<[boolean, string, string]> = [
+  [false, '▢', '枠線のみ'],
+  [true, '▨', '薄塗り'],
+];
+
 const FONT_SIZES: Array<[FontSize, string, string]> = [
   ['s', 'S', '小'],
   ['m', 'M', '標準'],
   ['l', 'L', '大'],
 ];
 
-const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle']);
+const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'frame']);
 
 const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
   ['rect', '▭', '四角形'],
@@ -312,7 +319,7 @@ export function ContextMenu({
             <>
               <div className="context-label">塗り</div>
               <div className="direction-row">
-                {FILL_STYLES.map(([filled, icon, title]) => (
+                {(singleShape?.kind === 'frame' ? FRAME_FILL_STYLES : FILL_STYLES).map(([filled, icon, title]) => (
                   <button
                     key={title}
                     className={`direction-swatch${(singleShape?.filled ?? false) === filled ? ' active' : ''}`}

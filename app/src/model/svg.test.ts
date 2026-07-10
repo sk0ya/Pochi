@@ -33,6 +33,26 @@ describe('exportSvg', () => {
   });
 });
 
+describe('exportSvg: frame fill tint', () => {
+  it('emits a fill-opacity tint rect for a filled frame', () => {
+    const doc: Doc = {
+      shapes: [{ id: 'f', kind: 'frame', x: 0, y: 0, w: 100, h: 50, label: '', filled: true }],
+      connectors: [],
+    };
+    expect(exportSvg(doc)).toContain('fill-opacity');
+  });
+
+  it('emits fill="none" (no tint) for an unfilled frame', () => {
+    const doc: Doc = {
+      shapes: [{ id: 'f', kind: 'frame', x: 0, y: 0, w: 100, h: 50, label: '' }],
+      connectors: [],
+    };
+    const svg = exportSvg(doc);
+    expect(svg).toContain('fill="none"');
+    expect(svg).not.toContain('fill-opacity');
+  });
+});
+
 describe('exportViewport', () => {
   it('matches the viewBox exportSvg emits (single source of truth for the PNG canvas size)', () => {
     const doc: Doc = {

@@ -28,6 +28,13 @@ import type { Action, EditorState } from '../state/reducer';
 /** Turn a hex color into a safe DOM id fragment for a per-color arrow marker. */
 const markerKey = (hex: string): string => hex.replace('#', '');
 
+/** Opacity for a filled frame's interior tint in the (dark) app canvas. Low enough to read as
+ * a subtle zone wash rather than a solid fill — a filled frame must still look unmistakably
+ * different from a filled rect/ellipse/etc, which uses a fully opaque background. Kept
+ * separate from the SVG export's opacity (model/svg.ts FRAME_TINT_OPACITY_SVG) since a
+ * white light-theme background reads the same alpha as noticeably lighter than a dark one. */
+export const FRAME_TINT_OPACITY_APP = 0.16;
+
 function Label({
   label,
   cx,
@@ -196,9 +203,27 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
       {s.kind === 'frame' && (
         <>
-          {/* Visible border only — no fill, so the open interior never paints (and so never
-              hit-tests) over whatever the frame contains. Slightly rounded to read as
-              distinct from a plain rect at a glance. */}
+          {/* Optional interior tint (the "filled" flag) — a flat, low-opacity fill so the
+              frame reads as a zone at a glance. pointer-events: none keeps it purely visual;
+              the frame's click-through interior (frameHitZone in model/doc.ts) is unaffected
+              by paint, so this never steals a click meant for what's inside. */}
+          {s.filled && (
+            <rect
+              x={s.x + 1.5}
+              y={s.y + 1.5}
+              width={Math.max(s.w - 3, 0)}
+              height={Math.max(s.h - 3, 0)}
+              rx={7}
+              fill={trueStroke}
+              fillOpacity={FRAME_TINT_OPACITY_APP}
+              stroke="none"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+          {/* Visible border, no fill of its own — the interior tint above (if any) is a
+              separate pointer-events:none layer, so this rect staying unfilled keeps the
+              border itself from ever hit-testing over whatever the frame contains. Slightly
+              rounded to read as distinct from a plain rect at a glance. */}
           <rect
             x={s.x}
             y={s.y}
