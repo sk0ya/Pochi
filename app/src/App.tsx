@@ -26,14 +26,14 @@ const VIM_KEY = 'pochi.vim';
 
 function init(): EditorState {
   let doc: Doc | null = null;
-  let vim = true;
+  let vim = false;
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Doc;
       if (Array.isArray(parsed.shapes) && Array.isArray(parsed.connectors)) doc = parsed;
     }
-    vim = localStorage.getItem(VIM_KEY) !== 'off';
+    vim = localStorage.getItem(VIM_KEY) === 'on';
   } catch {
     /* first run */
   }
