@@ -377,6 +377,37 @@ export function scaleShapes(
   };
 }
 
+export type AlignEdge = 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom';
+
+/** Align shapes among `ids` to a common edge/center of their combined bounding box.
+ * Connectors in `ids` are ignored (they have no independent x/y/w/h); any connector
+ * bound to a moved shape follows it automatically since endpoints resolve live. */
+export function alignShapes(doc: Doc, ids: string[], edge: AlignEdge): Doc {
+  const idSet = new Set(ids);
+  const box = bboxOf(doc, ids);
+  if (!box) return doc;
+  return {
+    ...doc,
+    shapes: doc.shapes.map((s) => {
+      if (!idSet.has(s.id)) return s;
+      switch (edge) {
+        case 'left':
+          return { ...s, x: box.x };
+        case 'center-h':
+          return { ...s, x: box.x + box.w / 2 - s.w / 2 };
+        case 'right':
+          return { ...s, x: box.x + box.w - s.w };
+        case 'top':
+          return { ...s, y: box.y };
+        case 'center-v':
+          return { ...s, y: box.y + box.h / 2 - s.h / 2 };
+        case 'bottom':
+          return { ...s, y: box.y + box.h - s.h };
+      }
+    }),
+  };
+}
+
 /** All shape/connector ids sharing a groupId. */
 export function groupMembers(doc: Doc, groupId: string): string[] {
   const ids: string[] = [];

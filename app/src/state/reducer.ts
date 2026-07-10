@@ -1,6 +1,7 @@
 import {
   addConnector,
   addShape,
+  alignShapes,
   bboxOf,
   clearConnectorWaypoints,
   connectorAt,
@@ -24,6 +25,7 @@ import {
   updateShape,
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
+import type { AlignEdge } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
@@ -169,6 +171,7 @@ export type Action =
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
+  | { type: 'ALIGN'; ids: string[]; edge: AlignEdge }
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
   | { type: 'COPY' }
@@ -1273,6 +1276,19 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         backward: 'moved backward',
       }[action.dir];
       return commit(state, reorderItems(state.doc, action.ids, action.dir), { msg });
+    }
+
+    case 'ALIGN': {
+      if (action.ids.length < 2) return state;
+      const msg = {
+        left: '左揃え',
+        'center-h': '左右中央揃え',
+        right: '右揃え',
+        top: '上揃え',
+        'center-v': '上下中央揃え',
+        bottom: '下揃え',
+      }[action.edge];
+      return commit(state, alignShapes(state.doc, action.ids, action.edge), { msg });
     }
 
     case 'DUPLICATE':

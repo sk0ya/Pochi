@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
+import type { AlignEdge } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { ArrowDirection, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -34,6 +35,15 @@ const FILL_STYLES: Array<[boolean, string, string]> = [
 ];
 
 const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle']);
+
+const ALIGN_EDGES: Array<[AlignEdge, string, string]> = [
+  ['left', '⇤', '左揃え'],
+  ['center-h', '↔', '左右中央揃え'],
+  ['right', '⇥', '右揃え'],
+  ['top', '⤒', '上揃え'],
+  ['center-v', '↕', '上下中央揃え'],
+  ['bottom', '⤓', '下揃え'],
+];
 
 export function ContextMenu({
   state,
@@ -83,6 +93,8 @@ export function ContextMenu({
   };
 
   const isFillable = !!singleShape && FILLABLE_KINDS.has(singleShape.kind);
+  const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
+  const canAlign = alignableCount >= 2;
 
   // Clamp so the menu doesn't run off the viewport edge.
   const menuHeight =
@@ -92,7 +104,7 @@ export function ContextMenu({
         : singleConnector
           ? 540
           : 420
-      : 90) + (isFillable ? 60 : 0);
+      : 90) + (isFillable ? 60 : 0) + (canAlign ? 90 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -108,6 +120,24 @@ export function ContextMenu({
     >
       {hasTarget ? (
         <>
+          {canAlign && (
+            <>
+              <div className="context-label">整列</div>
+              <div className="direction-row">
+                {ALIGN_EDGES.map(([edge, icon, title]) => (
+                  <button
+                    key={edge}
+                    className="direction-swatch"
+                    title={title}
+                    onClick={() => run({ type: 'ALIGN', ids, edge })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="context-sep" />
+            </>
+          )}
           {canEditText && (
             <button
               onClick={() => run({ type: 'START_INSERT', id: ids[0] })}
