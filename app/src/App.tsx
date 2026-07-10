@@ -20,21 +20,40 @@ import { exportSvg, exportViewport } from './model/svg';
 import type { Doc } from './model/types';
 import { GRID } from './model/types';
 import { copySvgAsPng } from './pngClipboard';
+import { decodeShareDoc, encodeShareDoc, SHARE_URL_WARN_CHARS } from './share';
 import { IMAGE_MAX_DIM, initialState, parseClipboard, reduce, serializeClipboard } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
 const AUTOSAVE_KEY = 'pochi.autosave';
 const VIM_KEY = 'pochi.vim';
+const SHARE_HASH_PREFIX = '#d=';
+// The desktop shell hosts app/dist at a local virtual origin (see bridge.ts's `isDesktop`
+// detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
+// so shared links from the desktop build point at the public GitHub Pages deployment instead.
+const PUBLIC_BASE_URL = 'https://sk0ya.github.io/Pochi/';
+
+function readAutosave(): Doc | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Doc;
+    if (Array.isArray(parsed.shapes) && Array.isArray(parsed.connectors)) return parsed;
+  } catch {
+    /* first run / corrupt storage */
+  }
+  return null;
+}
 
 function init(): EditorState {
   let doc: Doc | null = null;
   let vim = false;
   try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Doc;
-      if (Array.isArray(parsed.shapes) && Array.isArray(parsed.connectors)) doc = parsed;
-    }
+    // A `#d=` share link takes priority over the localStorage autosave, but decoding it is
+    // async (CompressionStream), so it can't be resolved here in the synchronous reducer
+    // init - the startup effect below loads it and dispatches LOAD once decoded. Skip the
+    // autosave read in that case so it can't win a race by rendering first; if the share
+    // payload turns out corrupt, that same effect falls back to loading the autosave itself.
+    if (!location.hash.startsWith(SHARE_HASH_PREFIX)) doc = readAutosave();
     vim = localStorage.getItem(VIM_KEY) === 'on';
   } catch {
     /* first run */
@@ -55,6 +74,16 @@ export default function App() {
   const [state, dispatch] = useReducer(reduce, undefined, init);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // True from mount until the share-hash startup effect below resolves (success or failure).
+  // `init()` already skipped the localStorage autosave read in this case (see its comment);
+  // this flag keeps the autosave *write* effect from firing on the still-empty initial doc
+  // in the meantime, so a slow decode can never clobber a real autosave with an empty one.
+  const hashPendingRef = useRef(location.hash.startsWith(SHARE_HASH_PREFIX));
+  // One-shot latch for that effect, separate from hashPendingRef (which must stay true until
+  // the decode *resolves*, so it can't double as the latch): StrictMode double-invokes
+  // effects, and run #1 clears the hash synchronously, so an unlatched run #2 would decode
+  // the now-empty hash to null and race a stale autosave-fallback LOAD against the real one.
+  const hashLoadStartedRef = useRef(false);
 
   /* Mirror the internal shape clipboard onto the real OS clipboard (tagged so
    * we can recognize our own echo on paste) whenever it changes. This makes
@@ -67,9 +96,38 @@ export default function App() {
     });
   }, [state.clipboard]);
 
+  /* Load a `#d=<payload>` share link at startup, in place of the localStorage autosave
+   * (see init()/hashPendingRef above for why the autosave read was skipped). Clears the
+   * hash immediately so a later reload doesn't re-import the same snapshot over newer
+   * edits. Runs once on mount; intentionally ignores subsequent hash changes. */
+  useEffect(() => {
+    if (!hashPendingRef.current || hashLoadStartedRef.current) return;
+    hashLoadStartedRef.current = true;
+    const payload = location.hash.slice(SHARE_HASH_PREFIX.length);
+    history.replaceState(null, '', location.pathname + location.search);
+    // If the user manages to edit before the (async) decode resolves, their edit wins:
+    // a doc identity change from this initial reference means "don't clobber it below".
+    const docAtStart = stateRef.current.doc;
+    void (async () => {
+      const doc = await decodeShareDoc(payload);
+      const loaded = doc ?? readAutosave();
+      hashPendingRef.current = false;
+      if (stateRef.current.doc !== docAtStart) {
+        dispatch({ type: 'MSG', msg: 'share link ignored: document was edited while it loaded' });
+        return;
+      }
+      if (loaded) dispatch({ type: 'LOAD', doc: loaded, fileName: null });
+      dispatch({
+        type: 'MSG',
+        msg: doc ? 'loaded diagram from share link' : 'share link is invalid or corrupted',
+      });
+    })();
+  }, []);
+
   /* autosave */
   useEffect(() => {
     const t = setTimeout(() => {
+      if (hashPendingRef.current) return; // let the share-link load above resolve first
       try {
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.doc));
       } catch {
@@ -149,6 +207,40 @@ export default function App() {
     }
   }, []);
 
+  /** Builds a `#d=<payload>` share URL for the current doc and copies it to the OS clipboard,
+   * falling back to a `prompt()` dialog (so the user can still copy it manually) when the
+   * Clipboard API is unavailable or denied. The base URL is the public GitHub Pages
+   * deployment when running in the desktop shell, since a `https://app.pochi/...` URL only
+   * resolves inside that WebView2 instance - see PUBLIC_BASE_URL above. */
+  const doShare = useCallback(async () => {
+    const s = stateRef.current;
+    let payload: string;
+    try {
+      payload = await encodeShareDoc(s.doc);
+    } catch {
+      dispatch({ type: 'MSG', msg: 'share failed: could not encode diagram' });
+      return;
+    }
+    const base = isDesktop ? PUBLIC_BASE_URL : location.origin + location.pathname;
+    const url = `${base}${SHARE_HASH_PREFIX}${payload}`;
+    const kb = (payload.length / 1024).toFixed(1);
+    const warn = payload.length > SHARE_URL_WARN_CHARS ? ' — may be too long for some apps' : '';
+    let copied = false;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard API unavailable');
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } catch {
+      /* no permission / API unavailable; fall back to a prompt below */
+    }
+    if (copied) {
+      dispatch({ type: 'MSG', msg: `share URL copied (${kb} KB${warn})` });
+    } else {
+      window.prompt('share URL (copy manually):', url);
+      dispatch({ type: 'MSG', msg: `share URL ready, ${kb} KB${warn} — clipboard unavailable, copy from the dialog` });
+    }
+  }, []);
+
   const addImageFromDataUrl = useCallback(async (dataUrl: string) => {
     const dims = await new Promise<{ w: number; h: number }>((resolve) => {
       const img = new Image();
@@ -194,6 +286,9 @@ export default function App() {
         case 'png':
           await doCopyPng();
           break;
+        case 'share':
+          await doShare();
+          break;
         case 'export':
           if (rest[0] === 'svg') await doExportSvg();
           else if (rest[0] === 'png') await doCopyPng();
@@ -221,7 +316,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, doExportSvg, doCopyPng],
+    [save, open, doExportSvg, doCopyPng, doShare],
   );
 
   /* global keyboard */
