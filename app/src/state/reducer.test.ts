@@ -970,3 +970,31 @@ describe('Frame: SET_SHAPE_KIND conversion', () => {
     expect(state.doc.shapes[0].filled).toBe(true);
   });
 });
+
+describe('DISTRIBUTE', () => {
+  it('distributes 3+ selected shapes along the axis as one undo step', () => {
+    const a = rect('a', 0, 0, 10, 10);
+    const b = rect('b', 30, 0, 10, 10);
+    const c = rect('c', 100, 0, 10, 10);
+    let state = vimState({ shapes: [a, b, c], connectors: [] });
+    state = reduce(state, { type: 'DISTRIBUTE', ids: ['a', 'b', 'c'], axis: 'h' });
+    expect(state.doc.shapes.find((s) => s.id === 'a')).toMatchObject({ x: 0 });
+    expect(state.doc.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 50 });
+    expect(state.doc.shapes.find((s) => s.id === 'c')).toMatchObject({ x: 100 });
+
+    state = reduce(state, { type: 'UNDO' });
+    expect(state.doc.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 30 });
+
+    state = reduce(state, { type: 'REDO' });
+    expect(state.doc.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 50 });
+  });
+
+  it('shows a status message and no-ops when fewer than 3 shapes are selected', () => {
+    const a = rect('a', 0, 0, 10, 10);
+    const b = rect('b', 30, 0, 10, 10);
+    const state = vimState({ shapes: [a, b], connectors: [] });
+    const next = reduce(state, { type: 'DISTRIBUTE', ids: ['a', 'b'], axis: 'h' });
+    expect(next.msg).toBe('select 3+ items to distribute');
+    expect(next.doc).toEqual(state.doc);
+  });
+});

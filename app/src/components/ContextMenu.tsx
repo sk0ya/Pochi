@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
-import type { AlignEdge } from '../model/doc';
+import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { ArrowDirection, FontSize, ShapeKind, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -59,6 +59,11 @@ const ALIGN_EDGES: Array<[AlignEdge, string, string]> = [
   ['bottom', '⤓', '下揃え'],
 ];
 
+const DISTRIBUTE_AXES: Array<[DistributeAxis, string, string]> = [
+  ['h', '⇹', '横に等間隔'],
+  ['v', '⇳', '縦に等間隔'],
+];
+
 export function ContextMenu({
   state,
   dispatch,
@@ -110,6 +115,7 @@ export function ContextMenu({
   const canChangeShape = !!singleShape && singleShape.kind !== 'image';
   const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
   const canAlign = alignableCount >= 2;
+  const canDistribute = alignableCount >= 3;
   // Only a single-item target has one unambiguous "current" size to highlight;
   // a multi-selection may mix sizes, so none of the buttons is shown active then.
   const currentFontSize = ids.length === 1 ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
@@ -122,7 +128,12 @@ export function ContextMenu({
         : singleConnector
           ? 540
           : 420
-      : 90) + (isFillable ? 60 : 0) + (canChangeShape ? 60 : 0) + (canAlign ? 90 : 0) + (hasTarget ? 60 : 0);
+      : 90) +
+    (isFillable ? 60 : 0) +
+    (canChangeShape ? 60 : 0) +
+    (canAlign ? 90 : 0) +
+    (canDistribute ? 90 : 0) +
+    (hasTarget ? 60 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -148,6 +159,24 @@ export function ContextMenu({
                     className="direction-swatch"
                     title={title}
                     onClick={() => run({ type: 'ALIGN', ids, edge })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="context-sep" />
+            </>
+          )}
+          {canDistribute && (
+            <>
+              <div className="context-label">等間隔配置</div>
+              <div className="direction-row">
+                {DISTRIBUTE_AXES.map(([axis, icon, title]) => (
+                  <button
+                    key={axis}
+                    className="direction-swatch"
+                    title={title}
+                    onClick={() => run({ type: 'DISTRIBUTE', ids, axis })}
                   >
                     {icon}
                   </button>

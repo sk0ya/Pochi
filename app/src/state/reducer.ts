@@ -7,6 +7,7 @@ import {
   connectorAt,
   connectorLabelPos,
   deleteItem,
+  distributeShapes,
   docBounds,
   findConnector,
   findShape,
@@ -28,7 +29,7 @@ import {
   updateShape,
 } from '../model/doc';
 import { classifyStroke } from '../model/sketch';
-import type { AlignEdge } from '../model/doc';
+import type { AlignEdge, DistributeAxis } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
@@ -227,6 +228,7 @@ export type Action =
   | { type: 'SET_SHAPE_KIND'; ids: string[]; kind: ShapeKind }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'ALIGN'; ids: string[]; edge: AlignEdge }
+  | { type: 'DISTRIBUTE'; ids: string[]; axis: DistributeAxis }
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
   | { type: 'COPY' }
@@ -1683,6 +1685,14 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         bottom: '下揃え',
       }[action.edge];
       return commit(state, alignShapes(state.doc, action.ids, action.edge), { msg });
+    }
+
+    case 'DISTRIBUTE': {
+      // Distributing needs a first/middle/last shape to space out; mirrors GROUP's
+      // "select 2+ items to group" style of feedback when the selection is too small.
+      if (action.ids.length < 3) return { ...state, msg: 'select 3+ items to distribute' };
+      const msg = action.axis === 'h' ? '横に等間隔' : '縦に等間隔';
+      return commit(state, distributeShapes(state.doc, action.ids, action.axis), { msg });
     }
 
     case 'DUPLICATE':

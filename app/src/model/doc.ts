@@ -547,6 +547,67 @@ export function alignShapes(doc: Doc, ids: string[], edge: AlignEdge): Doc {
   };
 }
 
+export type DistributeAxis = 'h' | 'v';
+
+/** Distribute shapes among `ids` evenly along `axis` ('h' = horizontal, 'v' = vertical).
+ * Sorts by bbox center along the axis, leaves the first and last shape (in that sorted order)
+ * exactly where they are, and spaces the shapes in between so the GAPS between adjacent
+ * bounding boxes are equal — the "distribute horizontally/vertically" semantics used by
+ * Figma/PowerPoint, which reads as evenly spaced even when the shapes have different sizes
+ * (unlike spacing centers evenly, which visually bunches up larger shapes). If the shapes
+ * overlap enough that the total gap budget would be negative, that gap-based layout has no
+ * well-defined solution, so this falls back to equal center-to-center spacing instead (still
+ * anchored on the first/last shape's original center). No-op with fewer than 3 shapes among
+ * `ids` (need at least one to actually move for "distribute" to mean anything). Mirrors
+ * alignShapes: connectors in `ids` are ignored (bound connectors follow their shape
+ * automatically since endpoints resolve live; free-floating ones are left as-is), and a
+ * shape's group membership doesn't change how it's handled — each shape moves independently. */
+export function distributeShapes(doc: Doc, ids: string[], axis: DistributeAxis): Doc {
+  const idSet = new Set(ids);
+  const targets = doc.shapes.filter((s) => idSet.has(s.id));
+  if (targets.length < 3) return doc;
+
+  const pos = (s: Shape) => (axis === 'h' ? s.x : s.y);
+  const size = (s: Shape) => (axis === 'h' ? s.w : s.h);
+  const center = (s: Shape) => pos(s) + size(s) / 2;
+
+  const sorted = [...targets].sort((a, b) => center(a) - center(b));
+  const n = sorted.length;
+  const first = sorted[0];
+  const last = sorted[n - 1];
+
+  const span = pos(last) + size(last) - pos(first);
+  const sumSizes = sorted.reduce((sum, s) => sum + size(s), 0);
+  const gap = (span - sumSizes) / (n - 1);
+
+  const newPos = new Map<string, number>();
+  if (gap >= 0) {
+    // Gap-based: equal empty space between adjacent bounding boxes.
+    let cursor = pos(first) + size(first) + gap;
+    for (let i = 1; i < n - 1; i++) {
+      newPos.set(sorted[i].id, cursor);
+      cursor += size(sorted[i]) + gap;
+    }
+  } else {
+    // Negative gap budget (overlapping shapes): fall back to equal center spacing.
+    const firstCenter = center(first);
+    const lastCenter = center(last);
+    const step = (lastCenter - firstCenter) / (n - 1);
+    for (let i = 1; i < n - 1; i++) {
+      newPos.set(sorted[i].id, firstCenter + step * i - size(sorted[i]) / 2);
+    }
+  }
+
+  return {
+    ...doc,
+    shapes: doc.shapes.map((s) => {
+      const p = newPos.get(s.id);
+      if (p === undefined) return s;
+      return axis === 'h' ? { ...s, x: p } : { ...s, y: p };
+    }),
+  };
+}
+
 /** All shape/connector ids sharing a groupId. */
 export function groupMembers(doc: Doc, groupId: string): string[] {
   const ids: string[] = [];

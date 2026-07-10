@@ -3,6 +3,7 @@ import {
   borderPoint,
   connectorPath,
   deleteItem,
+  distributeShapes,
   distToSegment,
   FRAME_BORDER_BAND,
   frameContainedIds,
@@ -12,6 +13,7 @@ import {
   measureLabel,
   reorderItems,
   resizeAnchor,
+  resolveEndpoint,
   scaleShapes,
   shapeAt,
   subsetDoc,
@@ -315,6 +317,84 @@ describe('scaleShapes', () => {
     const doc: Doc = { shapes: [rect('s1', 10, 10, 20, 20)], connectors: [] };
     const scaled = scaleShapes(doc, ['s1'], 40, 40, { x: 0, y: 0 }, 20, 20);
     expect(scaled.shapes[0]).toMatchObject({ x: 20, y: 20, w: 40, h: 40 });
+  });
+});
+
+describe('distributeShapes', () => {
+  it('distributes 3 equal-size shapes horizontally so gaps between bboxes are equal, anchoring first/last', () => {
+    // a: [0,10], b: [30,40] (arbitrary starting point), c: [100,110]
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 30, 0, 10, 10), rect('c', 100, 0, 10, 10)],
+      connectors: [],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c'], 'h');
+    // total span 0..110, minus 3*10 width = 80 of gap, split into 2 gaps of 40.
+    expect(out.shapes.find((s) => s.id === 'a')).toMatchObject({ x: 0 }); // first: unchanged
+    expect(out.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 50 }); // 0+10+40
+    expect(out.shapes.find((s) => s.id === 'c')).toMatchObject({ x: 100 }); // last: unchanged
+  });
+
+  it('distributes vertically along y the same way', () => {
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 0, 30, 10, 10), rect('c', 0, 100, 10, 10)],
+      connectors: [],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c'], 'v');
+    expect(out.shapes.find((s) => s.id === 'a')).toMatchObject({ y: 0 });
+    expect(out.shapes.find((s) => s.id === 'b')).toMatchObject({ y: 50 });
+    expect(out.shapes.find((s) => s.id === 'c')).toMatchObject({ y: 100 });
+  });
+
+  it('accounts for unequal sizes so the empty gap (not the center spacing) is equal', () => {
+    // a: [0,20] w=20, b: [50,90] w=40 (moves), c: [200,210] w=10
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 20, 10), rect('b', 50, 0, 40, 10), rect('c', 200, 0, 10, 10)],
+      connectors: [],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c'], 'h');
+    // span = 210 - 0 = 210, sumSizes = 20+40+10 = 70, gap = (210-70)/2 = 70.
+    expect(out.shapes.find((s) => s.id === 'a')).toMatchObject({ x: 0, w: 20 });
+    expect(out.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 90, w: 40 }); // 0+20+70
+    expect(out.shapes.find((s) => s.id === 'c')).toMatchObject({ x: 200, w: 10 });
+  });
+
+  it('falls back to equal center spacing when bboxes overlap enough that the gap budget goes negative', () => {
+    // a: [0,50] center 25, b: [5,55] center 30, c: [20,70] center 45 — heavily overlapping,
+    // so span (70) - sumSizes (150) = -80 would make the gap-based layout negative.
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 50, 10), rect('b', 5, 0, 50, 10), rect('c', 20, 0, 50, 10)],
+      connectors: [],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c'], 'h');
+    // firstCenter=25, lastCenter=45, step=10 -> b's center becomes 35 -> x = 35 - 25 = 10.
+    expect(out.shapes.find((s) => s.id === 'a')).toMatchObject({ x: 0 }); // first: unchanged
+    expect(out.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 10 });
+    expect(out.shapes.find((s) => s.id === 'c')).toMatchObject({ x: 20 }); // last: unchanged
+  });
+
+  it('is a no-op with fewer than 3 shapes among ids', () => {
+    const doc: Doc = { shapes: [rect('a', 0, 0, 10, 10), rect('b', 100, 0, 10, 10)], connectors: [] };
+    expect(distributeShapes(doc, ['a', 'b'], 'h')).toBe(doc);
+  });
+
+  it('ignores connector ids in the selection, same as alignShapes', () => {
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 30, 0, 10, 10), rect('c', 100, 0, 10, 10)],
+      connectors: [{ id: 'c1', from: { x: 0, y: 0 }, to: { x: 5, y: 5 }, label: '' }],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c', 'c1'], 'h');
+    expect(out.connectors).toEqual(doc.connectors);
+    expect(out.shapes.find((s) => s.id === 'b')).toMatchObject({ x: 50 });
+  });
+
+  it("a bound connector's endpoint follows its shape after distribution (resolves live)", () => {
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 30, 0, 10, 10), rect('c', 100, 0, 10, 10)],
+      connectors: [{ id: 'c1', from: { shapeId: 'b', x: 0, y: 0 }, to: { x: 200, y: 200 }, label: '' }],
+    };
+    const out = distributeShapes(doc, ['a', 'b', 'c'], 'h');
+    // b moved to x=50; the connector's bound endpoint resolves to b's live center, x=55.
+    expect(resolveEndpoint(out, out.connectors[0].from).p.x).toBe(55);
   });
 });
 
