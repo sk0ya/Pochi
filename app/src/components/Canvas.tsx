@@ -234,8 +234,9 @@ function connectRing(s: Shape, offset: number) {
       </>
     );
   }
-  if (s.kind === 'triangle') {
-    const points = trianglePoints(s, offset);
+  const points =
+    s.kind === 'triangle' ? trianglePoints(s, offset) : s.kind === 'diamond' ? diamondPoints(s, offset) : undefined;
+  if (points) {
     return (
       <>
         <polygon
