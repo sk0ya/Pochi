@@ -45,6 +45,7 @@ function init(): EditorState {
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
   'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
+  'n', 'N',
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -230,7 +231,7 @@ export default function App() {
       const s = stateRef.current;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-      if (s.mode === 'insert' || s.mode === 'command') return;
+      if (s.mode === 'insert' || s.mode === 'command' || s.mode === 'search') return;
       if (s.contextMenu) {
         dispatch({ type: 'CONTEXT_MENU_CLOSE' });
         if (e.key === 'Escape') return;
@@ -302,6 +303,11 @@ export default function App() {
       if (s.vim && e.key === ':' && s.mode === 'normal') {
         e.preventDefault();
         dispatch({ type: 'CMD_OPEN' });
+        return;
+      }
+      if (s.vim && e.key === '/' && s.mode === 'normal') {
+        e.preventDefault();
+        dispatch({ type: 'SEARCH_OPEN' });
         return;
       }
       if (e.key === '+' || e.key === '=' || e.key === '-') {

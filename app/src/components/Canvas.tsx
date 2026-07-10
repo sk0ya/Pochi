@@ -3,6 +3,7 @@ import type { Dispatch } from 'react';
 import {
   bboxOf,
   connectorAt,
+  connectorLabelPos,
   connectorPath,
   findConnector,
   findShape,
@@ -741,8 +742,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const connView = (c: Connector) => {
     const path = connectorPath(doc, c);
     const points = path.map((p) => `${p.x},${p.y}`).join(' ');
-    const mid = path[Math.floor((path.length - 1) / 2)];
-    const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
+    const labelPos = connectorLabelPos(doc, c);
     const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
     // The connector's own color always stays visible; selection/hot is a
@@ -805,8 +805,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           ))}
         <Label
           label={c.label}
-          cx={(mid.x + midNext.x) / 2}
-          cy={(mid.y + midNext.y) / 2 - 12}
+          cx={labelPos.x}
+          cy={labelPos.y - 12}
           color={c.color ?? 'var(--muted)'}
         />
       </g>

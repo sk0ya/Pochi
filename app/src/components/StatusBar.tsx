@@ -15,7 +15,7 @@ export function StatusBar({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (state.mode === 'command') inputRef.current?.focus();
+    if (state.mode === 'command' || state.mode === 'search') inputRef.current?.focus();
   }, [state.mode]);
 
   if (state.mode === 'command') {
@@ -35,6 +35,32 @@ export function StatusBar({
             } else if (e.key === 'Escape') {
               e.preventDefault();
               dispatch({ type: 'CMD_CLOSE' });
+            }
+            e.stopPropagation();
+          }}
+          spellCheck={false}
+        />
+      </div>
+    );
+  }
+
+  if (state.mode === 'search') {
+    return (
+      <div className="statusbar">
+        <span className="cmd-colon">/</span>
+        <input
+          ref={inputRef}
+          className="cmd-input"
+          value={state.search}
+          onChange={(e) => dispatch({ type: 'SEARCH_SET', text: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              dispatch({ type: 'SEARCH_CONFIRM' });
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              dispatch({ type: 'SEARCH_CLOSE' });
             }
             e.stopPropagation();
           }}

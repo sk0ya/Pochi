@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, reduce } from './reducer';
 import type { EditorState } from './reducer';
+import { labelCenter } from '../model/doc';
 import type { Doc, Shape } from '../model/types';
 import { GRID } from '../model/types';
 
@@ -13,6 +14,8 @@ const rect = (id: string, x: number, y: number, w = GRID * 4, h = GRID * 4): Sha
   h,
   label: '',
 });
+
+const labelCenterOf = labelCenter;
 
 /** Fresh vim-mode state (HINT is a vim-only feature) with `doc` loaded and the
  * cursor at the default `initialState` position. */
@@ -208,5 +211,191 @@ describe('HINT mode: Esc and invalid keys', () => {
     const ignored = key(narrowed, '2');
     expect(ignored.mode).toBe('hint');
     expect(ignored.hint!.typed).toBe(prefixKey);
+  });
+});
+
+const withLabel = (id: string, x: number, y: number, label: string): Shape => ({ ...rect(id, x, y), label });
+const arrow = (id: string, from: { x: number; y: number }, to: { x: number; y: number }, label = '') => ({
+  id,
+  from,
+  to,
+  label,
+});
+
+const open = (state: EditorState): EditorState => reduce(state, { type: 'SEARCH_OPEN' });
+const setQuery = (state: EditorState, text: string): EditorState => reduce(state, { type: 'SEARCH_SET', text });
+const confirm = (state: EditorState): EditorState => reduce(state, { type: 'SEARCH_CONFIRM' });
+/** Types a query into a freshly opened search prompt and confirms it in one go. */
+const search = (state: EditorState, query: string): EditorState => confirm(setQuery(open(state), query));
+
+describe('search (/) mode: opening and typing', () => {
+  it('SEARCH_OPEN enters search mode with an empty query', () => {
+    const state = open(vimState({ shapes: [], connectors: [] }));
+    expect(state.mode).toBe('search');
+    expect(state.search).toBe('');
+  });
+
+  it('SEARCH_SET updates the typed query without touching the doc or matching yet', () => {
+    const state = setQuery(open(vimState({ shapes: [], connectors: [] })), 'hello');
+    expect(state.mode).toBe('search');
+    expect(state.search).toBe('hello');
+  });
+
+  it('Esc (SEARCH_CLOSE) cancels the prompt, leaving cursor and selection untouched', () => {
+    const s = withLabel('s1', GRID * 5, GRID * 5, 'target');
+    const before = vimState({ shapes: [s], connectors: [] });
+    const opened = setQuery(open(before), 'target');
+    const cancelled = reduce(opened, { type: 'SEARCH_CLOSE' });
+    expect(cancelled.mode).toBe('normal');
+    expect(cancelled.search).toBe('');
+    expect(cancelled.cursor).toEqual(before.cursor);
+    expect(cancelled.selectedIds).toEqual([]);
+    // Esc doesn't count as a confirmed search, so n/N still has nothing to repeat.
+    expect(cancelled.lastSearch).toBeNull();
+  });
+
+  it('empty query + Enter is a no-op that just closes the prompt', () => {
+    const s = withLabel('s1', GRID * 5, GRID * 5, 'target');
+    const before = vimState({ shapes: [s], connectors: [] });
+    const result = search(before, '');
+    expect(result.mode).toBe('normal');
+    expect(result.selectedIds).toEqual([]);
+    expect(result.cursor).toEqual(before.cursor);
+    expect(result.lastSearch).toBeNull();
+  });
+});
+
+describe('search (/) mode: confirming a match', () => {
+  it('jumps to and selects a shape whose label case-insensitively contains the query', () => {
+    const s = withLabel('s1', GRID * 5, GRID * 5, 'Hello World');
+    const state = search(vimState({ shapes: [s], connectors: [] }), 'hello');
+    expect(state.mode).toBe('normal');
+    expect(state.selectedIds).toEqual(['s1']);
+    expect(state.cursor).toEqual(labelCenterOf(s));
+    expect(state.lastSearch).toBe('hello');
+  });
+
+  it('matches a connector label and jumps to its label position', () => {
+    const c = arrow('c1', { x: 0, y: 0 }, { x: GRID * 20, y: 0 }, 'connects here');
+    const state = search(vimState({ shapes: [], connectors: [c] }), 'connects');
+    expect(state.mode).toBe('normal');
+    expect(state.selectedIds).toEqual(['c1']);
+    // Straight connector with no shape endpoints: label position is the segment midpoint.
+    expect(state.cursor).toEqual({ x: GRID * 10, y: 0 });
+  });
+
+  it('jumps to the nearest match by distance from the current cursor, not document order', () => {
+    const cursor = initialState(null, true).cursor;
+    const far = withLabel('far', cursor.x + GRID * 100, cursor.y, 'match');
+    const near = withLabel('near', cursor.x + GRID * 2, cursor.y, 'match');
+    const state = search(vimState({ shapes: [far, near], connectors: [] }), 'match');
+    expect(state.selectedIds).toEqual(['near']);
+  });
+
+  it('expands the selection to the whole group, like a click or hint jump would', () => {
+    const a = { ...withLabel('a', 0, 0, 'target'), groupId: 'g1' };
+    const b = { ...rect('b', GRID * 10, 0), groupId: 'g1' };
+    const state = search(vimState({ shapes: [a, b], connectors: [] }), 'target');
+    expect(state.selectedIds).toEqual(['a', 'b']);
+    expect(state.cursor).toEqual(labelCenterOf(a));
+  });
+
+  it('shows "no match: <query>" and stays put when nothing matches', () => {
+    const s = withLabel('s1', GRID * 5, GRID * 5, 'apple');
+    const before = vimState({ shapes: [s], connectors: [] });
+    const state = search(before, 'banana');
+    expect(state.mode).toBe('normal');
+    expect(state.msg).toBe('no match: banana');
+    expect(state.selectedIds).toEqual([]);
+    expect(state.cursor).toEqual(before.cursor);
+    // The failed query still becomes the "last search" for n/N.
+    expect(state.lastSearch).toBe('banana');
+  });
+});
+
+describe('n / N: repeat search', () => {
+  it('n cycles forward through matches in document order (shapes then connectors), wrapping around', () => {
+    // Cursor starts at the default (GRID*10, GRID*10); s1 sits right on top of it while
+    // s2 and c1 are placed further away, in increasing distance order.
+    const cursor = initialState(null, true).cursor;
+    const s1 = withLabel('s1', cursor.x, cursor.y, 'foo-1');
+    const s2 = withLabel('s2', cursor.x + GRID * 30, cursor.y, 'foo-2');
+    const c1 = arrow(
+      'c1',
+      { x: cursor.x, y: cursor.y + GRID * 60 },
+      { x: cursor.x + GRID * 10, y: cursor.y + GRID * 60 },
+      'foo-3',
+    );
+    const state = search(vimState({ shapes: [s1, s2], connectors: [c1] }), 'foo');
+    expect(state.selectedIds).toEqual(['s1']); // nearest to the default cursor
+
+    const n1 = key(state, 'n');
+    expect(n1.selectedIds).toEqual(['s2']);
+    const n2 = key(n1, 'n');
+    expect(n2.selectedIds).toEqual(['c1']);
+    const n3 = key(n2, 'n'); // wraps back to the first match
+    expect(n3.selectedIds).toEqual(['s1']);
+  });
+
+  it('n keeps cycling past grouped sibling matches instead of re-locking onto the group', () => {
+    // a and b are grouped and both match, so every jump inside the group selects [a, b].
+    // n must still advance a → b → c → a rather than re-finding the first selected match.
+    const cursor = initialState(null, true).cursor;
+    const a = { ...withLabel('a', cursor.x, cursor.y, 'foo-a'), groupId: 'g1' };
+    const b = { ...withLabel('b', cursor.x + GRID * 30, cursor.y, 'foo-b'), groupId: 'g1' };
+    const c = withLabel('c', cursor.x + GRID * 60, cursor.y, 'foo-c');
+    const state = search(vimState({ shapes: [a, b, c], connectors: [] }), 'foo');
+    expect(state.selectedIds).toEqual(['a', 'b']); // landed on a, group-expanded
+
+    const n1 = key(state, 'n');
+    expect(n1.selectedIds).toEqual(['a', 'b']); // landed on b, same group
+    expect(n1.cursor).toEqual(labelCenterOf(b));
+    const n2 = key(n1, 'n');
+    expect(n2.selectedIds).toEqual(['c']);
+    const n3 = key(n2, 'n'); // wraps back to a
+    expect(n3.selectedIds).toEqual(['a', 'b']);
+    expect(n3.cursor).toEqual(labelCenterOf(a));
+  });
+
+  it('N cycles backward, wrapping around to the last match', () => {
+    const s1 = withLabel('s1', 0, 0, 'foo-1');
+    const s2 = withLabel('s2', GRID * 30, 0, 'foo-2');
+    const state = search(vimState({ shapes: [s1, s2], connectors: [] }), 'foo');
+    expect(state.selectedIds).toEqual(['s1']);
+    const p1 = key(state, 'N'); // wraps backward past the first match
+    expect(p1.selectedIds).toEqual(['s2']);
+    const p2 = key(p1, 'N');
+    expect(p2.selectedIds).toEqual(['s1']);
+  });
+
+  it('re-evaluates against the current doc on every press, so a deleted match does not crash', () => {
+    const s1 = withLabel('s1', 0, 0, 'foo-1');
+    const s2 = withLabel('s2', GRID * 30, 0, 'foo-2');
+    const state = search(vimState({ shapes: [s1, s2], connectors: [] }), 'foo');
+    expect(state.selectedIds).toEqual(['s1']);
+    // Delete the currently-selected match out from under the search.
+    const doc = { shapes: [s2], connectors: [] };
+    const afterDelete: EditorState = { ...state, doc, selectedIds: [] };
+    const n1 = key(afterDelete, 'n');
+    expect(n1.mode).toBe('normal');
+    expect(n1.selectedIds).toEqual(['s2']);
+  });
+
+  it('shows a message and does nothing when there is no previous search', () => {
+    const s = withLabel('s1', 0, 0, 'foo');
+    const before = vimState({ shapes: [s], connectors: [] });
+    const state = key(before, 'n');
+    expect(state.selectedIds).toEqual([]);
+    expect(state.msg).toBe('no previous search');
+  });
+
+  it('shows "no match" and leaves selection alone if the last search now matches nothing', () => {
+    const s = withLabel('s1', 0, 0, 'foo');
+    const state = search(vimState({ shapes: [s], connectors: [] }), 'foo');
+    expect(state.selectedIds).toEqual(['s1']);
+    const doc = { shapes: [{ ...s, label: 'bar' }], connectors: [] };
+    const noMatch = key({ ...state, doc }, 'n');
+    expect(noMatch.msg).toBe('no match: foo');
+    expect(noMatch.selectedIds).toEqual(['s1']); // untouched
   });
 });

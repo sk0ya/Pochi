@@ -219,6 +219,15 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
   return [a, b];
 }
 
+/** Point to center a connector's label on: the midpoint of the path's middle segment
+ * (mirrors how the label is rendered, and where `n`/`N` search-jump lands). */
+export function connectorLabelPos(doc: Doc, c: Connector): Pt {
+  const path = connectorPath(doc, c);
+  const mid = path[Math.floor((path.length - 1) / 2)];
+  const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
+  return { x: (mid.x + midNext.x) / 2, y: (mid.y + midNext.y) / 2 };
+}
+
 /** Point on the border of a shape along the ray from its center toward `toward`. */
 export function borderPoint(s: Shape, toward: Pt): Pt {
   if (s.kind === 'triangle') {

@@ -5,6 +5,7 @@ import {
   bboxOf,
   clearConnectorWaypoints,
   connectorAt,
+  connectorLabelPos,
   deleteItem,
   docBounds,
   findConnector,
@@ -30,7 +31,7 @@ import type { AlignEdge } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
-export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint';
+export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
 
 /** A shape's assigned EasyMotion-style jump label, and where its badge/cursor should land. */
 export interface HintEntry {
@@ -115,6 +116,13 @@ export interface EditorState {
   sketch: Pt[] | null;
   count: string;
   cmd: string;
+  /** `/` search prompt: text typed so far. */
+  search: string;
+  /** Last confirmed `/` query, used by n/N; persists until replaced by a new search. */
+  lastSearch: string | null;
+  /** Id of the match the last search jump landed on. n/N step relative to this — the selection
+   * can't serve that role, since a group jump also selects sibling matches. */
+  lastSearchHit: string | null;
   msg: string;
   vim: boolean;
   showHelp: boolean;
@@ -148,6 +156,10 @@ export type Action =
   | { type: 'CMD_OPEN' }
   | { type: 'CMD_SET'; text: string }
   | { type: 'CMD_CLOSE' }
+  | { type: 'SEARCH_OPEN' }
+  | { type: 'SEARCH_SET'; text: string }
+  | { type: 'SEARCH_CONFIRM' }
+  | { type: 'SEARCH_CLOSE' }
   | { type: 'SET_TOOL'; tool: MouseTool }
   | { type: 'START_DRAW_AT'; kind: DrawKind; p: Pt }
   | { type: 'START_ARROW_AT'; p: Pt; shapeId?: string }
@@ -224,6 +236,9 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     sketch: null,
     count: '',
     cmd: '',
+    search: '',
+    lastSearch: null,
+    lastSearchHit: null,
     msg: 'Press ? for help',
     vim,
     showHelp: false,
@@ -645,6 +660,77 @@ function duplicateSelection(state: EditorState): EditorState {
   return pasteWithOffset(state, clip, GRID * 2);
 }
 
+interface SearchMatch {
+  id: string;
+  pos: Pt;
+}
+
+/** Case-insensitive substring match against shape and connector labels, in document order
+ * (shapes then connectors, array order) — this fixed order is what n/N cycle through. */
+function searchMatches(doc: Doc, query: string): SearchMatch[] {
+  const q = query.toLowerCase();
+  const matches: SearchMatch[] = [];
+  for (const s of doc.shapes) {
+    if (s.label.toLowerCase().includes(q)) matches.push({ id: s.id, pos: labelCenter(s) });
+  }
+  for (const c of doc.connectors) {
+    if (c.label.toLowerCase().includes(q)) matches.push({ id: c.id, pos: connectorLabelPos(doc, c) });
+  }
+  return matches;
+}
+
+/** Jumps the cursor to `hit` and selects it (whole group, if grouped) — same semantics as a
+ * hint-jump landing or a click. Records the hit as the position n/N step from. */
+function jumpToMatch(state: EditorState, hit: SearchMatch): EditorState {
+  const gid = groupIdOf(state.doc, hit.id);
+  return {
+    ...state,
+    cursor: snapPt(hit.pos),
+    selectedIds: gid ? groupMembers(state.doc, gid) : [hit.id],
+    lastSearchHit: hit.id,
+    count: '',
+    msg: '',
+  };
+}
+
+/** Confirms the `/` search prompt: empty query closes with no effect; otherwise jumps to
+ * whichever match is nearest the current cursor and records the query for n/N. */
+function confirmSearch(state: EditorState): EditorState {
+  const query = state.search.trim();
+  if (!query) return { ...state, mode: 'normal', search: '' };
+  const matches = searchMatches(state.doc, query);
+  if (!matches.length) {
+    return {
+      ...state,
+      mode: 'normal',
+      search: '',
+      lastSearch: query,
+      lastSearchHit: null,
+      msg: `no match: ${query}`,
+      count: '',
+    };
+  }
+  const dist = (m: SearchMatch) => Math.hypot(m.pos.x - state.cursor.x, m.pos.y - state.cursor.y);
+  const nearest = matches.reduce((best, m) => (dist(m) < dist(best) ? m : best));
+  return { ...jumpToMatch(state, nearest), mode: 'normal', search: '', lastSearch: query };
+}
+
+/** n/N: re-evaluates the last search against the current doc (so a deleted shape can't crash
+ * it) and steps to the next/previous match in document order, wrapping around. Steps relative
+ * to the match the last jump landed on (`lastSearchHit`, not the selection — a group jump also
+ * selects sibling matches); if that hit no longer matches (deleted, relabeled, or a fresh
+ * no-match search), n starts at the first match and N at the last. */
+function stepSearch(state: EditorState, dir: 1 | -1): EditorState {
+  const query = state.lastSearch;
+  if (!query) return { ...state, msg: 'no previous search', count: '' };
+  const matches = searchMatches(state.doc, query);
+  if (!matches.length) return { ...state, msg: `no match: ${query}`, count: '' };
+  const curIdx = matches.findIndex((m) => m.id === state.lastSearchHit);
+  const n = matches.length;
+  const nextIdx = curIdx === -1 ? (dir === 1 ? 0 : n - 1) : (curIdx + dir + n) % n;
+  return jumpToMatch(state, matches[nextIdx]);
+}
+
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
     if (key === 'r') return reduceCore(state, { type: 'REDO' });
@@ -767,6 +853,10 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
     }
     case 'u':
       return reduceCore(state, { type: 'UNDO' });
+    case 'n':
+      return stepSearch(state, 1);
+    case 'N':
+      return stepSearch(state, -1);
     case '?':
       return { ...state, showHelp: !state.showHelp, count: '' };
     default:
@@ -961,7 +1051,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
   }
   switch (action.type) {
     case 'KEY': {
-      if (state.mode === 'insert' || state.mode === 'command') return state;
+      if (state.mode === 'insert' || state.mode === 'command' || state.mode === 'search') return state;
       const shift = !!action.shift;
       if (!state.vim) return handlePlainKey(state, action.key, action.ctrl, shift);
       if (state.mode === 'normal') return handleNormalKey(state, action.key, action.ctrl, shift);
@@ -1095,6 +1185,18 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'CMD_CLOSE':
       return { ...state, mode: 'normal', cmd: '' };
+
+    case 'SEARCH_OPEN':
+      return { ...state, mode: 'search', search: '', count: '' };
+
+    case 'SEARCH_SET':
+      return { ...state, search: action.text };
+
+    case 'SEARCH_CONFIRM':
+      return confirmSearch(state);
+
+    case 'SEARCH_CLOSE':
+      return { ...state, mode: 'normal', search: '' };
 
     case 'SET_TOOL':
       return { ...state, tool: action.tool };
