@@ -161,6 +161,24 @@ export function resizeHandlePoint(box: { x: number; y: number; w: number; h: num
   };
 }
 
+/** The four edge-midpoint resize handles: dragging one grows/shrinks a
+ * single axis, keeping the opposite edge fixed. Unlike the corner handle,
+ * these are always plain-bbox anchored (never a triangle's own vertex): the
+ * axis that doesn't change is scaled by 1, so its anchor coordinate is never
+ * actually used, and the changing axis's anchor is simply the opposite edge. */
+export function edgeResizeHandles(
+  box: { x: number; y: number; w: number; h: number },
+): Array<{ dir: 'n' | 's' | 'e' | 'w'; pos: Pt; sign: Pt; anchor: Pt }> {
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  return [
+    { dir: 'n', pos: { x: cx, y: box.y }, sign: { x: 0, y: -1 }, anchor: { x: box.x, y: box.y + box.h } },
+    { dir: 's', pos: { x: cx, y: box.y + box.h }, sign: { x: 0, y: 1 }, anchor: { x: box.x, y: box.y } },
+    { dir: 'w', pos: { x: box.x, y: cy }, sign: { x: -1, y: 0 }, anchor: { x: box.x + box.w, y: box.y } },
+    { dir: 'e', pos: { x: box.x + box.w, y: cy }, sign: { x: 1, y: 0 }, anchor: { x: box.x, y: box.y } },
+  ];
+}
+
 /** Nearest point where the ray from `o` in direction `d` (t >= 0) crosses the
  * polygon's boundary; null if it never does (shouldn't happen for `o` inside). */
 function rayPolygonBorder(o: Pt, d: Pt, verts: Pt[]): Pt | null {

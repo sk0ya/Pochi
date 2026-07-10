@@ -5,6 +5,7 @@ import {
   connectorAt,
   connectorLabelPos,
   connectorPath,
+  edgeResizeHandles,
   findConnector,
   findShape,
   FRAME_BORDER_BAND,
@@ -306,13 +307,14 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   );
 }
 
-/** How far outside the shape's edge each connect dot floats, so it doesn't
- * overlap the shape's own move-drag hit area. */
-const CONNECT_DOT_OFFSET = 10;
+/** How far outside the shape's edge each connect dot floats — past both the
+ * shape's own move-drag hit area and the edge resize handles, which sit
+ * right on the border, so the two don't compete for the same click. */
+const CONNECT_DOT_OFFSET = 18;
 /** Margin around a shape (beyond its bounds) that still counts as "hovering"
  * it, so the pointer can travel from the shape out to the connect dots
  * without the hover state dropping in between. Must exceed CONNECT_DOT_OFFSET. */
-const HOVER_MARGIN = 20;
+const HOVER_MARGIN = 26;
 
 /** Topmost shape whose bounds, expanded by `margin`, contain `p`. A frame's open interior
  * doesn't count (same reasoning as frameHitZone) — hovering a shape a frame contains must
@@ -464,9 +466,13 @@ interface DragState {
   /** world coords at drag start (move/resize) */
   startWorld: Pt;
   orig: { x: number; y: number; w: number; h: number };
-  /** kind === 'resize': +1/-1 per axis, depending on which side of the anchor
-   * the handle sits on, so dragging it always grows the shape away from the anchor. */
+  /** kind === 'resize': +1/-1/0 per axis, depending on which side of the anchor
+   * the handle sits on (0 for an edge handle's untouched axis), so dragging it
+   * always grows the shape away from the anchor. */
   resizeSign?: { x: number; y: number };
+  /** kind === 'resize': the world-space point that stays fixed while resizing —
+   * the corner handle's shape-aware anchor, or an edge handle's opposite edge. */
+  resizeAnchorPt?: Pt;
   moved: boolean;
 }
 
@@ -571,13 +577,17 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const id = hitId(e.target);
     const handle = (e.target as Element).getAttribute?.('data-handle');
     const resize = handle === 'resize';
+    const edgeDir =
+      handle === 'resize-n' || handle === 'resize-s' || handle === 'resize-e' || handle === 'resize-w'
+        ? (handle.slice(7) as 'n' | 's' | 'e' | 'w')
+        : null;
     const endpointEnd: 'from' | 'to' | null =
       handle === 'endpoint-from' ? 'from' : handle === 'endpoint-to' ? 'to' : null;
     const waypointIndex =
       handle === 'waypoint' ? Number((e.target as Element).getAttribute('data-index')) : null;
     const connectShapeId =
       handle === 'connect' ? ((e.target as Element).getAttribute('data-shape') ?? undefined) : undefined;
-    const targetId = resize || endpointEnd ? state.selectedIds[0] : id;
+    const targetId = resize || edgeDir || endpointEnd ? state.selectedIds[0] : id;
 
     if (connectShapeId && state.tool !== 'select') {
       // Drag started on a hover connection dot: draw a new arrow from this shape.
@@ -595,8 +605,21 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           x: handle.x === selectedBox.x + selectedBox.w ? 1 : -1,
           y: handle.y === selectedBox.y + selectedBox.h ? 1 : -1,
         },
+        resizeAnchorPt: anchor,
       };
       dispatch({ type: 'DRAG_START', id: targetId });
+      return;
+    }
+    if (edgeDir && selectedBox && targetId) {
+      const eh = edgeResizeHandles(selectedBox).find((h) => h.dir === edgeDir);
+      if (eh) {
+        drag.current = {
+          ...newDrag('resize', e, targetId, selectedBox),
+          resizeSign: eh.sign,
+          resizeAnchorPt: eh.anchor,
+        };
+        dispatch({ type: 'DRAG_START', id: targetId });
+      }
       return;
     }
     if (endpointEnd && targetId) {
@@ -729,7 +752,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       });
     } else if (d.kind === 'resize') {
       const sign = d.resizeSign ?? { x: 1, y: 1 };
-      dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + sign.x * dx, h: d.orig.h + sign.y * dy });
+      const anchor = d.resizeAnchorPt ?? { x: d.orig.x, y: d.orig.y };
+      dispatch({ type: 'DRAG_RESIZE', w: d.orig.w + sign.x * dx, h: d.orig.h + sign.y * dy, anchor });
     } else if (d.kind === 'moveconn') {
       dispatch({ type: 'CONNECTOR_DRAG_MOVE', id: d.id, dx, dy });
     }
@@ -1082,6 +1106,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             />
           );
         })()}
+        {selectedBox && mode === 'normal' && selectedBox.w > 16 && selectedBox.h > 16 &&
+          edgeResizeHandles(selectedBox).map((eh) => (
+            <rect
+              key={eh.dir}
+              data-handle={`resize-${eh.dir}`}
+              x={eh.pos.x - (eh.dir === 'n' || eh.dir === 's' ? 5 : 4)}
+              y={eh.pos.y - (eh.dir === 'e' || eh.dir === 'w' ? 5 : 4)}
+              width={eh.dir === 'n' || eh.dir === 's' ? 10 : 8}
+              height={eh.dir === 'e' || eh.dir === 'w' ? 10 : 8}
+              fill="var(--accent)"
+              style={{ cursor: eh.dir === 'n' || eh.dir === 's' ? 'ns-resize' : 'ew-resize' }}
+            />
+          ))}
         {guides.vx !== undefined && (
           <line x1={guides.vx} y1={-50000} x2={guides.vx} y2={50000} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
         )}

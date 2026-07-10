@@ -172,7 +172,7 @@ export type Action =
   | { type: 'DRAG_START'; id: string }
   | { type: 'DRAG_MOVE'; id: string; to: Pt }
   | { type: 'CONNECTOR_DRAG_MOVE'; id: string; dx: number; dy: number }
-  | { type: 'DRAG_RESIZE'; w: number; h: number }
+  | { type: 'DRAG_RESIZE'; w: number; h: number; anchor: Pt }
   | { type: 'DRAG_END' }
   | { type: 'ENDPOINT_DRAG_START'; id: string; end: 'from' | 'to' }
   | { type: 'ENDPOINT_DRAG_MOVE'; id: string; end: 'from' | 'to'; p: Pt }
@@ -1306,11 +1306,9 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       if (!box) return state;
       const newW = Math.max(GRID, snap(action.w));
       const newH = Math.max(GRID, snap(action.h));
-      const shapes = ids.map((id) => findShape(base, id)).filter((s): s is Shape => !!s);
-      const anchor = resizeAnchor(shapes, box);
       return {
         ...state,
-        doc: scaleShapes(base, ids, newW, newH, anchor, box.w, box.h),
+        doc: scaleShapes(base, ids, newW, newH, action.anchor, box.w, box.h),
       };
     }
 
