@@ -3,7 +3,7 @@ export interface Pt {
   y: number;
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'sticky' | 'image' | 'triangle';
+export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle';
 
 /** Apex direction for kind: 'triangle'. Cardinal directions produce an isosceles
  * triangle (apex at the midpoint of one bbox edge); diagonal directions produce
@@ -32,6 +32,8 @@ export interface Shape {
   src?: string;
   /** Apex direction for kind: 'triangle'; undefined = 'up'. */
   direction?: TriangleDirection;
+  /** Flat-fill style (solid background, no stroke) for rect/ellipse/diamond/triangle; undefined = outlined. */
+  filled?: boolean;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }

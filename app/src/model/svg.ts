@@ -1,5 +1,5 @@
 import { connectorPath, docBounds, labelCenter, triangleVertices } from './doc';
-import { fillTint, STICKY_DEFAULT } from './palette';
+import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from './palette';
 import type { Doc, Shape } from './types';
 
 const esc = (s: string): string =>
@@ -23,8 +23,9 @@ function shapeSvg(s: Shape): string {
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const stroke = s.color ?? '#333a45';
-  const fill = s.color ? fillTint(s.color) : '#ffffff';
-  const style = `fill="${fill}" stroke="${stroke}" stroke-width="1.5"`;
+  const style = s.filled
+    ? `fill="${s.color ?? FLAT_FILL_DEFAULT}" stroke="none"`
+    : `fill="${s.color ? fillTint(s.color) : '#ffffff'}" stroke="${stroke}" stroke-width="1.5"`;
   let body = '';
   if (s.kind === 'rect') {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4" ${style}/>`;
@@ -36,12 +37,14 @@ function shapeSvg(s: Shape): string {
   } else if (s.kind === 'triangle') {
     const points = triangleVertices(s).map((p) => `${p.x},${p.y}`).join(' ');
     body = `<polygon points="${points}" ${style}/>`;
-  } else if (s.kind === 'sticky') {
-    body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="${s.color ?? STICKY_DEFAULT}"/>`;
   } else if (s.kind === 'image' && s.src) {
     body = `<image href="${esc(s.src)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMid slice"/>`;
   }
-  const labelColor = s.kind === 'text' || s.kind === 'sticky' ? s.color ?? '#222933' : '#222933';
+  const labelColor = s.filled
+    ? readableTextColor(s.color ?? FLAT_FILL_DEFAULT)
+    : s.kind === 'text'
+      ? s.color ?? '#222933'
+      : '#222933';
   const labelPos = labelCenter(s);
   return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor);
 }

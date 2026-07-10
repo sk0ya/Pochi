@@ -13,7 +13,7 @@ import {
   shapeAt,
   triangleVertices,
 } from '../model/doc';
-import { fillTint, STICKY_DEFAULT } from '../model/palette';
+import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
 import type { Connector, Pt, Shape } from '../model/types';
 import { GRID, snap } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -103,11 +103,15 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   // halo around it instead of overriding the stroke (otherwise you can't see
   // the color you just picked while the item is still selected).
   const trueStroke = s.color ?? 'var(--shape-stroke)';
-  const common = {
-    fill: s.color ? fillTint(s.color) : 'var(--shape-fill)',
-    stroke: trueStroke,
-    strokeWidth: selected ? 2 : 1.5,
-  };
+  // Flat-fill ("ベタ塗り") style trades the tinted fill + stroke for a solid
+  // background and no stroke, like a sticky note.
+  const common = s.filled
+    ? { fill: s.color ?? FLAT_FILL_DEFAULT, stroke: 'none', strokeWidth: 0 }
+    : {
+        fill: s.color ? fillTint(s.color) : 'var(--shape-fill)',
+        stroke: trueStroke,
+        strokeWidth: selected ? 2 : 1.5,
+      };
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const labelPos = labelCenter(s);
@@ -119,7 +123,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   const bodyCursor = tool === 'arrow' ? 'alias' : 'move';
   return (
     <g data-id={s.id} style={{ cursor: bodyCursor }}>
-      {haloColor && (s.kind === 'rect' || s.kind === 'sticky' || s.kind === 'image') && (
+      {haloColor && (s.kind === 'rect' || s.kind === 'image') && (
         <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={6} {...halo} />
       )}
       {haloColor && s.kind === 'ellipse' && (
@@ -131,16 +135,6 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
       {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
       {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
-      {s.kind === 'sticky' && (
-        <rect
-          x={s.x}
-          y={s.y}
-          width={s.w}
-          height={s.h}
-          fill={s.color ?? STICKY_DEFAULT}
-          stroke="none"
-        />
-      )}
       {s.kind === 'image' && s.src && (
         <image
           href={s.src}
@@ -167,7 +161,13 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
         label={s.label}
         cx={labelPos.x}
         cy={labelPos.y}
-        color={s.kind === 'text' || s.kind === 'sticky' ? s.color : undefined}
+        color={
+          s.filled
+            ? readableTextColor(s.color ?? FLAT_FILL_DEFAULT)
+            : s.kind === 'text'
+              ? s.color
+              : undefined
+        }
       />
     </g>
   );
@@ -510,7 +510,6 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       state.tool === 'rect' ||
       state.tool === 'ellipse' ||
       state.tool === 'diamond' ||
-      state.tool === 'sticky' ||
       state.tool === 'triangle'
     ) {
       drag.current = newDrag('draw', e);
@@ -708,7 +707,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         strokeDasharray: '6 4',
         strokeWidth: 1.5,
       };
-      if (state.draw.kind === 'rect' || state.draw.kind === 'sticky') {
+      if (state.draw.kind === 'rect') {
         return <rect x={x} y={y} width={w} height={h} rx={4} {...common} />;
       }
       if (state.draw.kind === 'diamond') {
@@ -829,7 +828,6 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     state.tool === 'rect' ||
     state.tool === 'ellipse' ||
     state.tool === 'diamond' ||
-    state.tool === 'sticky' ||
     state.tool === 'triangle' ||
     state.tool === 'arrow' ||
     state.tool === 'sketch';

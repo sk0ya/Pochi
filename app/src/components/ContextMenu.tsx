@@ -28,6 +28,13 @@ const LINE_STYLES: Array<[boolean, string, string]> = [
   [true, '╌╌╌', '点線'],
 ];
 
+const FILL_STYLES: Array<[boolean, string, string]> = [
+  [false, '▢', 'アウトライン'],
+  [true, '▩', 'ベタ塗り'],
+];
+
+const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle']);
+
 export function ContextMenu({
   state,
   dispatch,
@@ -75,14 +82,17 @@ export function ContextMenu({
     dispatch({ type: 'CONTEXT_MENU_CLOSE' });
   };
 
+  const isFillable = !!singleShape && FILLABLE_KINDS.has(singleShape.kind);
+
   // Clamp so the menu doesn't run off the viewport edge.
-  const menuHeight = hasTarget
-    ? singleShape?.kind === 'triangle'
-      ? 470
-      : singleConnector
-        ? 540
-        : 420
-    : 90;
+  const menuHeight =
+    (hasTarget
+      ? singleShape?.kind === 'triangle'
+        ? 470
+        : singleConnector
+          ? 540
+          : 420
+      : 90) + (isFillable ? 60 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -189,6 +199,23 @@ export function ContextMenu({
               />
             ))}
           </div>
+          {isFillable && (
+            <>
+              <div className="context-label">塗り</div>
+              <div className="direction-row">
+                {FILL_STYLES.map(([filled, icon, title]) => (
+                  <button
+                    key={title}
+                    className={`direction-swatch${(singleShape?.filled ?? false) === filled ? ' active' : ''}`}
+                    title={title}
+                    onClick={() => run({ type: 'SET_FILLED', ids, filled })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {singleShape?.kind === 'triangle' && (
             <>
               <div className="context-sep" />

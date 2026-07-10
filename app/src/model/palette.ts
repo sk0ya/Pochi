@@ -18,5 +18,20 @@ export const PALETTE: PaletteColor[] = [
 /** Light fill tint for a stroke color (low-opacity hex suffix). */
 export const fillTint = (hex: string): string => `${hex}22`;
 
-/** Default flat fill for sticky-note shapes when no explicit color is set. */
-export const STICKY_DEFAULT = '#f6e58d';
+/** Default background for flat-filled shapes (the "filled" style option) when no explicit color is set. */
+export const FLAT_FILL_DEFAULT = '#f6e58d';
+
+/** Dark/light label colors chosen for readability against a flat-filled background. */
+const READABLE_DARK = '#222933';
+const READABLE_LIGHT = '#f5f6f8';
+
+/** Picks a dark or light label color with enough contrast against a flat hex background
+ * (relative luminance threshold), so labels stay readable regardless of fill color. */
+export function readableTextColor(bgHex: string): string {
+  const hex = bgHex.replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.6 ? READABLE_DARK : READABLE_LIGHT;
+}

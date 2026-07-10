@@ -30,7 +30,7 @@ import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow';
 
 /** Shape kinds reachable via the hjkl-resize draw flow (excludes text/image, which use other flows). */
-export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'sticky' | 'triangle';
+export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'triangle';
 
 /** Active mouse tool: what a drag on empty canvas creates. */
 export type MouseTool =
@@ -39,7 +39,6 @@ export type MouseTool =
   | 'rect'
   | 'ellipse'
   | 'diamond'
-  | 'sticky'
   | 'triangle'
   | 'arrow'
   | 'text';
@@ -168,6 +167,7 @@ export type Action =
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
+  | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'DUPLICATE' }
   | { type: 'DELETE_IDS'; ids: string[] }
@@ -582,8 +582,6 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startDraw(state, 'ellipse');
     case 'q':
       return startDraw(state, 'diamond');
-    case 'w':
-      return startDraw(state, 'sticky');
     case 'g':
       return startDraw(state, 'triangle');
     case 'a':
@@ -1250,6 +1248,20 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ),
       };
       return commit(state, doc, { msg: 'direction set' });
+    }
+
+    case 'SET_FILLED': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const doc: Doc = {
+        ...state.doc,
+        shapes: state.doc.shapes.map((s) =>
+          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image'
+            ? { ...s, filled: action.filled }
+            : s,
+        ),
+      };
+      return commit(state, doc, { msg: action.filled ? '塗り: ベタ塗り' : '塗り: アウトライン' });
     }
 
     case 'REORDER': {
