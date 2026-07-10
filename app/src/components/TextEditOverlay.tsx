@@ -58,6 +58,14 @@ export function TextEditOverlay({
         if (e.key === 'Escape') {
           e.preventDefault();
           commit();
+        } else if (e.key === 'Enter' && e.altKey) {
+          // Chromium has no default "insert newline" action for Alt+Enter
+          // (unlike Shift+Enter), so it must be inserted manually.
+          e.preventDefault();
+          document.execCommand('insertText', false, '\n');
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          commit();
         }
         e.stopPropagation();
       }}
