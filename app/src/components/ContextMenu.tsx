@@ -100,7 +100,7 @@ export function ContextMenu({
   };
 
   const isFillable = !!singleShape && FILLABLE_KINDS.has(singleShape.kind);
-  const isTextBox = singleShape?.kind === 'text';
+  const canChangeShape = !!singleShape && singleShape.kind !== 'image';
   const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
   const canAlign = alignableCount >= 2;
 
@@ -112,7 +112,7 @@ export function ContextMenu({
         : singleConnector
           ? 540
           : 420
-      : 90) + (isFillable ? 60 : 0) + (isTextBox ? 60 : 0) + (canAlign ? 90 : 0);
+      : 90) + (isFillable ? 60 : 0) + (canChangeShape ? 60 : 0) + (canAlign ? 90 : 0);
   const style: React.CSSProperties = {
     left: Math.min(menu.screen.x, window.innerWidth - 190),
     top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
@@ -153,14 +153,14 @@ export function ContextMenu({
               テキスト編集
             </button>
           )}
-          {isTextBox && (
+          {canChangeShape && (
             <>
-              <div className="context-label">図形を適用</div>
+              <div className="context-label">図形の種類</div>
               <div className="direction-row">
                 {SHAPE_KINDS.map(([kind, icon, title]) => (
                   <button
                     key={kind}
-                    className="direction-swatch"
+                    className={`direction-swatch${singleShape?.kind === kind ? ' active' : ''}`}
                     title={title}
                     onClick={() => run({ type: 'SET_SHAPE_KIND', ids, kind })}
                   >

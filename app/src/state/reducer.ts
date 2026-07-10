@@ -1257,10 +1257,10 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const doc: Doc = {
         ...state.doc,
         shapes: state.doc.shapes.map((s) =>
-          idSet.has(s.id) && s.kind === 'text' ? { ...s, kind: action.kind } : s,
+          idSet.has(s.id) && s.kind !== 'image' ? { ...s, kind: action.kind } : s,
         ),
       };
-      return commit(state, doc, { msg: '図形を適用' });
+      return commit(state, doc, { msg: '図形の種類を変更' });
     }
 
     case 'REORDER': {
