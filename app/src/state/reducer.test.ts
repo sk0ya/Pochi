@@ -5,6 +5,16 @@ import { labelCenter } from '../model/doc';
 import type { Doc, Shape } from '../model/types';
 import { GRID } from '../model/types';
 
+// This suite runs under vitest's `node` environment (no DOM). `measureLabel` — used when
+// committing/repeating a text shape — falls back to a character-count width estimate when
+// it can't get a canvas 2D context, so a minimal `document` stub is enough to exercise that
+// path deterministically without pulling in jsdom.
+if (typeof document === 'undefined') {
+  (globalThis as unknown as { document: unknown }).document = {
+    createElement: () => ({ getContext: () => null }),
+  };
+}
+
 const rect = (id: string, x: number, y: number, w = GRID * 4, h = GRID * 4): Shape => ({
   id,
   kind: 'rect',
@@ -397,5 +407,165 @@ describe('n / N: repeat search', () => {
     const noMatch = key({ ...state, doc }, 'n');
     expect(noMatch.msg).toBe('no match: foo');
     expect(noMatch.selectedIds).toEqual(['s1']); // untouched
+  });
+});
+
+describe('. (dot repeat)', () => {
+  it('is a no-op with a message when there is no prior edit', () => {
+    const before = vimState({ shapes: [], connectors: [] });
+    const state = key(before, '.');
+    expect(state.doc).toBe(before.doc);
+    expect(state.msg).toBe('nothing to repeat');
+  });
+
+  it('repeats a draw commit: same kind/size, anchored at the new cursor', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'r'); // DRAW rect, default size
+    state = key(state, 'Enter'); // commit
+    expect(state.doc.shapes).toHaveLength(1);
+    const first = state.doc.shapes[0];
+    expect(first.kind).toBe('rect');
+
+    state = key(state, 'l');
+    state = key(state, 'l');
+    state = key(state, 'j');
+    const cursorAtRepeat = state.cursor;
+    state = key(state, '.');
+
+    expect(state.doc.shapes).toHaveLength(2);
+    const second = state.doc.shapes.find((s) => s.id !== first.id)!;
+    expect(second.kind).toBe('rect');
+    expect(second.w).toBe(first.w);
+    expect(second.h).toBe(first.h);
+    expect(second.x).toBe(cursorAtRepeat.x);
+    expect(second.y).toBe(cursorAtRepeat.y);
+    expect(state.selectedIds).toEqual([second.id]);
+  });
+
+  it('repeats a resized draw commit with the adjusted size, not the default', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'e'); // DRAW ellipse
+    state = key(state, 'l'); // widen
+    state = key(state, 'j'); // taller
+    state = key(state, 'Enter');
+    const first = state.doc.shapes[0];
+    state = key(state, '.');
+    const second = state.doc.shapes.find((s) => s.id !== first.id)!;
+    expect(second.kind).toBe('ellipse');
+    expect(second.w).toBe(first.w);
+    expect(second.h).toBe(first.h);
+  });
+
+  it('repeats a text creation: same text, at the new cursor', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 't'); // start text insert
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'hello' });
+    expect(state.doc.shapes).toHaveLength(1);
+    const first = state.doc.shapes[0];
+    expect(first.label).toBe('hello');
+
+    state = key(state, 'l');
+    const cursorAtRepeat = state.cursor;
+    state = key(state, '.');
+
+    expect(state.doc.shapes).toHaveLength(2);
+    const second = state.doc.shapes.find((s) => s.id !== first.id)!;
+    expect(second.label).toBe('hello');
+    expect(second.w).toBe(first.w);
+    expect(second.h).toBe(first.h);
+    expect(second.x).toBe(cursorAtRepeat.x);
+    expect(second.y).toBe(cursorAtRepeat.y);
+  });
+
+  it('does not record editing an existing shape label as a repeatable text creation', () => {
+    const s = rect('s1', GRID * 10, GRID * 10);
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = key(state, 'i'); // edit existing shape's label
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'renamed' });
+    expect(state.lastEdit).toBeNull();
+    const before = state;
+    state = key(state, '.');
+    expect(state.doc).toBe(before.doc);
+    expect(state.msg).toBe('nothing to repeat');
+  });
+
+  it('repeats a delete: removes whatever is under the cursor now, not the original target', () => {
+    const cursor = initialState(null, true).cursor;
+    const s1 = rect('s1', cursor.x, cursor.y);
+    const s2 = rect('s2', cursor.x, cursor.y); // stacked on the same spot
+    let state = vimState({ shapes: [s1, s2], connectors: [] });
+    state = key(state, 'd');
+    expect(state.doc.shapes).toHaveLength(1);
+    state = key(state, '.');
+    expect(state.doc.shapes).toHaveLength(0);
+  });
+
+  it('delete-repeat is a no-op with a message once nothing remains under the cursor', () => {
+    const cursor = initialState(null, true).cursor;
+    const s1 = rect('s1', cursor.x, cursor.y);
+    let state = vimState({ shapes: [s1], connectors: [] });
+    state = key(state, 'd');
+    expect(state.doc.shapes).toHaveLength(0);
+    state = key(state, '.');
+    expect(state.doc.shapes).toHaveLength(0);
+    expect(state.msg).toBe('nothing under cursor');
+  });
+
+  it('repeats a paste: pastes the yanked clipboard again at the new cursor', () => {
+    const cursor = initialState(null, true).cursor;
+    const s1 = rect('s1', cursor.x, cursor.y);
+    let state = vimState({ shapes: [s1], connectors: [] });
+    state = key(state, 'y'); // yank the shape under the cursor
+    state = key(state, 'l');
+    state = key(state, 'l');
+    state = key(state, 'p'); // paste once
+    expect(state.doc.shapes).toHaveLength(2);
+
+    state = key(state, 'j');
+    const cursorAtRepeat = state.cursor;
+    state = key(state, '.');
+
+    expect(state.doc.shapes).toHaveLength(3);
+    const pastedAgain = state.doc.shapes.find(
+      (s) => s.x === cursorAtRepeat.x && s.y === cursorAtRepeat.y,
+    );
+    expect(pastedAgain).toBeDefined();
+  });
+
+  it('each . is its own undo step', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'r');
+    state = key(state, 'Enter');
+    state = key(state, '.');
+    state = key(state, '.');
+    expect(state.doc.shapes).toHaveLength(3);
+
+    state = key(state, 'u');
+    expect(state.doc.shapes).toHaveLength(2);
+    state = key(state, 'u');
+    expect(state.doc.shapes).toHaveLength(1);
+    state = key(state, 'u');
+    expect(state.doc.shapes).toHaveLength(0);
+  });
+
+  it('still repeats after an undo: lastEdit survives UNDO', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'r');
+    state = key(state, 'Enter');
+    expect(state.doc.shapes).toHaveLength(1);
+    state = key(state, 'u');
+    expect(state.doc.shapes).toHaveLength(0);
+    expect(state.lastEdit).not.toBeNull();
+
+    state = key(state, '.');
+    expect(state.doc.shapes).toHaveLength(1);
+  });
+
+  it('ignores a count prefix and repeats exactly once', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'r');
+    state = key(state, 'Enter');
+    state = type(state, '3.');
+    expect(state.doc.shapes).toHaveLength(2);
   });
 });

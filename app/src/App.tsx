@@ -45,7 +45,7 @@ function init(): EditorState {
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
   'h', 'j', 'k', 'l', 'r', 'e', 'q', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u',
-  'n', 'N',
+  'n', 'N', '.',
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',

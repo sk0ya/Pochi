@@ -88,6 +88,19 @@ export function parseClipboard(text: string): Clipboard | null {
   }
 }
 
+/**
+ * Describes the last dot-repeatable (`.`) edit committed in vim NORMAL mode, so `.` can
+ * replay it against the current cursor/doc. Only a deliberately small set of edits are
+ * repeatable — resize, move, arrow-drawing, and label edits are NOT recorded here, same as
+ * plain vim doesn't dot-repeat every command. Survives UNDO/REDO untouched (vim semantics:
+ * `.` after `u` still repeats the edit that was undone).
+ */
+export type LastEdit =
+  | { kind: 'draw'; shapeKind: DrawKind; w: number; h: number; direction?: TriangleDirection }
+  | { kind: 'text'; text: string }
+  | { kind: 'paste' }
+  | { kind: 'delete' };
+
 export interface EditorState {
   doc: Doc;
   undo: Doc[];
@@ -111,6 +124,8 @@ export interface EditorState {
   /** Active `f` hint-jump: every shape's assigned label plus the prefix typed so far. */
   hint: { entries: HintEntry[]; typed: string } | null;
   clipboard: Clipboard | null;
+  /** The last dot-repeatable edit; `.` replays it. Null until one is committed. */
+  lastEdit: LastEdit | null;
   tool: MouseTool;
   /** Freehand stroke being drawn (sketch tool). */
   sketch: Pt[] | null;
@@ -232,6 +247,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     resizeBox: null,
     hint: null,
     clipboard: null,
+    lastEdit: null,
     tool: 'sketch',
     sketch: null,
     count: '',
@@ -397,6 +413,13 @@ function confirmDraw(state: EditorState): EditorState {
     selectedIds: [shape.id],
     count: '',
     msg: 'placed (i: add text)',
+    lastEdit: {
+      kind: 'draw',
+      shapeKind: state.draw.kind,
+      w: r.w,
+      h: r.h,
+      ...(state.draw.kind === 'triangle' ? { direction: 'up' as const } : {}),
+    },
   });
 }
 
@@ -731,6 +754,91 @@ function stepSearch(state: EditorState, dir: 1 | -1): EditorState {
   return jumpToMatch(state, matches[nextIdx]);
 }
 
+/**
+ * Deletes the current selection, or failing that whatever is under the cursor. Shared by the
+ * d/x/Delete/Backspace handler and by `.` replaying a delete, so their semantics (selection
+ * fallback, selection-history restore, one undo step, lastEdit recording) can't diverge.
+ */
+function deleteAtCursor(state: EditorState, msgSuffix = ''): EditorState {
+  let ids = state.selectedIds;
+  if (!ids.length) {
+    const { shape, connector } = hotItem(state);
+    const id = shape?.id ?? connector?.id;
+    if (!id) return { ...state, msg: 'nothing under cursor', count: '' };
+    ids = [id];
+  }
+  const doc = ids.reduce((d, id) => deleteItem(d, id), state.doc);
+  const restore = restorePreviousSelection(state.selectionHistory, doc);
+  return commit(state, doc, {
+    selectedIds: restore.selectedIds,
+    selectionHistory: restore.selectionHistory,
+    count: '',
+    msg: (ids.length > 1 ? `deleted ${ids.length} items` : 'deleted') + msgSuffix,
+    lastEdit: { kind: 'delete' },
+  });
+}
+
+/**
+ * `.`: vim-style dot-repeat, NORMAL mode only. Replays `state.lastEdit` at/relative to the
+ * current cursor — a fresh shape/text/paste at the cursor, or a delete of whatever is under
+ * the cursor *now* (the operation is repeated, not the original target). No-op with a status
+ * message if nothing has been recorded yet.
+ *
+ * A count prefix (`3.`) is intentionally ignored: for the creation edits (draw/text/paste),
+ * repeating N times at the same cursor position would just stack N fully-overlapping copies —
+ * indistinguishable from one and not useful. For delete, only the first repetition ever finds
+ * something under the cursor, since the delete itself doesn't move the cursor. So a count on
+ * `.` has no clean, useful interpretation here and is dropped rather than special-cased.
+ */
+function repeatLastEdit(state: EditorState): EditorState {
+  const edit = state.lastEdit;
+  if (!edit) return { ...state, count: '', msg: 'nothing to repeat' };
+  switch (edit.kind) {
+    case 'draw': {
+      const anchor = snapPt(state.cursor);
+      const shape: Shape = {
+        id: newId(),
+        kind: edit.shapeKind,
+        x: anchor.x,
+        y: anchor.y,
+        w: edit.w,
+        h: edit.h,
+        label: '',
+        ...(edit.direction ? { direction: edit.direction } : {}),
+      };
+      return commit(state, addShape(state.doc, shape), {
+        selectedIds: [shape.id],
+        count: '',
+        msg: 'placed (repeat)',
+      });
+    }
+    case 'text': {
+      const at = snapPt(state.cursor);
+      const m = measureLabel(edit.text);
+      const shape: Shape = {
+        id: newId(),
+        kind: 'text',
+        x: at.x,
+        y: at.y,
+        w: Math.max(GRID * 2, snap(m.w + GRID)),
+        h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+        label: edit.text,
+      };
+      return commit(state, addShape(state.doc, shape), {
+        selectedIds: [shape.id],
+        count: '',
+        msg: 'text added (repeat)',
+      });
+    }
+    case 'paste': {
+      if (!state.clipboard) return { ...state, count: '', msg: 'clipboard empty' };
+      return pasteClipboard(state, state.clipboard);
+    }
+    case 'delete':
+      return deleteAtCursor(state, ' (repeat)');
+  }
+}
+
 function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: boolean): EditorState {
   if (ctrl) {
     if (key === 'r') return reduceCore(state, { type: 'REDO' });
@@ -824,23 +932,8 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
     case 'd':
     case 'x':
     case 'Delete':
-    case 'Backspace': {
-      let ids = state.selectedIds;
-      if (!ids.length) {
-        const { shape, connector } = hotItem(state);
-        const id = shape?.id ?? connector?.id;
-        if (!id) return { ...state, msg: 'nothing under cursor', count: '' };
-        ids = [id];
-      }
-      const doc = ids.reduce((d, id) => deleteItem(d, id), state.doc);
-      const restore = restorePreviousSelection(state.selectionHistory, doc);
-      return commit(state, doc, {
-        selectedIds: restore.selectedIds,
-        selectionHistory: restore.selectionHistory,
-        count: '',
-        msg: ids.length > 1 ? `deleted ${ids.length} items` : 'deleted',
-      });
-    }
+    case 'Backspace':
+      return deleteAtCursor(state);
     case 'y': {
       const clip = yankSelection(state);
       if (!clip) return { ...state, msg: 'no shape under cursor', count: '' };
@@ -849,7 +942,11 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
     }
     case 'p': {
       if (!state.clipboard) return { ...state, msg: 'clipboard empty', count: '' };
-      return pasteClipboard(state, state.clipboard);
+      const pasted = pasteClipboard(state, state.clipboard);
+      // pasteClipboard can no-op (nothing positionable in the clipboard); only a paste
+      // that actually committed becomes the dot-repeatable edit.
+      if (pasted.doc === state.doc) return pasted;
+      return { ...pasted, lastEdit: { kind: 'paste' } };
     }
     case 'u':
       return reduceCore(state, { type: 'UNDO' });
@@ -857,6 +954,8 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return stepSearch(state, 1);
     case 'N':
       return stepSearch(state, -1);
+    case '.':
+      return repeatLastEdit(state);
     case '?':
       return { ...state, showHelp: !state.showHelp, count: '' };
     default:
@@ -969,6 +1068,10 @@ function commitInsert(state: EditorState, label: string): EditorState {
   const trimmed = label.replace(/\s+$/, '');
   const conn = state.doc.connectors.find((c) => c.id === id);
   let doc: Doc;
+  // Text creation (t + typed text) is dot-repeatable; editing an existing shape's or
+  // connector's label is a distinct, deliberately non-repeatable edit (matches vim: a
+  // label edit isn't the "change" `.` reproduces here).
+  let textCreate: LastEdit | undefined;
   if (conn) {
     doc = {
       ...state.doc,
@@ -991,6 +1094,9 @@ function commitInsert(state: EditorState, label: string): EditorState {
       }
       patch.label = trimmed;
       doc = updateShape(state.doc, id, patch);
+      if (state.vim && state.editingIsNew && s.kind === 'text' && trimmed !== '') {
+        textCreate = { kind: 'text', text: trimmed };
+      }
     }
   }
   const changed = state.base !== null && doc !== state.base;
@@ -1006,17 +1112,21 @@ function commitInsert(state: EditorState, label: string): EditorState {
     selectedIds: state.selectedIds.filter(
       (sid) => doc.shapes.some((s) => s.id === sid) || doc.connectors.some((c) => c.id === sid),
     ),
+    ...(textCreate ? { lastEdit: textCreate } : {}),
   };
 }
 
 /**
  * Whether `action` performs a delete: these manage `selectionHistory` themselves
  * (popping the previous selection back in), so the `reduce` wrapper below must not
- * also record a history entry for them.
+ * also record a history entry for them. `.` counts too when it's about to replay a
+ * recorded delete (checked against `state`, since the action itself can't tell).
  */
-function isDeleteAction(action: Action): boolean {
+function isDeleteAction(state: EditorState, action: Action): boolean {
   if (action.type === 'DELETE_IDS') return true;
-  return action.type === 'KEY' && ['Delete', 'Backspace', 'd', 'x'].includes(action.key);
+  if (action.type !== 'KEY') return false;
+  if (['Delete', 'Backspace', 'd', 'x'].includes(action.key)) return true;
+  return action.key === '.' && state.lastEdit?.kind === 'delete';
 }
 
 function sameIds(a: string[], b: string[]): boolean {
@@ -1031,7 +1141,7 @@ function sameIds(a: string[], b: string[]): boolean {
  */
 export function reduce(state: EditorState, action: Action): EditorState {
   const result = reduceCore(state, action);
-  if (result === state || isDeleteAction(action) || sameIds(result.selectedIds, state.selectedIds)) {
+  if (result === state || isDeleteAction(state, action) || sameIds(result.selectedIds, state.selectedIds)) {
     return result;
   }
   return { ...result, selectionHistory: pushSelectionHistory(state.selectionHistory, state.selectedIds) };
