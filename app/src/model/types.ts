@@ -3,7 +3,7 @@ export interface Pt {
   y: number;
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle';
+export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle' | 'frame';
 
 /** Label font size: 's' / 'm' / 'l'; undefined = 'm' (the original, pre-feature default). */
 export type FontSize = 's' | 'm' | 'l';

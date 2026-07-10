@@ -836,3 +836,137 @@ describe('SET_FONT_SIZE', () => {
     expect(state.doc.shapes[0].fontSize).toBe('l');
   });
 });
+
+describe('Frame: creation via o', () => {
+  it('o enters DRAW mode with kind "frame"; Enter places a frame shape', () => {
+    let state = vimState({ shapes: [], connectors: [] });
+    state = key(state, 'o');
+    expect(state.mode).toBe('draw');
+    expect(state.draw?.kind).toBe('frame');
+    state = key(state, 'Enter');
+    expect(state.mode).toBe('normal');
+    expect(state.doc.shapes).toHaveLength(1);
+    expect(state.doc.shapes[0].kind).toBe('frame');
+  });
+});
+
+describe('Frame: containment on move', () => {
+  const frame = (id: string, x: number, y: number, w: number, h: number): Shape => ({
+    id,
+    kind: 'frame',
+    x,
+    y,
+    w,
+    h,
+    label: '',
+  });
+
+  it('DRAG_MOVE (mouse path) carries along a shape whose center was inside the frame at drag start', () => {
+    const f = frame('f1', 0, 0, GRID * 10, GRID * 10);
+    const inner = rect('in', GRID * 2, GRID * 2, GRID * 2, GRID * 2); // center well inside f1
+    let state = vimState({ shapes: [f, inner], connectors: [] });
+    state = reduce(state, { type: 'DRAG_START', id: 'f1' });
+    state = reduce(state, { type: 'DRAG_MOVE', id: 'f1', to: { x: GRID * 5, y: GRID * 5 } });
+    const movedFrame = state.doc.shapes.find((s) => s.id === 'f1')!;
+    const movedInner = state.doc.shapes.find((s) => s.id === 'in')!;
+    expect(movedFrame).toMatchObject({ x: GRID * 5, y: GRID * 5 });
+    // moved by the same delta (GRID*5) as the frame
+    expect(movedInner).toMatchObject({ x: GRID * 2 + GRID * 5, y: GRID * 2 + GRID * 5 });
+    state = reduce(state, { type: 'DRAG_END' });
+    expect(state.undo).toHaveLength(1); // the whole drag gesture is a single undo step
+  });
+
+  it('DRAG_MOVE does not move a shape whose center is outside the frame', () => {
+    const f = frame('f1', 0, 0, GRID * 4, GRID * 4);
+    const outside = rect('out', GRID * 20, GRID * 20, GRID * 2, GRID * 2);
+    let state = vimState({ shapes: [f, outside], connectors: [] });
+    state = reduce(state, { type: 'DRAG_START', id: 'f1' });
+    state = reduce(state, { type: 'DRAG_MOVE', id: 'f1', to: { x: GRID * 5, y: GRID * 5 } });
+    const untouched = state.doc.shapes.find((s) => s.id === 'out')!;
+    expect(untouched).toMatchObject({ x: GRID * 20, y: GRID * 20 });
+  });
+
+  it('keyboard MOVE mode (v + hjkl) carries along contained shapes on every step', () => {
+    const f = frame('f1', 0, 0, GRID * 10, GRID * 10);
+    const inner = rect('in', GRID * 2, GRID * 2, GRID * 2, GRID * 2);
+    let state = vimState({ shapes: [f, inner], connectors: [] });
+    state = { ...state, selectedIds: ['f1'] };
+    state = key(state, 'v');
+    expect(state.mode).toBe('move');
+    state = key(state, 'l');
+    let movedFrame = state.doc.shapes.find((s) => s.id === 'f1')!;
+    let movedInner = state.doc.shapes.find((s) => s.id === 'in')!;
+    expect(movedFrame.x).toBe(GRID);
+    expect(movedInner.x).toBe(GRID * 2 + GRID);
+    // a second step keeps carrying the same contents (membership stays fixed for the gesture)
+    state = key(state, 'l');
+    movedFrame = state.doc.shapes.find((s) => s.id === 'f1')!;
+    movedInner = state.doc.shapes.find((s) => s.id === 'in')!;
+    expect(movedFrame.x).toBe(GRID * 2);
+    expect(movedInner.x).toBe(GRID * 2 + GRID * 2);
+    state = key(state, 'Enter');
+    expect(state.mode).toBe('normal');
+  });
+
+  it('plain (vim-off) arrow-key nudge carries along contained shapes', () => {
+    const f = frame('f1', 0, 0, GRID * 10, GRID * 10);
+    const inner = rect('in', GRID * 2, GRID * 2, GRID * 2, GRID * 2);
+    let state = initialState({ shapes: [f, inner], connectors: [] }, false);
+    state = { ...state, selectedIds: ['f1'] };
+    state = reduce(state, { type: 'KEY', key: 'ArrowRight', ctrl: false });
+    const movedFrame = state.doc.shapes.find((s) => s.id === 'f1')!;
+    const movedInner = state.doc.shapes.find((s) => s.id === 'in')!;
+    expect(movedFrame.x).toBe(GRID);
+    expect(movedInner.x).toBe(GRID * 2 + GRID);
+  });
+
+  it('nested frames compose: moving the outer frame carries the inner frame and the inner frame\'s own contents', () => {
+    const outer = frame('outer', 0, 0, GRID * 20, GRID * 20);
+    const inner = frame('inner', GRID * 2, GRID * 2, GRID * 6, GRID * 6); // center inside outer
+    const leaf = rect('leaf', GRID * 3, GRID * 3, GRID * 2, GRID * 2); // center inside inner (and outer)
+    let state = vimState({ shapes: [outer, inner, leaf], connectors: [] });
+    state = reduce(state, { type: 'DRAG_START', id: 'outer' });
+    state = reduce(state, { type: 'DRAG_MOVE', id: 'outer', to: { x: GRID * 10, y: GRID * 10 } });
+    const dx = GRID * 10;
+    const at = (id: string) => state.doc.shapes.find((s) => s.id === id)!;
+    expect(at('outer')).toMatchObject({ x: dx, y: dx });
+    expect(at('inner')).toMatchObject({ x: GRID * 2 + dx, y: GRID * 2 + dx });
+    expect(at('leaf')).toMatchObject({ x: GRID * 3 + dx, y: GRID * 3 + dx });
+  });
+
+  it('a frame with nothing inside moves by itself without error', () => {
+    const f = frame('f1', 0, 0, GRID * 4, GRID * 4);
+    let state = vimState({ shapes: [f], connectors: [] });
+    state = reduce(state, { type: 'DRAG_START', id: 'f1' });
+    state = reduce(state, { type: 'DRAG_MOVE', id: 'f1', to: { x: GRID * 3, y: GRID * 3 } });
+    expect(state.doc.shapes[0]).toMatchObject({ x: GRID * 3, y: GRID * 3 });
+  });
+});
+
+describe('Frame: delete leaves contents', () => {
+  it('deleting a frame removes only the frame, never the shapes inside it', () => {
+    const f: Shape = { id: 'f1', kind: 'frame', x: 0, y: 0, w: GRID * 10, h: GRID * 10, label: '' };
+    const inner = rect('in', GRID * 2, GRID * 2, GRID * 2, GRID * 2);
+    let state = vimState({ shapes: [f, inner], connectors: [] });
+    state = reduce(state, { type: 'DELETE_IDS', ids: ['f1'] });
+    expect(state.doc.shapes.map((s) => s.id)).toEqual(['in']);
+  });
+});
+
+describe('Frame: SET_SHAPE_KIND conversion', () => {
+  it('converting a flat-filled shape to frame clears `filled` (frame interiors must never paint)', () => {
+    const s: Shape = { ...rect('s1', 0, 0), filled: true };
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = reduce(state, { type: 'SET_SHAPE_KIND', ids: ['s1'], kind: 'frame' });
+    expect(state.doc.shapes[0].kind).toBe('frame');
+    expect(state.doc.shapes[0].filled).toBeUndefined();
+  });
+
+  it('converting to a non-frame kind keeps `filled` as-is', () => {
+    const s: Shape = { ...rect('s1', 0, 0), filled: true };
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = reduce(state, { type: 'SET_SHAPE_KIND', ids: ['s1'], kind: 'ellipse' });
+    expect(state.doc.shapes[0].kind).toBe('ellipse');
+    expect(state.doc.shapes[0].filled).toBe(true);
+  });
+});

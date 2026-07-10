@@ -7,6 +7,12 @@ import {
   connectorPath,
   findConnector,
   findShape,
+  FRAME_BORDER_BAND,
+  FRAME_LABEL_PAD_X,
+  FRAME_LABEL_PAD_Y,
+  FRAME_LABEL_ZONE_H,
+  FRAME_LABEL_ZONE_W,
+  frameHitZone,
   labelCenter,
   resizeAnchor,
   resizeHandlePoint,
@@ -49,6 +55,42 @@ function Label({
     >
       {lines.map((line, i) => (
         <tspan key={i} x={cx} y={startY + i * lineH}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+}
+
+/** A frame's label, left-aligned and anchored to its top-left corner (unlike every other
+ * shape's centered label) — the visual cue that distinguishes a frame's label placement from
+ * the container itself, per the feature's design (see FRAME_LABEL_PAD_X/Y in model/doc.ts). */
+function FrameLabel({
+  label,
+  x,
+  y,
+  color,
+  fontSize,
+}: {
+  label: string;
+  x: number;
+  y: number;
+  color?: string;
+  fontSize?: FontSize;
+}) {
+  if (!label) return null;
+  const lineH = FONT_LINE_H[fontSize ?? 'm'];
+  const lines = label.split('\n');
+  return (
+    <text
+      fill={color ?? 'var(--muted)'}
+      fontSize={FONT_SIZE_PX[fontSize ?? 'm']}
+      textAnchor="start"
+      dominantBaseline="hanging"
+      style={{ userSelect: 'none', pointerEvents: 'none' }}
+    >
+      {lines.map((line, i) => (
+        <tspan key={i} x={x} y={y + i * lineH}>
           {line}
         </tspan>
       ))}
@@ -114,7 +156,9 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   // The shape's own color always stays visible; selection/hot is shown as a
   // halo around it instead of overriding the stroke (otherwise you can't see
   // the color you just picked while the item is still selected).
-  const trueStroke = s.color ?? 'var(--shape-stroke)';
+  // A frame defaults to a subdued stroke (not the brighter shape-stroke every other
+  // kind uses) so it reads as a quiet container rather than another shape.
+  const trueStroke = s.color ?? (s.kind === 'frame' ? 'var(--muted)' : 'var(--shape-stroke)');
   // Flat-fill ("ベタ塗り") style trades the tinted fill + stroke for a solid
   // background and no stroke, like a sticky note.
   const common = s.filled
@@ -143,10 +187,51 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       )}
       {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, 3)} {...halo} />}
       {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, 3)} {...halo} />}
+      {haloColor && s.kind === 'frame' && (
+        <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={10} {...halo} />
+      )}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
       {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
       {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
+      {s.kind === 'frame' && (
+        <>
+          {/* Visible border only — no fill, so the open interior never paints (and so never
+              hit-tests) over whatever the frame contains. Slightly rounded to read as
+              distinct from a plain rect at a glance. */}
+          <rect
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            rx={8}
+            fill="none"
+            stroke={trueStroke}
+            strokeWidth={selected ? 2 : 1.5}
+            style={{ pointerEvents: 'none' }}
+          />
+          {/* Wide invisible stroke so the (thin) visible border is still an easy
+              click/drag target — this is the frame's whole "hit zone" for its edges,
+              matching frameHitZone in model/doc.ts. */}
+          <rect
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={FRAME_BORDER_BAND * 2}
+          />
+          {/* Label area is also clickable/draggable (part of "the frame", not its interior). */}
+          <rect
+            x={s.x}
+            y={s.y}
+            width={Math.min(FRAME_LABEL_ZONE_W, s.w)}
+            height={Math.min(FRAME_LABEL_ZONE_H, s.h)}
+            fill="transparent"
+          />
+        </>
+      )}
       {s.kind === 'image' && s.src && (
         <image
           href={s.src}
@@ -169,19 +254,29 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
           strokeWidth={haloColor ? 1.5 : 1}
         />
       )}
-      <Label
-        label={s.label}
-        cx={labelPos.x}
-        cy={labelPos.y}
-        color={
-          s.filled
-            ? readableTextColor(s.color ?? FLAT_FILL_DEFAULT)
-            : s.kind === 'text'
-              ? s.color
-              : undefined
-        }
-        fontSize={s.fontSize}
-      />
+      {s.kind === 'frame' ? (
+        <FrameLabel
+          label={s.label}
+          x={s.x + FRAME_LABEL_PAD_X}
+          y={s.y + FRAME_LABEL_PAD_Y}
+          color={s.color}
+          fontSize={s.fontSize}
+        />
+      ) : (
+        <Label
+          label={s.label}
+          cx={labelPos.x}
+          cy={labelPos.y}
+          color={
+            s.filled
+              ? readableTextColor(s.color ?? FLAT_FILL_DEFAULT)
+              : s.kind === 'text'
+                ? s.color
+                : undefined
+          }
+          fontSize={s.fontSize}
+        />
+      )}
     </g>
   );
 }
@@ -194,11 +289,14 @@ const CONNECT_DOT_OFFSET = 10;
  * without the hover state dropping in between. Must exceed CONNECT_DOT_OFFSET. */
 const HOVER_MARGIN = 20;
 
-/** Topmost shape whose bounds, expanded by `margin`, contain `p`. */
+/** Topmost shape whose bounds, expanded by `margin`, contain `p`. A frame's open interior
+ * doesn't count (same reasoning as frameHitZone) — hovering a shape a frame contains must
+ * not have the frame steal the hover state (and its connect dots) instead. */
 function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
     const s = doc.shapes[i];
     if (p.x >= s.x - margin && p.x <= s.x + s.w + margin && p.y >= s.y - margin && p.y <= s.y + s.h + margin) {
+      if (s.kind === 'frame' && !frameHitZone(s, p)) continue;
       return s;
     }
   }
@@ -522,7 +620,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       state.tool === 'rect' ||
       state.tool === 'ellipse' ||
       state.tool === 'diamond' ||
-      state.tool === 'triangle'
+      state.tool === 'triangle' ||
+      state.tool === 'frame'
     ) {
       drag.current = newDrag('draw', e);
       dispatch({ type: 'START_DRAW_AT', kind: state.tool, p: toWorld(e) });
@@ -730,6 +829,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       if (state.draw.kind === 'triangle') {
         return <polygon points={trianglePoints({ x, y, w, h, direction: 'up' })} {...common} />;
       }
+      if (state.draw.kind === 'frame') {
+        return <rect x={x} y={y} width={w} height={h} rx={8} {...common} />;
+      }
       return <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} {...common} />;
     }
     if (mode === 'arrow' && state.arrowFrom) {
@@ -841,6 +943,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     state.tool === 'ellipse' ||
     state.tool === 'diamond' ||
     state.tool === 'triangle' ||
+    state.tool === 'frame' ||
     state.tool === 'arrow' ||
     state.tool === 'sketch';
   const bgCursor = isPanning

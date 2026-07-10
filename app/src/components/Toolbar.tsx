@@ -8,6 +8,7 @@ const TOOLS: Array<[MouseTool, string, string]> = [
   ['ellipse', '◯ Ellipse', 'ドラッグで楕円を描く (e)'],
   ['diamond', '◇ Diamond', 'ドラッグでひし形を描く (q)'],
   ['triangle', '△ Triangle', 'ドラッグで三角形を描く (g)。向きは右クリックメニューで変更'],
+  ['frame', '▢ Frame', 'ドラッグでフレーム(コンテナ)を描く (o)。移動すると内側の図形も一緒に動く'],
   ['arrow', '→ Arrow', '図形から図形へドラッグで矢印 (a)'],
   ['text', 'T Text', 'クリックでテキスト (t)'],
 ];

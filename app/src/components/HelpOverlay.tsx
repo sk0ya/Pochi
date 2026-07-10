@@ -4,6 +4,7 @@ import type { Action } from '../state/reducer';
 const rows: Array<[string, string]> = [
   ['h j k l / 矢印', 'カーソル移動(カウント可: 5l。Shift併用で大きめステップ)'],
   ['r / e / q / g', '四角 / 楕円 / ひし形 / 三角形を描く(hjklでサイズ調整 → Enter)'],
+  ['o', 'フレーム(コンテナ)を描く(hjklでサイズ調整 → Enter)。ラベルは左上表示、移動すると中の図形も一緒に動く'],
   ['a', '矢印。図形の上で押すと接続矢印(図形に追従)'],
   ['t / i', 'テキスト作成 / カーソル下の図形のテキスト編集'],
   ['Shift/Ctrl+ドラッグ / クリック', '複数選択(VISUAL)。v/d/y/p/s などが選択全体に効く'],

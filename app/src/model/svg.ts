@@ -1,4 +1,11 @@
-import { connectorPath, docBounds, labelCenter, triangleVertices } from './doc';
+import {
+  connectorPath,
+  docBounds,
+  FRAME_LABEL_PAD_X,
+  FRAME_LABEL_PAD_Y,
+  labelCenter,
+  triangleVertices,
+} from './doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from './palette';
 import { FONT_LINE_H, FONT_SIZE_PX } from './types';
 import type { Doc, FontSize, Shape } from './types';
@@ -8,18 +15,41 @@ const esc = (s: string): string =>
 
 const markerKey = (hex: string): string => hex.replace('#', '');
 
-function labelSvg(label: string, cx: number, cy: number, color: string, fontSize?: FontSize): string {
+function labelSvg(
+  label: string,
+  x: number,
+  y: number,
+  color: string,
+  fontSize?: FontSize,
+  align: 'center' | 'start' = 'center',
+): string {
   if (!label) return '';
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
   const lines = label.split('\n');
-  const startY = cy - ((lines.length - 1) * lineH) / 2;
+  const startY = align === 'start' ? y : y - ((lines.length - 1) * lineH) / 2;
   const tspans = lines
-    .map((line, i) => `<tspan x="${cx}" y="${startY + i * lineH}">${esc(line)}</tspan>`)
+    .map((line, i) => `<tspan x="${x}" y="${startY + i * lineH}">${esc(line)}</tspan>`)
     .join('');
-  return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="${FONT_SIZE_PX[fontSize ?? 'm']}" text-anchor="middle" dominant-baseline="middle">${tspans}</text>`;
+  const anchor = align === 'start' ? 'start' : 'middle';
+  const baseline = align === 'start' ? 'hanging' : 'middle';
+  return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="${FONT_SIZE_PX[fontSize ?? 'm']}" text-anchor="${anchor}" dominant-baseline="${baseline}">${tspans}</text>`;
 }
 
+/** Subdued default stroke for a frame (no explicit color) — matches the app's --muted
+ * theme color, distinguishing it from the brighter #333a45 used by every other shape kind. */
+const FRAME_STROKE_DEFAULT = '#8794a8';
+
 function shapeSvg(s: Shape): string {
+  if (s.kind === 'frame') {
+    // Border only, no fill (mirrors the canvas: an open interior, subtly rounded).
+    const stroke = s.color ?? FRAME_STROKE_DEFAULT;
+    const body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+    const labelColor = s.color ?? FRAME_STROKE_DEFAULT;
+    return (
+      body +
+      labelSvg(s.label, s.x + FRAME_LABEL_PAD_X, s.y + FRAME_LABEL_PAD_Y, labelColor, s.fontSize, 'start')
+    );
+  }
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const stroke = s.color ?? '#333a45';

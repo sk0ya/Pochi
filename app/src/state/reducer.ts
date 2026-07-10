@@ -10,6 +10,7 @@ import {
   docBounds,
   findConnector,
   findShape,
+  frameContainedIds,
   groupIdOf,
   groupMembers,
   insertConnectorWaypoint,
@@ -41,7 +42,7 @@ export interface HintEntry {
 }
 
 /** Shape kinds reachable via the hjkl-resize draw flow (excludes text/image, which use other flows). */
-export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'triangle';
+export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'frame';
 
 /** Active mouse tool: what a drag on empty canvas creates. */
 export type MouseTool =
@@ -51,6 +52,7 @@ export type MouseTool =
   | 'ellipse'
   | 'diamond'
   | 'triangle'
+  | 'frame'
   | 'arrow'
   | 'text';
 
@@ -909,6 +911,8 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startDraw(state, 'diamond');
     case 'g':
       return startDraw(state, 'triangle');
+    case 'o':
+      return startDraw(state, 'frame');
     case 'a':
       return startArrow(state);
     case 'f':
@@ -1027,9 +1031,14 @@ function handleTransientKey(state: EditorState, key: string, shift: boolean): Ed
   if (state.mode === 'move') {
     const delta = moveDelta(key, step);
     if (delta && state.selectedIds.length) {
+      // `state.base` is the doc snapshot frozen when MOVE started (see the 'v' case in
+      // handleNormalKey) and stays fixed for the whole transient, so re-deriving frame
+      // membership from it on every keystroke always yields the same set — i.e. containment
+      // is decided once, at move start, not re-evaluated as things slide around.
+      const ids = frameContainedIds(state.base ?? state.doc, state.selectedIds);
       return {
         ...state,
-        doc: translateItems(state.doc, state.selectedIds, delta.x, delta.y),
+        doc: translateItems(state.doc, ids, delta.x, delta.y),
         cursor: { x: state.cursor.x + delta.x, y: state.cursor.y + delta.y },
         count: '',
       };
@@ -1098,7 +1107,11 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: b
   if (key === 'F2' && state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
   const delta = moveDelta(key, GRID * (shift ? BIG_STEP : 1));
   if (delta && state.selectedIds.length) {
-    return commit(state, translateItems(state.doc, state.selectedIds, delta.x, delta.y));
+    // Each arrow-key nudge here is its own atomic move (no transient/base to freeze), so
+    // containment is decided fresh against the current doc every press — which for a single
+    // press *is* "at move start".
+    const ids = frameContainedIds(state.doc, state.selectedIds);
+    return commit(state, translateItems(state.doc, ids, delta.x, delta.y));
   }
   return state;
 }
@@ -1267,7 +1280,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const src = state.base ?? state.doc;
       const orig = findShape(src, action.id);
       if (!orig) return state;
-      const ids = state.selectedIds.includes(action.id) ? state.selectedIds : [action.id];
+      const baseIds = state.selectedIds.includes(action.id) ? state.selectedIds : [action.id];
+      // `src` is the doc snapshot frozen at DRAG_START and stays fixed for the whole drag, so
+      // re-deriving frame membership from it on every move event always yields the same set —
+      // containment is decided once, at drag start.
+      const ids = frameContainedIds(src, baseIds);
       return {
         ...state,
         doc: translateItems(src, ids, action.to.x - orig.x, action.to.y - orig.y),
@@ -1618,7 +1635,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const doc: Doc = {
         ...state.doc,
         shapes: state.doc.shapes.map((s) =>
-          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image'
+          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image' && s.kind !== 'frame'
             ? { ...s, filled: action.filled }
             : s,
         ),
@@ -1631,9 +1648,15 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       if (!idSet.size) return state;
       const doc: Doc = {
         ...state.doc,
-        shapes: state.doc.shapes.map((s) =>
-          idSet.has(s.id) && s.kind !== 'image' ? { ...s, kind: action.kind } : s,
-        ),
+        shapes: state.doc.shapes.map((s) => {
+          if (!idSet.has(s.id) || s.kind === 'image') return s;
+          // A frame's interior must never paint (click-through hit-testing depends on it),
+          // so converting to 'frame' drops any flat-fill flag rather than carrying it as
+          // stale data a future render change could accidentally honor.
+          return action.kind === 'frame'
+            ? { ...s, kind: action.kind, filled: undefined }
+            : { ...s, kind: action.kind };
+        }),
       };
       return commit(state, doc, { msg: '図形の種類を変更' });
     }

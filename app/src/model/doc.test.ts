@@ -4,12 +4,16 @@ import {
   connectorPath,
   deleteItem,
   distToSegment,
+  FRAME_BORDER_BAND,
+  frameContainedIds,
+  frameHitZone,
   inscribedBox,
   labelCenter,
   measureLabel,
   reorderItems,
   resizeAnchor,
   scaleShapes,
+  shapeAt,
   subsetDoc,
   translateItems,
   triangleVertices,
@@ -35,6 +39,16 @@ const rect = (id: string, x: number, y: number, w: number, h: number, extra: Par
   h,
   label: '',
   ...extra,
+});
+
+const frame = (id: string, x: number, y: number, w: number, h: number): Shape => ({
+  id,
+  kind: 'frame',
+  x,
+  y,
+  w,
+  h,
+  label: '',
 });
 
 describe('triangleVertices', () => {
@@ -174,6 +188,107 @@ describe('translateItems', () => {
     expect(moved.connectors[0].from).toEqual({ shapeId: 's1', x: 0, y: 0 });
     // free endpoint moves with the drag
     expect(moved.connectors[0].to).toEqual({ x: 55, y: 55 });
+  });
+});
+
+describe('frameContainedIds', () => {
+  it('includes a shape whose center lies inside the frame', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const inside = rect('in', 50, 50, 20, 20); // center (60,60) inside f1
+    const doc: Doc = { shapes: [f, inside], connectors: [] };
+    expect(frameContainedIds(doc, ['f1']).sort()).toEqual(['f1', 'in']);
+  });
+
+  it('excludes a shape whose center lies outside the frame', () => {
+    const f = frame('f1', 0, 0, 100, 100);
+    const outside = rect('out', 200, 200, 20, 20); // center (210,210), well outside
+    const doc: Doc = { shapes: [f, outside], connectors: [] };
+    expect(frameContainedIds(doc, ['f1'])).toEqual(['f1']);
+  });
+
+  it('treats a center exactly on the frame edge as inside (inclusive bounds)', () => {
+    const f = frame('f1', 0, 0, 100, 100);
+    // center exactly at x=100, the frame's right edge
+    const onEdge = rect('edge', 90, 40, 20, 20);
+    const doc: Doc = { shapes: [f, onEdge], connectors: [] };
+    expect(frameContainedIds(doc, ['f1'])).toEqual(['f1', 'edge']);
+  });
+
+  it('composes across nested frames: outer pulls in the inner frame and the inner frame\'s own contents', () => {
+    const outer = frame('outer', 0, 0, 400, 400);
+    const inner = frame('inner', 50, 50, 100, 100); // center (100,100) inside outer
+    const leaf = rect('leaf', 70, 70, 20, 20); // center (80,80) inside inner (and outer)
+    const doc: Doc = { shapes: [outer, inner, leaf], connectors: [] };
+    expect(frameContainedIds(doc, ['outer']).sort()).toEqual(['inner', 'leaf', 'outer']);
+  });
+
+  it('a frame with nothing inside it resolves to just itself', () => {
+    const f = frame('f1', 0, 0, 50, 50);
+    const doc: Doc = { shapes: [f], connectors: [] };
+    expect(frameContainedIds(doc, ['f1'])).toEqual(['f1']);
+  });
+
+  it('a plain (non-frame) shape in ids never pulls in anything else', () => {
+    const doc: Doc = { shapes: [rect('a', 0, 0, 200, 200), rect('b', 50, 50, 10, 10)], connectors: [] };
+    expect(frameContainedIds(doc, ['a'])).toEqual(['a']);
+  });
+});
+
+describe('shapeAt: frame click-through hit-testing', () => {
+  it('an interior click over a contained shape resolves to that shape, not the frame on top of it', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const inner = rect('inner', 50, 50, 40, 40);
+    // frame added after (topmost in z-order/array order), as if drawn around an existing shape
+    const doc: Doc = { shapes: [inner, f], connectors: [] };
+    expect(shapeAt(doc, { x: 70, y: 70 })?.id).toBe('inner');
+  });
+
+  it('a click on the frame border resolves to the frame', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const doc: Doc = { shapes: [f], connectors: [] };
+    expect(shapeAt(doc, { x: 0, y: 100 })?.id).toBe('f1'); // left border
+  });
+
+  it('a click in the frame\'s open interior (no contained shape there) hits nothing', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const doc: Doc = { shapes: [f], connectors: [] };
+    expect(shapeAt(doc, { x: 100, y: 150 })).toBeUndefined();
+  });
+
+  it('a click on the frame\'s top-left label zone resolves to the frame', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const doc: Doc = { shapes: [f], connectors: [] };
+    expect(shapeAt(doc, { x: 30, y: 15 })?.id).toBe('f1');
+  });
+
+  it('a click slightly OUTSIDE the frame edge (within the border band) still resolves to the frame, matching the DOM hit-stroke', () => {
+    const f = frame('f1', 0, 0, 200, 200);
+    const doc: Doc = { shapes: [f], connectors: [] };
+    // The Canvas's invisible hit-stroke is 2×band wide, centered on the edge, so up to
+    // FRAME_BORDER_BAND outside the rect must count as the frame here too.
+    expect(shapeAt(doc, { x: -FRAME_BORDER_BAND / 2, y: 100 })?.id).toBe('f1'); // just left of the left edge
+    expect(shapeAt(doc, { x: 100, y: 200 + FRAME_BORDER_BAND })?.id).toBe('f1'); // band's outer limit below the bottom edge
+    // ...but past the band's outer edge it's a miss.
+    expect(shapeAt(doc, { x: -FRAME_BORDER_BAND - 1, y: 100 })).toBeUndefined();
+  });
+});
+
+describe('frameHitZone', () => {
+  const f = { x: 0, y: 0, w: 200, h: 200 };
+
+  it('hits the band on both sides of the edge and misses past its outer limit', () => {
+    expect(frameHitZone(f, { x: -FRAME_BORDER_BAND / 2, y: 100 })).toBe(true); // outside half
+    expect(frameHitZone(f, { x: FRAME_BORDER_BAND / 2, y: 100 })).toBe(true); // inside half
+    expect(frameHitZone(f, { x: -FRAME_BORDER_BAND, y: 100 })).toBe(true); // outer limit, inclusive
+    expect(frameHitZone(f, { x: -FRAME_BORDER_BAND - 1, y: 100 })).toBe(false); // past it
+  });
+
+  it('misses the open interior beyond the band and the label zone', () => {
+    expect(frameHitZone(f, { x: 100, y: 150 })).toBe(false);
+  });
+
+  it('hits the top-left label zone', () => {
+    expect(frameHitZone(f, { x: 50, y: 20 })).toBe(true);
   });
 });
 

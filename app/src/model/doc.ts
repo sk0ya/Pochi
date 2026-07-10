@@ -94,7 +94,50 @@ export function inscribedBox(s: {
         return { x: x + w / 4, y: y + halfH, w: halfW, h: halfH };
     }
   }
+  if (s.kind === 'frame') {
+    return {
+      x: x + FRAME_LABEL_PAD_X,
+      y: y + FRAME_LABEL_PAD_Y,
+      w: Math.max(40, Math.min(FRAME_LABEL_ZONE_W, w - FRAME_LABEL_PAD_X * 2)),
+      h: Math.max(24, Math.min(FRAME_LABEL_ZONE_H + 16, h - FRAME_LABEL_PAD_Y * 2)),
+    };
+  }
   return { x, y, w, h };
+}
+
+/** How far in from a frame's own top-left corner its label starts. */
+export const FRAME_LABEL_PAD_X = 10;
+export const FRAME_LABEL_PAD_Y = 8;
+/** Size of the top-left zone (clipped to the frame's own bounds) that counts as "on the
+ * label" for hit-testing, generous enough to cover the label text at any font size without
+ * having to measure it. */
+export const FRAME_LABEL_ZONE_W = 160;
+export const FRAME_LABEL_ZONE_H = 28;
+/** Width of the clickable/draggable band around a frame's border. */
+export const FRAME_BORDER_BAND = 10;
+
+/**
+ * Whether `p` lands on a frame's hit zone: a band straddling its border — extending
+ * FRAME_BORDER_BAND both inside AND outside the rect edge, matching the Canvas's invisible
+ * border hit-stroke, whose 2×band width is centered on the edge — plus its top-left label
+ * area. A frame's open interior is deliberately excluded (see `shapeAt`) so a frame can sit on
+ * top of — or be created around — other shapes without swallowing clicks meant for them; only
+ * the border and the label are "the frame" as far as hit-testing is concerned.
+ */
+export function frameHitZone(f: { x: number; y: number; w: number; h: number }, p: Pt): boolean {
+  const band = FRAME_BORDER_BAND;
+  // Past the band's outer edge: no hit.
+  if (p.x < f.x - band || p.x > f.x + f.w + band || p.y < f.y - band || p.y > f.y + f.h + band) {
+    return false;
+  }
+  // Within the outer bounds but not fully inside the band's inner edge = on the border ring
+  // (this covers both the outside half and the inside half of the band).
+  const inInner =
+    p.x >= f.x + band && p.x <= f.x + f.w - band && p.y >= f.y + band && p.y <= f.y + f.h - band;
+  if (!inInner) return true;
+  const lw = Math.min(FRAME_LABEL_ZONE_W, f.w);
+  const lh = Math.min(FRAME_LABEL_ZONE_H, f.h);
+  return p.x <= f.x + lw && p.y <= f.y + lh;
 }
 
 /** Point that stays fixed while resizing: a lone triangle's own vertex (its
@@ -145,6 +188,14 @@ function rayPolygonBorder(o: Pt, d: Pt, verts: Pt[]): Pt | null {
 export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
     const s = doc.shapes[i];
+    // A frame hit-tests purely by frameHitZone: its interior is transparent (so it never
+    // captures a click/cursor meant for a shape it contains or is layered over), while its
+    // border band also extends slightly OUTSIDE the bbox — so a frame must not go through
+    // the generic bbox check below, which would reject that outside half of the band.
+    if (s.kind === 'frame') {
+      if (frameHitZone(s, p)) return s;
+      continue;
+    }
     if (p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) return s;
   }
   return undefined;
@@ -285,6 +336,36 @@ export function translateItems(doc: Doc, ids: string[], dx: number, dy: number):
       return { ...c, from: move(c.from), to: move(c.to) };
     }),
   };
+}
+
+/**
+ * Ids of `ids` plus every shape "contained" by a frame among them: a shape whose center
+ * currently lies inside the frame's rect. Composes for nested frames — a frame found this way
+ * is itself queued, so its own contents (and any frame nested inside *that*) get pulled in too.
+ *
+ * There's no persistent parent/child bookkeeping: membership is just "center inside the rect,"
+ * recomputed fresh from `doc` every time this is called. Callers pass the doc snapshot from the
+ * *start* of a move gesture (mouse drag's frozen `base`, or the current doc for an atomic
+ * keyboard nudge) so a single continuous move only decides membership once, instead of shapes
+ * potentially entering/leaving the (moving) frame's rect mid-gesture.
+ */
+export function frameContainedIds(doc: Doc, ids: string[]): string[] {
+  const result = new Set(ids);
+  const queue = ids.filter((id) => findShape(doc, id)?.kind === 'frame');
+  while (queue.length) {
+    const frame = findShape(doc, queue.shift() as string);
+    if (!frame) continue;
+    for (const s of doc.shapes) {
+      if (result.has(s.id)) continue;
+      const cx = s.x + s.w / 2;
+      const cy = s.y + s.h / 2;
+      if (cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h) {
+        result.add(s.id);
+        if (s.kind === 'frame') queue.push(s.id);
+      }
+    }
+  }
+  return [...result];
 }
 
 interface Rect {

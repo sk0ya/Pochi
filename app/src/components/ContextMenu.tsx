@@ -47,6 +47,7 @@ const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
   ['ellipse', '◯', '楕円'],
   ['diamond', '◇', 'ひし形'],
   ['triangle', '△', '三角形'],
+  ['frame', '▢', 'フレーム(コンテナ)'],
 ];
 
 const ALIGN_EDGES: Array<[AlignEdge, string, string]> = [
