@@ -1045,21 +1045,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const res = classifyStroke(pts);
       if (!res) return { ...state, sketch: null, msg: '' };
       if (res.kind === 'line') {
-        const fromShape = shapeAt(state.doc, res.a);
-        const toShape = shapeAt(state.doc, res.b);
-        const from: Endpoint = fromShape
-          ? { shapeId: fromShape.id, x: fromShape.x + fromShape.w / 2, y: fromShape.y + fromShape.h / 2 }
-          : { ...snapPt(res.a) };
-        const to: Endpoint =
-          toShape && toShape.id !== fromShape?.id
-            ? { shapeId: toShape.id, x: toShape.x + toShape.w / 2, y: toShape.y + toShape.h / 2 }
-            : { ...snapPt(res.b) };
-        const c: Connector = { id: newId(), from, to, label: '' };
-        return commit(state, addConnector(state.doc, c), {
-          sketch: null,
-          selectedIds: [c.id],
-          msg: 'auto: arrow',
-        });
+        return { ...state, sketch: null, msg: '' };
       }
       const shape: Shape = {
         id: newId(),
