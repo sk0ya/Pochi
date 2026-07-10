@@ -15,9 +15,11 @@ import { HelpOverlay } from './components/HelpOverlay';
 import { StatusBar } from './components/StatusBar';
 import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
-import { exportSvg } from './model/svg';
+import { subsetDoc } from './model/doc';
+import { exportSvg, exportViewport } from './model/svg';
 import type { Doc } from './model/types';
 import { GRID } from './model/types';
+import { copySvgAsPng } from './pngClipboard';
 import { IMAGE_MAX_DIM, initialState, parseClipboard, reduce, serializeClipboard } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
@@ -128,6 +130,24 @@ export default function App() {
     }
   }, []);
 
+  /** Copies the current selection (or, absent one, the whole doc) as a PNG to the OS
+   * clipboard, falling back to a download; reuses the :svg serializer for pixel parity. */
+  const doCopyPng = useCallback(async () => {
+    const s = stateRef.current;
+    const target = s.selectedIds.length ? subsetDoc(s.doc, s.selectedIds) : s.doc;
+    const svg = exportSvg(target);
+    const { w, h } = exportViewport(target);
+    try {
+      const result = await copySvgAsPng(svg, { w, h });
+      dispatch({
+        type: 'MSG',
+        msg: result === 'clipboard' ? 'copied PNG to clipboard' : 'clipboard unavailable, downloaded diagram.png',
+      });
+    } catch {
+      dispatch({ type: 'MSG', msg: 'PNG export failed' });
+    }
+  }, []);
+
   const addImageFromDataUrl = useCallback(async (dataUrl: string) => {
     const dims = await new Promise<{ w: number; h: number }>((resolve) => {
       const img = new Image();
@@ -170,9 +190,13 @@ export default function App() {
         case 'svg':
           await doExportSvg();
           break;
+        case 'png':
+          await doCopyPng();
+          break;
         case 'export':
           if (rest[0] === 'svg') await doExportSvg();
-          else dispatch({ type: 'MSG', msg: 'usage: :export svg' });
+          else if (rest[0] === 'png') await doCopyPng();
+          else dispatch({ type: 'MSG', msg: 'usage: :export svg|png' });
           break;
         case 'new':
         case 'clear':
@@ -196,7 +220,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, doExportSvg],
+    [save, open, doExportSvg, doCopyPng],
   );
 
   /* global keyboard */
@@ -212,6 +236,13 @@ export default function App() {
         if (e.key === 'Escape') return;
       }
 
+      // Ctrl+Alt+C, not Ctrl+Shift+C: the latter is Chromium's "inspect element"
+      // shortcut, which pages can't preventDefault (applies to WebView2 too).
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        void doCopyPng();
+        return;
+      }
       if (e.ctrlKey && e.key === 'c') {
         e.preventDefault();
         dispatch({ type: 'COPY' });
@@ -290,7 +321,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [save, open]);
+  }, [save, open, doCopyPng]);
 
   /* paste an image or plain text from the OS clipboard */
   useEffect(() => {
@@ -334,6 +365,7 @@ export default function App() {
         onSave={() => void save()}
         onOpen={() => void open()}
         onExportSvg={() => void doExportSvg()}
+        onCopyPng={() => void doCopyPng()}
         onImportImage={() => void importImage()}
       />
       <div className="canvas-wrap">

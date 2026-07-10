@@ -548,6 +548,30 @@ export function docBounds(doc: Doc): { x: number; y: number; w: number; h: numbe
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
+/** Doc containing only the shapes/connectors in `ids` (e.g. for exporting just the current
+ * selection). Mirrors yankSelection's rule: a connector bound to selected shapes at both
+ * ends comes along even if it wasn't selected itself. A selected connector pulls in its
+ * bound shapes even if they weren't selected themselves, so it still resolves to their live
+ * position instead of its stale fallback x/y, and so those shapes count toward the exported
+ * bounds. */
+export function subsetDoc(doc: Doc, ids: string[]): Doc {
+  const idSet = new Set(ids);
+  const connectors = doc.connectors.filter(
+    (c) =>
+      idSet.has(c.id) ||
+      (!!c.from.shapeId && !!c.to.shapeId && idSet.has(c.from.shapeId) && idSet.has(c.to.shapeId)),
+  );
+  const shapeIds = new Set(ids);
+  for (const c of connectors) {
+    if (c.from.shapeId) shapeIds.add(c.from.shapeId);
+    if (c.to.shapeId) shapeIds.add(c.to.shapeId);
+  }
+  return {
+    shapes: doc.shapes.filter((s) => shapeIds.has(s.id)),
+    connectors,
+  };
+}
+
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 /** Approximate pixel size of a (possibly multi-line) label at 14px. */

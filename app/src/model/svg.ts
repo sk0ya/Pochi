@@ -53,13 +53,16 @@ function markerDef(id: string, hex: string): string {
   return `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${hex}"/></marker>`;
 }
 
-export function exportSvg(doc: Doc): string {
-  const PAD = 24;
+const PAD = 24;
+
+/** Padded viewport of the SVG that exportSvg produces for `doc` (viewBox origin + pixel size). */
+export function exportViewport(doc: Doc): { x: number; y: number; w: number; h: number } {
   const b = docBounds(doc) ?? { x: 0, y: 0, w: 200, h: 100 };
-  const x = b.x - PAD;
-  const y = b.y - PAD;
-  const w = b.w + PAD * 2;
-  const h = b.h + PAD * 2;
+  return { x: b.x - PAD, y: b.y - PAD, w: b.w + PAD * 2, h: b.h + PAD * 2 };
+}
+
+export function exportSvg(doc: Doc): string {
+  const { x, y, w, h } = exportViewport(doc);
 
   const connectorColors = Array.from(new Set(doc.connectors.map((c) => c.color).filter((v): v is string => !!v)));
 

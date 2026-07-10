@@ -9,6 +9,7 @@ import {
   reorderItems,
   resizeAnchor,
   scaleShapes,
+  subsetDoc,
   translateItems,
   triangleVertices,
 } from './doc';
@@ -188,6 +189,41 @@ describe('scaleShapes', () => {
     const doc: Doc = { shapes: [rect('s1', 10, 10, 20, 20)], connectors: [] };
     const scaled = scaleShapes(doc, ['s1'], 40, 40, { x: 0, y: 0 }, 20, 20);
     expect(scaled.shapes[0]).toMatchObject({ x: 20, y: 20, w: 40, h: 40 });
+  });
+});
+
+describe('subsetDoc', () => {
+  const doc: Doc = {
+    shapes: [rect('a', 0, 0, 10, 10), rect('b', 20, 20, 10, 10)],
+    connectors: [{ id: 'c1', from: { shapeId: 'a', x: 5, y: 5 }, to: { shapeId: 'b', x: 25, y: 25 }, label: '' }],
+  };
+
+  it('keeps only the selected shapes/connectors', () => {
+    expect(subsetDoc(doc, ['a'])).toEqual({ shapes: [doc.shapes[0]], connectors: [] });
+  });
+
+  it("pulls in a selected connector's bound shapes even when they weren't selected themselves", () => {
+    const out = subsetDoc(doc, ['c1']);
+    expect(out.shapes.map((s) => s.id).sort()).toEqual(['a', 'b']);
+    expect(out.connectors).toEqual([doc.connectors[0]]);
+  });
+
+  it('auto-includes an unselected connector when both its bound shapes are selected', () => {
+    const out = subsetDoc(doc, ['a', 'b']);
+    expect(out.shapes.map((s) => s.id).sort()).toEqual(['a', 'b']);
+    expect(out.connectors).toEqual([doc.connectors[0]]);
+  });
+
+  it('excludes an unselected connector when only one of its bound shapes is selected', () => {
+    expect(subsetDoc(doc, ['a']).connectors).toEqual([]);
+  });
+
+  it('excludes an unselected connector with a free endpoint even if its bound shape is selected', () => {
+    const free: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10)],
+      connectors: [{ id: 'c1', from: { shapeId: 'a', x: 5, y: 5 }, to: { x: 50, y: 50 }, label: '' }],
+    };
+    expect(subsetDoc(free, ['a']).connectors).toEqual([]);
   });
 });
 

@@ -18,6 +18,7 @@ export function Toolbar({
   onSave,
   onOpen,
   onExportSvg,
+  onCopyPng,
   onImportImage,
 }: {
   state: EditorState;
@@ -25,6 +26,7 @@ export function Toolbar({
   onSave: () => void;
   onOpen: () => void;
   onExportSvg: () => void;
+  onCopyPng: () => void;
   onImportImage: () => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
@@ -59,6 +61,7 @@ export function Toolbar({
       <button onClick={onOpen} title=":o">Open</button>
       <button onClick={onSave} title=":w / Ctrl+S">Save</button>
       <button onClick={onExportSvg} title=":svg">SVG</button>
+      <button onClick={onCopyPng} title=":png / Ctrl+Alt+C">📋 PNG</button>
       <span className="spacer" />
       <button
         className={state.vim ? 'vim-on' : ''}
