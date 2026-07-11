@@ -16,6 +16,7 @@ import { HelpOverlay } from './components/HelpOverlay';
 import { StatusBar } from './components/StatusBar';
 import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
+import { docToExcalidraw, excalidrawToDoc } from './excalidraw';
 import { subsetDoc } from './model/doc';
 import { exportBackground, exportSvg, exportViewport } from './model/svg';
 import type { ExportTheme } from './model/svg';
@@ -81,6 +82,27 @@ function addRecent(list: RecentFile[], path: string): RecentFile[] {
 
 function removeRecent(list: RecentFile[], path: string): RecentFile[] {
   return list.filter((f) => f.path !== path);
+}
+
+/** Parses picked file content into a Doc, accepting either Pochi's own `{app,version,doc}`
+ * envelope or a raw Excalidraw scene (`{type:'excalidraw',...}`) - so "Open" works as a
+ * single unified action regardless of which app produced the file, rather than needing a
+ * separate import command. Returns null (never throws) if `content` is neither. */
+function parseOpenedFile(content: string): { doc: Doc; source: 'pochi' | 'excalidraw'; version?: unknown } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  const p = parsed as { app?: string; version?: unknown; doc?: Doc; shapes?: unknown; connectors?: unknown };
+  const doc = p.doc ?? (parsed as Doc);
+  if (Array.isArray(doc?.shapes) && Array.isArray(doc?.connectors)) {
+    return { doc, source: 'pochi', version: p.version };
+  }
+  const excalidrawDoc = excalidrawToDoc(parsed);
+  if (excalidrawDoc) return { doc: excalidrawDoc, source: 'excalidraw' };
+  return null;
 }
 
 /** Files are saved with an envelope `{ app, version, doc }`; `version` is bumped when the
@@ -271,19 +293,20 @@ export default function App() {
     if (!confirmDiscard('保存されていない変更があります。開きますか?')) return;
     const picked = isDesktop
       ? await openFileDialog('json')
-      : await pickFile('.json,.pochi.json,application/json');
+      : await pickFile('.json,.pochi.json,.excalidraw,application/json');
     if (!picked) return;
-    try {
-      const parsed = JSON.parse(picked.content) as { app?: string; version?: unknown; doc?: Doc };
-      const doc = parsed.doc ?? (parsed as unknown as Doc);
-      if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
-      dispatch({ type: 'LOAD', doc, fileName: picked.name });
-      const warning = newerVersionWarning(parsed);
-      if (warning) dispatch({ type: 'MSG', msg: warning });
-      if (isDesktop) setRecentFiles((r) => addRecent(r, picked.name));
-    } catch {
-      dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
+    const result = parseOpenedFile(picked.content);
+    if (!result) {
+      dispatch({ type: 'MSG', msg: `not a pochi or excalidraw file: ${picked.name}` });
+      return;
     }
+    dispatch({ type: 'LOAD', doc: result.doc, fileName: picked.name });
+    if (result.source === 'excalidraw') dispatch({ type: 'MSG', msg: `imported Excalidraw file: ${picked.name}` });
+    else {
+      const warning = newerVersionWarning({ version: result.version });
+      if (warning) dispatch({ type: 'MSG', msg: warning });
+    }
+    if (isDesktop) setRecentFiles((r) => addRecent(r, picked.name));
   }, [confirmDiscard]);
 
   const requestNew = useCallback(() => {
@@ -301,18 +324,19 @@ export default function App() {
       setRecentFiles((r) => removeRecent(r, path));
       return;
     }
-    try {
-      const parsed = JSON.parse(picked.content) as { app?: string; version?: unknown; doc?: Doc };
-      const doc = parsed.doc ?? (parsed as unknown as Doc);
-      if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
-      dispatch({ type: 'LOAD', doc, fileName: picked.name });
-      const warning = newerVersionWarning(parsed);
-      if (warning) dispatch({ type: 'MSG', msg: warning });
-      setRecentFiles((r) => addRecent(r, picked.name));
-    } catch {
-      dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
+    const result = parseOpenedFile(picked.content);
+    if (!result) {
+      dispatch({ type: 'MSG', msg: `not a pochi or excalidraw file: ${picked.name}` });
       setRecentFiles((r) => removeRecent(r, path));
+      return;
     }
+    dispatch({ type: 'LOAD', doc: result.doc, fileName: picked.name });
+    if (result.source === 'excalidraw') dispatch({ type: 'MSG', msg: `imported Excalidraw file: ${picked.name}` });
+    else {
+      const warning = newerVersionWarning({ version: result.version });
+      if (warning) dispatch({ type: 'MSG', msg: warning });
+    }
+    setRecentFiles((r) => addRecent(r, picked.name));
   }, [confirmDiscard]);
 
   const removeRecentFile = useCallback((path: string) => {
@@ -327,6 +351,20 @@ export default function App() {
     } else {
       downloadFile('diagram.svg', svg, 'image/svg+xml');
       dispatch({ type: 'MSG', msg: 'exported diagram.svg' });
+    }
+  }, []);
+
+  /** Exports the current doc as a standalone `.excalidraw` scene (see excalidraw.ts for
+   * the shape/connector mapping) - a lossy but visually-faithful alternate format,
+   * unlike Save which always round-trips Pochi's own model exactly. */
+  const doExportExcalidraw = useCallback(async () => {
+    const json = JSON.stringify(docToExcalidraw(stateRef.current.doc), null, 2);
+    if (isDesktop) {
+      const path = await saveFileDialog('diagram.excalidraw', 'excalidraw', json);
+      if (path) dispatch({ type: 'MSG', msg: `exported ${path}` });
+    } else {
+      downloadFile('diagram.excalidraw', json, 'application/json');
+      dispatch({ type: 'MSG', msg: 'exported diagram.excalidraw' });
     }
   }, []);
 
@@ -434,9 +472,13 @@ export default function App() {
           await doShare();
           break;
         case 'export': {
+          if (rest[0] === 'excalidraw') {
+            await doExportExcalidraw();
+            break;
+          }
           const theme = parseExportTheme(rest[1]);
           if ((rest[0] !== 'svg' && rest[0] !== 'png') || theme === null) {
-            dispatch({ type: 'MSG', msg: 'usage: :export svg|png [light|dark]' });
+            dispatch({ type: 'MSG', msg: 'usage: :export svg|png [light|dark] | :export excalidraw' });
           } else if (rest[0] === 'svg') await doExportSvg(theme);
           else await doCopyPng(theme);
           break;
@@ -468,7 +510,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, requestNew, doExportSvg, doCopyPng, doShare],
+    [save, open, requestNew, doExportSvg, doExportExcalidraw, doCopyPng, doShare],
   );
 
   /* global keyboard */
@@ -652,6 +694,7 @@ export default function App() {
         onSave={() => void save()}
         onOpen={() => void open()}
         onExportSvg={() => void doExportSvg()}
+        onExportExcalidraw={() => void doExportExcalidraw()}
         onCopyPng={() => void doCopyPng()}
         onImportImage={() => void importImage()}
         theme={theme}

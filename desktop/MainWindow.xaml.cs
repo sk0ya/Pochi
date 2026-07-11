@@ -62,6 +62,7 @@ public partial class MainWindow : Window
     private static string FilterFor(string? kind) => kind switch
     {
         "svg" => "SVG image (*.svg)|*.svg|All files (*.*)|*.*",
+        "excalidraw" => "Excalidraw (*.excalidraw)|*.excalidraw|All files (*.*)|*.*",
         "image" => "Image (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|All files (*.*)|*.*",
         _ => "Pochi diagram (*.pochi.json)|*.pochi.json|JSON (*.json)|*.json|All files (*.*)|*.*",
     };

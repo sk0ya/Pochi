@@ -78,6 +78,7 @@ export function Toolbar({
   onSave,
   onOpen,
   onExportSvg,
+  onExportExcalidraw,
   onCopyPng,
   onImportImage,
   theme,
@@ -92,6 +93,7 @@ export function Toolbar({
   onSave: () => void;
   onOpen: () => void;
   onExportSvg: () => void;
+  onExportExcalidraw: () => void;
   onCopyPng: () => void;
   onImportImage: () => void;
   theme: ExportTheme;
@@ -132,7 +134,7 @@ export function Toolbar({
       <span className="sep" />
       <button onClick={onNew} title=":new — 新規作成">New</button>
       <span className="menu-anchor">
-        <button onClick={onOpen} title=":o">Open</button>
+        <button onClick={onOpen} title=":o — Pochi (.pochi.json) / Excalidraw (.excalidraw) を開く">Open</button>
         {recentFiles.length > 0 && (
           <button
             className="caret"
@@ -156,6 +158,7 @@ export function Toolbar({
       </span>
       <button onClick={onSave} title=":w / Ctrl+S">Save</button>
       <button onClick={onExportSvg} title=":svg">SVG</button>
+      <button onClick={onExportExcalidraw} title=":export excalidraw — .excalidraw として書き出す">Excalidraw</button>
       <button onClick={onCopyPng} title=":png / Ctrl+Alt+C">📋 PNG</button>
       <span className="spacer" />
       <button

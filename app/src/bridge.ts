@@ -37,7 +37,7 @@ function call<T>(op: string, args: Record<string, unknown>): Promise<T> {
   });
 }
 
-export type FileKind = 'json' | 'svg';
+export type FileKind = 'json' | 'svg' | 'excalidraw';
 
 /** Show a save dialog and write content. Returns the chosen path, or null. */
 export function saveFileDialog(
