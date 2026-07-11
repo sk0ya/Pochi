@@ -23,7 +23,7 @@ import type { Doc } from './model/types';
 import { GRID } from './model/types';
 import { copySvgAsPng } from './pngClipboard';
 import { decodeShareDoc, encodeShareDoc, SHARE_URL_WARN_CHARS } from './share';
-import { IMAGE_MAX_DIM, initialState, parseClipboard, reduce, serializeClipboard } from './state/reducer';
+import { IMAGE_MAX_DIM, initialState, isDirty, parseClipboard, reduce, serializeClipboard } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
 const AUTOSAVE_KEY = 'pochi.autosave';
@@ -250,7 +250,15 @@ export default function App() {
     }
   }, []);
 
+  /** New/Open both replace the current doc wholesale - confirm first if there are changes since
+   * the last load/save, so a stray click/`:new`/`:o` doesn't silently blow away work in progress
+   * (undo still recovers it, but that's not obvious in the moment). */
+  const confirmDiscard = useCallback((message: string) => {
+    return !isDirty(stateRef.current) || window.confirm(message);
+  }, []);
+
   const open = useCallback(async () => {
+    if (!confirmDiscard('保存されていない変更があります。開きますか?')) return;
     const picked = isDesktop
       ? await openFileDialog('json')
       : await pickFile('.json,.pochi.json,application/json');
@@ -264,11 +272,17 @@ export default function App() {
     } catch {
       dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
     }
-  }, []);
+  }, [confirmDiscard]);
+
+  const requestNew = useCallback(() => {
+    if (!confirmDiscard('保存されていない変更があります。新規作成しますか?')) return;
+    dispatch({ type: 'NEW' });
+  }, [confirmDiscard]);
 
   /** Reopens a path from the "recent files" list directly, without a dialog. Desktop only -
    * see RecentFile above. Self-heals a stale entry (file moved/deleted) by dropping it. */
   const openRecent = useCallback(async (path: string) => {
+    if (!confirmDiscard('保存されていない変更があります。開きますか?')) return;
     const picked = await readFile(path);
     if (!picked) {
       dispatch({ type: 'MSG', msg: `file not found: ${path}` });
@@ -285,7 +299,7 @@ export default function App() {
       dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
       setRecentFiles((r) => removeRecent(r, path));
     }
-  }, []);
+  }, [confirmDiscard]);
 
   const removeRecentFile = useCallback((path: string) => {
     setRecentFiles((r) => removeRecent(r, path));
@@ -415,7 +429,7 @@ export default function App() {
         }
         case 'new':
         case 'clear':
-          dispatch({ type: 'NEW' });
+          requestNew();
           break;
         case 'vim':
           dispatch({
@@ -440,7 +454,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, doExportSvg, doCopyPng, doShare],
+    [save, open, requestNew, doExportSvg, doCopyPng, doShare],
   );
 
   /* global keyboard */
@@ -620,6 +634,7 @@ export default function App() {
       <Toolbar
         state={state}
         dispatch={dispatch}
+        onNew={requestNew}
         onSave={() => void save()}
         onOpen={() => void open()}
         onExportSvg={() => void doExportSvg()}

@@ -73,6 +73,7 @@ function RecentFilesMenu({
 export function Toolbar({
   state,
   dispatch,
+  onNew,
   onSave,
   onOpen,
   onExportSvg,
@@ -86,6 +87,7 @@ export function Toolbar({
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
+  onNew: () => void;
   onSave: () => void;
   onOpen: () => void;
   onExportSvg: () => void;
@@ -127,7 +129,7 @@ export function Toolbar({
       <span className="sep" />
       <button onClick={onImportImage} title="画像ファイルを取り込む">🖼 Image</button>
       <span className="sep" />
-      <button onClick={() => dispatch({ type: 'NEW' })} title=":new — 新規作成">New</button>
+      <button onClick={onNew} title=":new — 新規作成">New</button>
       <span className="menu-anchor">
         <button onClick={onOpen} title=":o">Open</button>
         {recentFiles.length > 0 && (

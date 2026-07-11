@@ -107,6 +107,8 @@ export type LastEdit =
 
 export interface EditorState {
   doc: Doc;
+  /** Doc as of the last load/save/new, for detecting unsaved changes (see `isDirty`). */
+  savedDoc: Doc;
   undo: Doc[];
   redo: Doc[];
   /** Snapshot taken when a transient op (move/resize/drag/insert) starts. */
@@ -251,9 +253,16 @@ const BIG_STEP = 4;
 /** Max long edge (world px) a newly-imported image is scaled to fit within. */
 export const IMAGE_MAX_DIM = GRID * 20;
 
+/** True if the doc has changed since the last load/save/new (see `savedDoc`). */
+export function isDirty(state: EditorState): boolean {
+  return state.doc !== state.savedDoc;
+}
+
 export function initialState(doc: Doc | null, vim: boolean): EditorState {
+  const initialDoc = doc ?? emptyDoc();
   return {
-    doc: doc ?? emptyDoc(),
+    doc: initialDoc,
+    savedDoc: initialDoc,
     undo: [],
     redo: [],
     base: null,
@@ -1560,11 +1569,14 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
     }
 
-    case 'NEW':
-      return commit(state, emptyDoc(), { selectedIds: [], fileName: null, msg: 'new document' });
+    case 'NEW': {
+      const doc = emptyDoc();
+      return commit(state, doc, { savedDoc: doc, selectedIds: [], fileName: null, msg: 'new document' });
+    }
 
     case 'LOAD':
       return commit(state, action.doc, {
+        savedDoc: action.doc,
         selectedIds: [],
         fileName: action.fileName,
         msg: action.fileName ? `opened ${action.fileName}` : 'opened',
@@ -1574,7 +1586,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       return { ...state, msg: action.msg };
 
     case 'SAVED':
-      return { ...state, fileName: action.fileName, msg: `saved ${action.fileName}` };
+      return { ...state, savedDoc: state.doc, fileName: action.fileName, msg: `saved ${action.fileName}` };
 
     case 'SET_VIM':
       return { ...state, vim: action.on, msg: `vim mode ${action.on ? 'on' : 'off'}` };
