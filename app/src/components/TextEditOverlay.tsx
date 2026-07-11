@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
-import { findShape, inscribedBox } from '../model/doc';
+import { connectorLabelPos, findShape, inscribedBox } from '../model/doc';
 import { FONT_SIZE_PX } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
@@ -32,8 +32,10 @@ export function TextEditOverlay({
   if (shape) {
     rect = inscribedBox(shape);
   } else {
-    // connector label: small box at the midpoint
-    rect = { x: state.cursor.x - 80, y: state.cursor.y - 20, w: 160, h: 40 };
+    // connector label: small box centered on where the label renders
+    // (matches the `-12` vertical offset used when drawing the label in Canvas.tsx)
+    const pos = connectorLabelPos(state.doc, conn!);
+    rect = { x: pos.x - 80, y: pos.y - 12 - 20, w: 160, h: 40 };
   }
   const fontSize = shape?.fontSize ?? conn?.fontSize;
   const style: React.CSSProperties = {
