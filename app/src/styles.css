@@ -114,6 +114,18 @@ body {
   color: var(--active-text);
 }
 
+/* square icon-only buttons (tools, undo/redo, fit, image, theme, vim, help) */
+.toolbar button.icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex: none;
+}
+
 .sep {
   width: 1px;
   height: 18px;
@@ -121,20 +133,15 @@ body {
   margin: 0 6px;
 }
 
-/* "Open ▾" recent-files popover anchor */
+/* "File ▾" dropdown anchor */
 .menu-anchor {
   position: relative;
   display: inline-flex;
 }
 
-.menu-anchor button.caret {
-  padding: 4px 4px;
-  margin-left: -4px;
-}
-
 /* Higher specificity than `.context-menu` (declared later in this file with
  * `position: fixed`) so this `position: absolute` override actually wins. */
-.menu-anchor .recent-menu {
+.menu-anchor .file-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;

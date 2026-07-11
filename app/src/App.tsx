@@ -697,6 +697,7 @@ export default function App() {
         onExportExcalidraw={() => void doExportExcalidraw()}
         onCopyPng={() => void doCopyPng()}
         onImportImage={() => void importImage()}
+        onShare={() => void doShare()}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
         recentFiles={isDesktop ? recentFiles : []}
