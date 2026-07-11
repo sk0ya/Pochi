@@ -290,8 +290,9 @@ describe('search (/) mode: confirming a match', () => {
     const state = search(vimState({ shapes: [], connectors: [c] }), 'connects');
     expect(state.mode).toBe('normal');
     expect(state.selectedIds).toEqual(['c1']);
-    // Straight connector with no shape endpoints: label position is the segment midpoint.
-    expect(state.cursor).toEqual({ x: GRID * 10, y: 0 });
+    // Straight connector with no shape endpoints: label position is the segment midpoint,
+    // nudged above the line (connectorLabelPos's LABEL_GAP) and snapped to the grid.
+    expect(state.cursor).toEqual({ x: GRID * 10, y: -GRID });
   });
 
   it('jumps to the nearest match by distance from the current cursor, not document order', () => {
