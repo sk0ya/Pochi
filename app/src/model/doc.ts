@@ -1,4 +1,4 @@
-import { FONT_LINE_H, FONT_SIZE_PX, GRID } from './types';
+import { FONT_LINE_H, FONT_SIZE_PX, FREEDRAW_RES, GRID } from './types';
 import type { Connector, Doc, Endpoint, FontSize, Pt, Shape, TriangleDirection } from './types';
 
 /** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
@@ -138,6 +138,39 @@ export function frameHitZone(f: { x: number; y: number; w: number; h: number }, 
   const lw = Math.min(FRAME_LABEL_ZONE_W, f.w);
   const lh = Math.min(FRAME_LABEL_ZONE_H, f.h);
   return p.x <= f.x + lw && p.y <= f.y + lh;
+}
+
+/** Absolute (world-space) points of a freedraw stroke, decoded from the shape's
+ * quantized bbox-relative `points` (see Shape.points in types.ts). */
+export function freedrawPoints(s: { x: number; y: number; w: number; h: number; points?: number[] }): Pt[] {
+  const q = s.points ?? [];
+  const out: Pt[] = [];
+  for (let i = 0; i + 1 < q.length; i += 2) {
+    out.push({
+      x: s.x + (q[i] / FREEDRAW_RES) * s.w,
+      y: s.y + (q[i + 1] / FREEDRAW_RES) * s.h,
+    });
+  }
+  return out;
+}
+
+/** SVG path `d` for a freedraw stroke, shared by the canvas and the SVG export.
+ * Interior points become quadratic control points toward segment midpoints, so the
+ * simplified polyline renders as a smooth curve instead of visible corners.
+ * Coordinates are rounded to 0.1px to keep exported SVG strings short. */
+export function freedrawPathD(s: { x: number; y: number; w: number; h: number; points?: number[] }): string {
+  const pts = freedrawPoints(s);
+  if (pts.length < 2) return '';
+  const f = (v: number): number => Math.round(v * 10) / 10;
+  let d = `M ${f(pts[0].x)} ${f(pts[0].y)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2;
+    const my = (pts[i].y + pts[i + 1].y) / 2;
+    d += ` Q ${f(pts[i].x)} ${f(pts[i].y)} ${f(mx)} ${f(my)}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L ${f(last.x)} ${f(last.y)}`;
+  return d;
 }
 
 /** Point that stays fixed while resizing: a lone triangle's own vertex (its

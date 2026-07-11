@@ -1021,3 +1021,65 @@ describe('DISTRIBUTE', () => {
     expect(next.doc).toEqual(state.doc);
   });
 });
+
+describe('pen tool: SKETCH_END keeps the stroke as a freedraw shape', () => {
+  /** Fresh state with the pen tool active and a stroke fed through SKETCH_START/POINT. */
+  function penStroke(pts: Array<{ x: number; y: number }>): EditorState {
+    let state = reduce(initialState(null, false), { type: 'SET_TOOL', tool: 'pen' });
+    state = reduce(state, { type: 'SKETCH_START', p: pts[0] });
+    for (const p of pts.slice(1)) state = reduce(state, { type: 'SKETCH_POINT', p });
+    return reduce(state, { type: 'SKETCH_END' });
+  }
+
+  it('creates a selected freedraw shape with quantized points and no text edit', () => {
+    const state = penStroke([
+      { x: 0, y: 0 },
+      { x: 50, y: 40 },
+      { x: 100, y: 0 },
+    ]);
+    expect(state.doc.shapes).toHaveLength(1);
+    const s = state.doc.shapes[0];
+    expect(s.kind).toBe('freedraw');
+    expect(s).toMatchObject({ x: 0, y: 0, w: 100, h: 40 });
+    expect(s.points!.length).toBeGreaterThanOrEqual(6);
+    expect(state.selectedIds).toEqual([s.id]);
+    expect(state.mode).not.toBe('insert'); // unlike the sketch tool, no label edit
+    expect(state.sketch).toBeNull();
+  });
+
+  it('is undoable as a single edit', () => {
+    let state = penStroke([
+      { x: 0, y: 0 },
+      { x: 50, y: 40 },
+      { x: 100, y: 0 },
+    ]);
+    expect(state.doc.shapes).toHaveLength(1);
+    state = reduce(state, { type: 'UNDO' });
+    expect(state.doc.shapes).toHaveLength(0);
+    state = reduce(state, { type: 'REDO' });
+    expect(state.doc.shapes).toHaveLength(1);
+  });
+
+  it('discards a stroke too small to keep', () => {
+    const state = penStroke([
+      { x: 0, y: 0 },
+      { x: 3, y: 2 },
+    ]);
+    expect(state.doc.shapes).toHaveLength(0);
+    expect(state.sketch).toBeNull();
+  });
+
+  it('leaves the sketch tool behavior unchanged (still classifies)', () => {
+    let state = initialState(null, false); // default tool: sketch
+    state = reduce(state, { type: 'SKETCH_START', p: { x: 0, y: 0 } });
+    const pts = [];
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      pts.push({ x: 50 + 40 * Math.cos(a), y: 50 + 40 * Math.sin(a) });
+    }
+    for (const p of pts) state = reduce(state, { type: 'SKETCH_POINT', p });
+    state = reduce(state, { type: 'SKETCH_END' });
+    expect(state.doc.shapes).toHaveLength(1);
+    expect(state.doc.shapes[0].kind).toBe('ellipse');
+  });
+});

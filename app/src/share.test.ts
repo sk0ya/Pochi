@@ -34,6 +34,7 @@ describe('encodeShareDoc / decodeShareDoc', () => {
     shapes: [
       { id: 's1', kind: 'rect', x: 0, y: 0, w: 160, h: 96, label: 'hello' },
       { id: 's2', kind: 'ellipse', x: 200, y: 0, w: 160, h: 96, label: '世界', color: '#ff0000' },
+      { id: 's3', kind: 'freedraw', x: 0, y: 200, w: 120, h: 40, label: '', points: [0, 0, 500, 1000, 1000, 0] },
     ],
     connectors: [
       { id: 'c1', from: { shapeId: 's1', x: 0, y: 0 }, to: { shapeId: 's2', x: 0, y: 0 }, label: '' },

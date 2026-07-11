@@ -15,6 +15,7 @@ import {
   FRAME_LABEL_ZONE_H,
   FRAME_LABEL_ZONE_W,
   frameHitZone,
+  freedrawPathD,
   labelCenter,
   resizeAnchor,
   resizeHandlePoint,
@@ -196,6 +197,17 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       {haloColor && s.kind === 'ellipse' && (
         <ellipse cx={cx} cy={cy} rx={s.w / 2 + 3} ry={s.h / 2 + 3} {...halo} />
       )}
+      {haloColor && s.kind === 'freedraw' && (
+        <path
+          d={freedrawPathD(s)}
+          fill="none"
+          stroke={haloColor}
+          strokeWidth={selected ? 6 : 5}
+          opacity={0.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
       {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, 3)} {...halo} />}
       {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, 3)} {...halo} />}
       {haloColor && s.kind === 'frame' && (
@@ -203,6 +215,18 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
       )}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
+      {/* A freedraw stroke is an open line: never filled, so the `filled` flag and the
+          tinted fill are ignored — only the stroke color applies. */}
+      {s.kind === 'freedraw' && (
+        <path
+          d={freedrawPathD(s)}
+          fill="none"
+          stroke={trueStroke}
+          strokeWidth={selected ? 2 : 1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
       {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
       {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
       {s.kind === 'frame' && (
@@ -646,9 +670,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'START_ARROW_AT', p: toWorld(e), shapeId: id });
       return;
     }
-    if (state.tool === 'sketch' && !id) {
-      // Freehand stroke on empty canvas; auto-detected on mouseup as a shape
-      // or line. Dragging an existing shape always moves it instead.
+    if ((state.tool === 'sketch' || state.tool === 'pen') && !id) {
+      // Freehand stroke on empty canvas; on mouseup, sketch auto-detects a shape
+      // or line, pen keeps the stroke as a freedraw shape. Dragging an existing
+      // shape always moves it instead.
       drag.current = newDrag('sketch', e);
       dispatch({ type: 'SKETCH_START', p: toWorld(e) });
       return;
@@ -1023,7 +1048,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     state.tool === 'triangle' ||
     state.tool === 'frame' ||
     state.tool === 'arrow' ||
-    state.tool === 'sketch';
+    state.tool === 'sketch' ||
+    state.tool === 'pen';
   const bgCursor = isPanning
     ? 'grabbing'
     : drag.current?.kind === 'marquee'

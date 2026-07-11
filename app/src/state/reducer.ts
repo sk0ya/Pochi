@@ -29,7 +29,7 @@ import {
   translateItems,
   updateShape,
 } from '../model/doc';
-import { classifyStroke } from '../model/sketch';
+import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
@@ -50,6 +50,7 @@ export type DrawKind = 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'frame';
 export type MouseTool =
   | 'select'
   | 'sketch'
+  | 'pen'
   | 'rect'
   | 'ellipse'
   | 'diamond'
@@ -1433,6 +1434,19 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     case 'SKETCH_END': {
       const pts = state.sketch;
       if (!pts) return state;
+      // Pen tool: keep the stroke as-is (simplified + quantized) instead of
+      // classifying it into a shape. No text edit — a squiggle rarely wants a
+      // label right away, and the label can still be added by double-click.
+      if (state.tool === 'pen') {
+        const res = strokeToFreedraw(pts);
+        if (!res) return { ...state, sketch: null, msg: '' };
+        const shape: Shape = { id: newId(), kind: 'freedraw', ...res, label: '' };
+        return commit(state, addShape(state.doc, shape), {
+          sketch: null,
+          selectedIds: [shape.id],
+          msg: 'pen',
+        });
+      }
       const res = classifyStroke(pts);
       if (!res) return { ...state, sketch: null, msg: '' };
       if (res.kind === 'line') {

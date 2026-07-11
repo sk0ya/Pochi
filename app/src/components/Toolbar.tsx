@@ -7,6 +7,7 @@ import type { Action, EditorState, MouseTool } from '../state/reducer';
 const TOOLS: Array<[MouseTool, string, string]> = [
   ['select', '⬚ Select', '図形を作成しない (選択・移動・パンのみ)'],
   ['sketch', '✏ Auto', '手描きで図形を自動判定(丸→楕円、角→四角、線→矢印)'],
+  ['pen', '〰 Pen', '手描き線をそのまま残す(図形に変換しない)'],
   ['rect', '▭ Rect', 'ドラッグで四角を描く (r)'],
   ['ellipse', '◯ Ellipse', 'ドラッグで楕円を描く (e)'],
   ['diamond', '◇ Diamond', 'ドラッグでひし形を描く (q)'],

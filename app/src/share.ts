@@ -139,6 +139,7 @@ type ShapeTuple = [
   FontSize?,
   string?,
   string?,
+  number[]?,
 ];
 
 function shapeToTuple(s: Shape): ShapeTuple {
@@ -156,12 +157,31 @@ function shapeToTuple(s: Shape): ShapeTuple {
     s.fontSize,
     s.groupId,
     s.src,
+    s.points,
   ]) as ShapeTuple;
 }
 
 function tupleToShape(t: unknown[]): Shape {
-  const [kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src] = t as ShapeTuple;
-  return { kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src };
+  // `?? undefined` throughout: an absent optional that sits BEFORE a present one
+  // serializes as null inside the tuple (only the trailing run gets trimmed), and
+  // null must not leak into the Doc, whose optionals are `T | undefined`.
+  const [kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src, points] = t as ShapeTuple;
+  return {
+    kind,
+    x,
+    y,
+    w,
+    h,
+    label,
+    id,
+    color: color ?? undefined,
+    direction: direction ?? undefined,
+    filled: filled ?? undefined,
+    fontSize: fontSize ?? undefined,
+    groupId: groupId ?? undefined,
+    src: src ?? undefined,
+    points: points ?? undefined,
+  };
 }
 
 /** Positional tuple for a Connector, with `from`/`to` flattened to their shapeId/x/y and
@@ -225,19 +245,20 @@ function tupleToConnector(t: unknown[]): Connector {
     waypoints,
     groupId,
   ] = t as ConnectorTuple;
+  // Same null normalization as tupleToShape (see there).
   return {
     id,
-    from: { shapeId: fromShapeId, x: fromX, y: fromY },
-    to: { shapeId: toShapeId, x: toX, y: toY },
+    from: { shapeId: fromShapeId ?? undefined, x: fromX, y: fromY },
+    to: { shapeId: toShapeId ?? undefined, x: toX, y: toY },
     label,
-    color,
-    dashed,
-    arrowDirection,
-    fontSize,
-    routing,
-    elbowRatio,
-    waypoints: waypoints?.map(tupleToPt),
-    groupId,
+    color: color ?? undefined,
+    dashed: dashed ?? undefined,
+    arrowDirection: arrowDirection ?? undefined,
+    fontSize: fontSize ?? undefined,
+    routing: routing ?? undefined,
+    elbowRatio: elbowRatio ?? undefined,
+    waypoints: waypoints?.map(tupleToPt) ?? undefined,
+    groupId: groupId ?? undefined,
   };
 }
 

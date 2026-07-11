@@ -3,6 +3,7 @@ import {
   connectorPath,
   docBounds,
   FRAME_LABEL_PAD_X,
+  freedrawPathD,
   FRAME_LABEL_PAD_Y,
   labelCenter,
   triangleVertices,
@@ -115,6 +116,9 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
   } else if (s.kind === 'triangle') {
     const points = triangleVertices(s).map((p) => `${p.x},${p.y}`).join(' ');
     body = `<polygon points="${points}" ${style}/>`;
+  } else if (s.kind === 'freedraw') {
+    // Open stroke: never filled, `filled`/fill tint don't apply (mirrors the canvas).
+    body = `<path d="${freedrawPathD(s)}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
   } else if (s.kind === 'image' && s.src) {
     body = `<image href="${esc(s.src)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMid slice"/>`;
   }

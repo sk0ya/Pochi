@@ -3,7 +3,13 @@ export interface Pt {
   y: number;
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle' | 'frame';
+export type ShapeKind = 'rect' | 'ellipse' | 'text' | 'diamond' | 'image' | 'triangle' | 'frame' | 'freedraw';
+
+/** Quantization resolution for kind: 'freedraw' — `points` entries are integers in
+ * 0..FREEDRAW_RES, relative to the shape's own bbox. Chosen so each coordinate is at
+ * most 4 characters in JSON while staying finer than the stroke simplification
+ * tolerance at typical shape sizes. */
+export const FREEDRAW_RES = 1000;
 
 /** Label font size: 's' / 'm' / 'l'; undefined = 'm' (the original, pre-feature default). */
 export type FontSize = 's' | 'm' | 'l';
@@ -43,6 +49,10 @@ export interface Shape {
   src?: string;
   /** Apex direction for kind: 'triangle'; undefined = 'up'. */
   direction?: TriangleDirection;
+  /** Stroke for kind: 'freedraw', as a flat [x0, y0, x1, y1, ...] of integers in
+   * 0..FREEDRAW_RES relative to the bbox — bbox-relative so plain x/y/w/h moves and
+   * resizes apply untouched, quantized+flat to keep saved files and share URLs small. */
+  points?: number[];
   /** Flat-fill style (solid background, no stroke) for rect/ellipse/diamond/triangle; undefined = outlined. */
   filled?: boolean;
   /** Label font size; undefined = 'm'. */

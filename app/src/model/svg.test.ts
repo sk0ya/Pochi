@@ -31,6 +31,20 @@ describe('exportSvg', () => {
   it('always renders a white background rect so the PNG rasterization has no transparency', () => {
     expect(exportSvg(doc)).toContain('fill="#ffffff"');
   });
+
+  it('renders a freedraw shape as an unfilled smooth path, ignoring the filled flag', () => {
+    const freedraw: Doc = {
+      shapes: [
+        // points: left edge down, then across to the right edge (a simple "L").
+        { id: 'f', kind: 'freedraw', x: 10, y: 20, w: 100, h: 50, label: '', filled: true, points: [0, 0, 0, 1000, 1000, 1000] },
+      ],
+      connectors: [],
+    };
+    const svg = exportSvg(freedraw);
+    // Starts at the shape's top-left, curves through the corner, ends bottom-right.
+    expect(svg).toContain('<path d="M 10 20 Q 10 70 60 70 L 110 70" fill="none"');
+    expect(svg).toContain('stroke-linecap="round"');
+  });
 });
 
 describe('exportSvg: dark theme', () => {
