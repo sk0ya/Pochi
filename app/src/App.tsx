@@ -83,6 +83,16 @@ function removeRecent(list: RecentFile[], path: string): RecentFile[] {
   return list.filter((f) => f.path !== path);
 }
 
+/** Files are saved with an envelope `{ app, version, doc }`; `version` is bumped when the
+ * on-disk format changes. All changes so far are additive, so a newer version still loads
+ * fine here - this just warns the user their file may not render correctly, in case a future
+ * version drops/renames something this build doesn't know about. */
+function newerVersionWarning(parsed: { version?: unknown }): string | null {
+  return typeof parsed.version === 'number' && parsed.version > 1
+    ? '新しいバージョンの Pochi で保存されたファイルです。正しく表示されない可能性があります'
+    : null;
+}
+
 function init(): EditorState {
   let doc: Doc | null = null;
   let vim = false;
@@ -264,10 +274,12 @@ export default function App() {
       : await pickFile('.json,.pochi.json,application/json');
     if (!picked) return;
     try {
-      const parsed = JSON.parse(picked.content) as { app?: string; doc?: Doc };
+      const parsed = JSON.parse(picked.content) as { app?: string; version?: unknown; doc?: Doc };
       const doc = parsed.doc ?? (parsed as unknown as Doc);
       if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
       dispatch({ type: 'LOAD', doc, fileName: picked.name });
+      const warning = newerVersionWarning(parsed);
+      if (warning) dispatch({ type: 'MSG', msg: warning });
       if (isDesktop) setRecentFiles((r) => addRecent(r, picked.name));
     } catch {
       dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
@@ -290,10 +302,12 @@ export default function App() {
       return;
     }
     try {
-      const parsed = JSON.parse(picked.content) as { app?: string; doc?: Doc };
+      const parsed = JSON.parse(picked.content) as { app?: string; version?: unknown; doc?: Doc };
       const doc = parsed.doc ?? (parsed as unknown as Doc);
       if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
       dispatch({ type: 'LOAD', doc, fileName: picked.name });
+      const warning = newerVersionWarning(parsed);
+      if (warning) dispatch({ type: 'MSG', msg: warning });
       setRecentFiles((r) => addRecent(r, picked.name));
     } catch {
       dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
