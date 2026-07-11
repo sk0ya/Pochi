@@ -210,6 +210,15 @@ export default function App() {
     }
   }, [recentFiles]);
 
+  /** New/Open/joining a collab room all replace the current doc wholesale - confirm first if
+   * there are changes since the last load/save, so a stray click/`:new`/`:o`/room link doesn't
+   * silently blow away work in progress. New/Open leave it undo-recoverable; joining a room
+   * deliberately does not (see the COLLAB_DOC reducer case), so this confirm is the only
+   * safety net there. */
+  const confirmDiscard = useCallback((message: string) => {
+    return !isDirty(stateRef.current) || window.confirm(message);
+  }, []);
+
   /* P2P collaboration (see collab/session.ts). The session lives in a ref — it's an
    * imperative connection, not render state; React state only mirrors what the UI
    * shows (room id, peer list, remote cursors). */
@@ -278,13 +287,14 @@ export default function App() {
         dispatch({ type: 'MSG', msg: 'invalid collab room URL' });
         return;
       }
+      if (!confirmDiscard('保存されていない変更があります。共同編集ルームに参加しますか?')) return;
       joinCollab(roomId, true);
       dispatch({ type: 'MSG', msg: `joining collab room ${roomId}…` });
     };
     tryJoinFromHash();
     window.addEventListener('hashchange', tryJoinFromHash);
     return () => window.removeEventListener('hashchange', tryJoinFromHash);
-  }, [joinCollab]);
+  }, [joinCollab, confirmDiscard]);
 
   /* Feed every doc change into the collab session (batched/diffed inside). */
   useEffect(() => {
@@ -384,13 +394,6 @@ export default function App() {
       downloadFile(name, json, 'application/json');
       dispatch({ type: 'SAVED', fileName: name });
     }
-  }, []);
-
-  /** New/Open both replace the current doc wholesale - confirm first if there are changes since
-   * the last load/save, so a stray click/`:new`/`:o` doesn't silently blow away work in progress
-   * (undo still recovers it, but that's not obvious in the moment). */
-  const confirmDiscard = useCallback((message: string) => {
-    return !isDirty(stateRef.current) || window.confirm(message);
   }, []);
 
   const open = useCallback(async () => {

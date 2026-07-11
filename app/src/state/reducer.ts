@@ -1616,11 +1616,14 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
     }
 
-    /* The room's document adopted on join. Unlike LOAD this is undo-able (commit pushes
-     * the doc it replaces), so joining a room can't silently destroy local work, and it
-     * doesn't touch savedDoc — the adopted doc counts as unsaved changes. */
+    /* The room's document adopted on join. Undo/redo are wiped rather than pushed onto
+     * (App.tsx already confirms before joining if there are unsaved changes): every doc
+     * reachable via undo while in a room must itself be a room-derived state, or an undo
+     * back to pre-join content would get diffed and broadcast like a real edit — silently
+     * replacing every other peer's work with clock values that win LWW. Doesn't touch
+     * savedDoc — the adopted doc counts as unsaved changes. */
     case 'COLLAB_DOC':
-      return commit(state, action.doc, { selectedIds: [], msg: action.msg });
+      return { ...state, doc: action.doc, undo: [], redo: [], selectedIds: [], msg: action.msg };
 
     case 'MSG':
       return { ...state, msg: action.msg };
