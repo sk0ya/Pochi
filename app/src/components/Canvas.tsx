@@ -43,12 +43,14 @@ function Label({
   cy,
   color,
   fontSize,
+  anchor = 'middle',
 }: {
   label: string;
   cx: number;
   cy: number;
   color?: string;
   fontSize?: FontSize;
+  anchor?: 'middle' | 'start';
 }) {
   if (!label) return null;
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
@@ -58,7 +60,7 @@ function Label({
     <text
       fill={color ?? 'var(--shape-text)'}
       fontSize={FONT_SIZE_PX[fontSize ?? 'm']}
-      textAnchor="middle"
+      textAnchor={anchor}
       dominantBaseline="middle"
       style={{ userSelect: 'none', pointerEvents: 'none' }}
     >
@@ -995,7 +997,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         <Label
           label={c.label}
           cx={labelPos.x}
-          cy={labelPos.y - 12}
+          cy={labelPos.y}
+          anchor={labelPos.anchor}
           color={c.color ?? 'var(--muted)'}
           fontSize={c.fontSize}
         />

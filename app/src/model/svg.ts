@@ -1,4 +1,5 @@
 import {
+  connectorLabelPos,
   connectorPath,
   docBounds,
   FRAME_LABEL_PAD_X,
@@ -68,17 +69,16 @@ function labelSvg(
   y: number,
   color: string,
   fontSize?: FontSize,
-  align: 'center' | 'start' = 'center',
+  anchor: 'middle' | 'start' | 'end' = 'middle',
+  baseline: 'middle' | 'hanging' = 'middle',
 ): string {
   if (!label) return '';
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
   const lines = label.split('\n');
-  const startY = align === 'start' ? y : y - ((lines.length - 1) * lineH) / 2;
+  const startY = baseline === 'hanging' ? y : y - ((lines.length - 1) * lineH) / 2;
   const tspans = lines
     .map((line, i) => `<tspan x="${x}" y="${startY + i * lineH}">${esc(line)}</tspan>`)
     .join('');
-  const anchor = align === 'start' ? 'start' : 'middle';
-  const baseline = align === 'start' ? 'hanging' : 'middle';
   return `<text fill="${color}" font-family="system-ui, sans-serif" font-size="${FONT_SIZE_PX[fontSize ?? 'm']}" text-anchor="${anchor}" dominant-baseline="${baseline}">${tspans}</text>`;
 }
 
@@ -95,7 +95,7 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     const labelColor = s.color ?? t.frameStroke;
     return (
       body +
-      labelSvg(s.label, s.x + FRAME_LABEL_PAD_X, s.y + FRAME_LABEL_PAD_Y, labelColor, s.fontSize, 'start')
+      labelSvg(s.label, s.x + FRAME_LABEL_PAD_X, s.y + FRAME_LABEL_PAD_Y, labelColor, s.fontSize, 'start', 'hanging')
     );
   }
   const cx = s.x + s.w / 2;
@@ -164,11 +164,8 @@ export function exportSvg(doc: Doc, theme: ExportTheme = 'light'): string {
       `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round"${dashAttr}${markerStartAttr}${markerEndAttr}/>`,
     );
     if (c.label) {
-      const mid = path[Math.floor((path.length - 1) / 2)];
-      const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
-      const mx = (mid.x + midNext.x) / 2;
-      const my = (mid.y + midNext.y) / 2 - 10;
-      parts.push(labelSvg(c.label, mx, my, c.color ?? t.connectorLabel, c.fontSize));
+      const { x: mx, y: my, anchor } = connectorLabelPos(doc, c);
+      parts.push(labelSvg(c.label, mx, my, c.color ?? t.connectorLabel, c.fontSize, anchor));
     }
   }
 

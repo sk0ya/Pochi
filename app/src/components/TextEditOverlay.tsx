@@ -29,13 +29,19 @@ export function TextEditOverlay({
 
   const { view } = state;
   let rect: { x: number; y: number; w: number; h: number };
+  let textAlign: React.CSSProperties['textAlign'];
   if (shape) {
     rect = inscribedBox(shape);
   } else {
-    // connector label: small box centered on where the label renders
-    // (matches the `-12` vertical offset used when drawing the label in Canvas.tsx)
+    // connector label: small box on where the label renders, growing away from the
+    // line on whichever side the label itself is anchored to (see connectorLabelPos)
     const pos = connectorLabelPos(state.doc, conn!);
-    rect = { x: pos.x - 80, y: pos.y - 12 - 20, w: 160, h: 40 };
+    if (pos.anchor === 'start') {
+      rect = { x: pos.x, y: pos.y - 20, w: 160, h: 40 };
+      textAlign = 'left';
+    } else {
+      rect = { x: pos.x - 80, y: pos.y - 20, w: 160, h: 40 };
+    }
   }
   const fontSize = shape?.fontSize ?? conn?.fontSize;
   const style: React.CSSProperties = {
@@ -45,6 +51,7 @@ export function TextEditOverlay({
     width: rect.w * view.scale,
     height: rect.h * view.scale,
     fontSize: FONT_SIZE_PX[fontSize ?? 'm'] * view.scale,
+    ...(textAlign ? { textAlign } : {}),
   };
 
   const commit = () => {

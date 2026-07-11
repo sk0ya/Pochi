@@ -289,13 +289,25 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
   return [a, b];
 }
 
-/** Point to center a connector's label on: the midpoint of the path's middle segment
- * (mirrors how the label is rendered, and where `n`/`N` search-jump lands). */
-export function connectorLabelPos(doc: Doc, c: Connector): Pt {
+/** Point to anchor a connector's label at, and which side of it the text should grow
+ * from: the midpoint of the path's middle segment, nudged off the line so the text
+ * doesn't sit on top of the stroke (mirrors how the label is rendered, and where
+ * `n`/`N` search-jump lands). For a horizontal segment the label centers above it, same
+ * as always. For a vertical segment — just as common as horizontal in an orthogonal
+ * elbow — centering horizontally on the line would still cross it once the label is
+ * more than a couple characters wide, so the label instead starts to the right of the
+ * line and grows away from it. */
+export function connectorLabelPos(doc: Doc, c: Connector): Pt & { anchor: 'middle' | 'start' } {
+  const LABEL_GAP = 10;
   const path = connectorPath(doc, c);
   const mid = path[Math.floor((path.length - 1) / 2)];
   const midNext = path[Math.floor((path.length - 1) / 2) + 1] ?? mid;
-  return { x: (mid.x + midNext.x) / 2, y: (mid.y + midNext.y) / 2 };
+  const cx = (mid.x + midNext.x) / 2;
+  const cy = (mid.y + midNext.y) / 2;
+  if (Math.abs(midNext.x - mid.x) < Math.abs(midNext.y - mid.y)) {
+    return { x: cx + LABEL_GAP, y: cy, anchor: 'start' };
+  }
+  return { x: cx, y: cy - 12, anchor: 'middle' };
 }
 
 /** Point on the border of a shape along the ray from its center toward `toward`. */
