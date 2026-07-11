@@ -121,6 +121,50 @@ body {
   margin: 0 6px;
 }
 
+/* "Open ▾" recent-files popover anchor */
+.menu-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-anchor button.caret {
+  padding: 4px 4px;
+  margin-left: -4px;
+}
+
+/* Higher specificity than `.context-menu` (declared later in this file with
+ * `position: fixed`) so this `position: absolute` override actually wins. */
+.menu-anchor .recent-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+}
+
+.recent-item button:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-item .recent-remove {
+  flex: none;
+  color: var(--muted);
+  padding: 6px 8px;
+}
+
+.recent-item .recent-remove:hover {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
 .spacer {
   flex: 1;
 }

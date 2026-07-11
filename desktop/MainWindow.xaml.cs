@@ -125,6 +125,15 @@ public partial class MainWindow : Window
                     }
                     break;
                 }
+                case "readFile":
+                {
+                    var path = root.GetProperty("path").GetString();
+                    if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    {
+                        result = new { name = path, content = File.ReadAllText(path) };
+                    }
+                    break;
+                }
                 case "openImageDialog":
                 {
                     var dlg = new OpenFileDialog

@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
+import type { RecentFile } from '../App';
 import type { ExportTheme } from '../model/svg';
 import type { Action, EditorState, MouseTool } from '../state/reducer';
 
@@ -14,6 +16,60 @@ const TOOLS: Array<[MouseTool, string, string]> = [
   ['text', 'T Text', 'クリックでテキスト (t)'],
 ];
 
+/** "Open ▾" recent-files popover. Only ever rendered with entries when `isDesktop` (see
+ * RecentFile in App.tsx) - a path-backed history makes no sense against a browser's
+ * file-input picker, which can't be reopened without a fresh user gesture. */
+function RecentFilesMenu({
+  files,
+  onOpen,
+  onRemove,
+  onClose,
+}: {
+  files: RecentFile[];
+  onOpen: (path: string) => void;
+  onRemove: (path: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div ref={ref} className="context-menu recent-menu">
+      {files.length === 0 ? (
+        <div className="context-hint">最近使ったファイルはありません</div>
+      ) : (
+        files.map((f) => (
+          <div key={f.path} className="recent-item">
+            <button title={f.path} onClick={() => onOpen(f.path)}>
+              {f.name}
+            </button>
+            <button
+              className="recent-remove"
+              title="一覧から削除"
+              onClick={() => onRemove(f.path)}
+            >
+              ✕
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function Toolbar({
   state,
   dispatch,
@@ -24,6 +80,9 @@ export function Toolbar({
   onImportImage,
   theme,
   onToggleTheme,
+  recentFiles,
+  onOpenRecent,
+  onRemoveRecent,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
@@ -34,8 +93,12 @@ export function Toolbar({
   onImportImage: () => void;
   theme: ExportTheme;
   onToggleTheme: () => void;
+  recentFiles: RecentFile[];
+  onOpenRecent: (path: string) => void;
+  onRemoveRecent: (path: string) => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
+  const [showRecent, setShowRecent] = useState(false);
   return (
     <div className="toolbar">
       <span className="brand">Pochi</span>
@@ -64,7 +127,30 @@ export function Toolbar({
       <span className="sep" />
       <button onClick={onImportImage} title="画像ファイルを取り込む">🖼 Image</button>
       <span className="sep" />
-      <button onClick={onOpen} title=":o">Open</button>
+      <button onClick={() => dispatch({ type: 'NEW' })} title=":new — 新規作成">New</button>
+      <span className="menu-anchor">
+        <button onClick={onOpen} title=":o">Open</button>
+        {recentFiles.length > 0 && (
+          <button
+            className="caret"
+            onClick={() => setShowRecent((v) => !v)}
+            title="最近使ったファイル"
+          >
+            ▾
+          </button>
+        )}
+        {showRecent && (
+          <RecentFilesMenu
+            files={recentFiles}
+            onOpen={(path) => {
+              setShowRecent(false);
+              onOpenRecent(path);
+            }}
+            onRemove={onRemoveRecent}
+            onClose={() => setShowRecent(false)}
+          />
+        )}
+      </span>
       <button onClick={onSave} title=":w / Ctrl+S">Save</button>
       <button onClick={onExportSvg} title=":svg">SVG</button>
       <button onClick={onCopyPng} title=":png / Ctrl+Alt+C">📋 PNG</button>

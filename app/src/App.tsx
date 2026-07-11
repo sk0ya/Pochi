@@ -6,6 +6,7 @@ import {
   openImageDialog,
   pickFile,
   pickImageFile,
+  readFile,
   saveFileDialog,
   writeFile,
 } from './bridge';
@@ -28,6 +29,8 @@ import type { EditorState } from './state/reducer';
 const AUTOSAVE_KEY = 'pochi.autosave';
 const VIM_KEY = 'pochi.vim';
 const THEME_KEY = 'pochi.theme';
+const RECENT_KEY = 'pochi.recentFiles';
+const RECENT_MAX = 8;
 const SHARE_HASH_PREFIX = '#d=';
 // The desktop shell hosts app/dist at a local virtual origin (see bridge.ts's `isDesktop`
 // detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
@@ -44,6 +47,40 @@ function readAutosave(): Doc | null {
     /* first run / corrupt storage */
   }
   return null;
+}
+
+/** "Recent files" is desktop-only: `openFileDialog`/`saveFileDialog` return a real
+ * filesystem path there (so it can be reopened later via `readFile`), whereas on the
+ * web build the same field is just a suggested download name with nothing behind it. */
+export interface RecentFile {
+  path: string;
+  name: string;
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function readRecentFiles(): RecentFile[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((f) => typeof f?.path === 'string');
+  } catch {
+    /* first run / corrupt storage */
+  }
+  return [];
+}
+
+/** Moves `path` to the front (adding it if new), capped at RECENT_MAX. */
+function addRecent(list: RecentFile[], path: string): RecentFile[] {
+  const rest = list.filter((f) => f.path !== path);
+  return [{ path, name: basename(path) }, ...rest].slice(0, RECENT_MAX);
+}
+
+function removeRecent(list: RecentFile[], path: string): RecentFile[] {
+  return list.filter((f) => f.path !== path);
 }
 
 function init(): EditorState {
@@ -117,6 +154,20 @@ export default function App() {
     }
   }, [theme]);
 
+  /* "Recent files" (desktop only - see RecentFile above). Persisted like theme/vim; updated
+   * from `save`/`open`/`openRecent` below whenever a real path is involved. */
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>(() =>
+    isDesktop ? readRecentFiles() : [],
+  );
+  useEffect(() => {
+    if (!isDesktop) return;
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recentFiles));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [recentFiles]);
+
   /* Mirror the internal shape clipboard onto the real OS clipboard (tagged so
    * we can recognize our own echo on paste) whenever it changes. This makes
    * the OS clipboard the single source of truth for "what was copied last" -
@@ -184,10 +235,14 @@ export default function App() {
       if (!nameArg && s.fileName) {
         await writeFile(s.fileName, json);
         dispatch({ type: 'SAVED', fileName: s.fileName });
+        setRecentFiles((r) => addRecent(r, s.fileName!));
         return;
       }
       const path = await saveFileDialog(nameArg ?? 'diagram.pochi.json', 'json', json);
-      if (path) dispatch({ type: 'SAVED', fileName: path });
+      if (path) {
+        dispatch({ type: 'SAVED', fileName: path });
+        setRecentFiles((r) => addRecent(r, path));
+      }
     } else {
       const name = nameArg ?? s.fileName ?? 'diagram.pochi.json';
       downloadFile(name, json, 'application/json');
@@ -205,9 +260,35 @@ export default function App() {
       const doc = parsed.doc ?? (parsed as unknown as Doc);
       if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
       dispatch({ type: 'LOAD', doc, fileName: picked.name });
+      if (isDesktop) setRecentFiles((r) => addRecent(r, picked.name));
     } catch {
       dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
     }
+  }, []);
+
+  /** Reopens a path from the "recent files" list directly, without a dialog. Desktop only -
+   * see RecentFile above. Self-heals a stale entry (file moved/deleted) by dropping it. */
+  const openRecent = useCallback(async (path: string) => {
+    const picked = await readFile(path);
+    if (!picked) {
+      dispatch({ type: 'MSG', msg: `file not found: ${path}` });
+      setRecentFiles((r) => removeRecent(r, path));
+      return;
+    }
+    try {
+      const parsed = JSON.parse(picked.content) as { app?: string; doc?: Doc };
+      const doc = parsed.doc ?? (parsed as unknown as Doc);
+      if (!Array.isArray(doc.shapes) || !Array.isArray(doc.connectors)) throw new Error('bad');
+      dispatch({ type: 'LOAD', doc, fileName: picked.name });
+      setRecentFiles((r) => addRecent(r, picked.name));
+    } catch {
+      dispatch({ type: 'MSG', msg: `not a pochi file: ${picked.name}` });
+      setRecentFiles((r) => removeRecent(r, path));
+    }
+  }, []);
+
+  const removeRecentFile = useCallback((path: string) => {
+    setRecentFiles((r) => removeRecent(r, path));
   }, []);
 
   const doExportSvg = useCallback(async (themeArg?: ExportTheme) => {
@@ -546,6 +627,9 @@ export default function App() {
         onImportImage={() => void importImage()}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+        recentFiles={isDesktop ? recentFiles : []}
+        onOpenRecent={(path) => void openRecent(path)}
+        onRemoveRecent={removeRecentFile}
       />
       <div className="canvas-wrap">
         <Canvas state={state} dispatch={dispatch} />

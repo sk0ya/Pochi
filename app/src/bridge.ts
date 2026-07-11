@@ -60,6 +60,12 @@ export function openFileDialog(
   return call('openFileDialog', { kind });
 }
 
+/** Read a previously-known path directly, without a dialog (for "recent files").
+ * Returns null if the file no longer exists at that path. */
+export function readFile(path: string): Promise<{ name: string; content: string } | null> {
+  return call('readFile', { path });
+}
+
 /** Show a native image-open dialog; returns the file as a data URL, or null. */
 export function openImageDialog(): Promise<{ name: string; dataUrl: string } | null> {
   return call('openImageDialog', {});
