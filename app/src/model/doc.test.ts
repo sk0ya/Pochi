@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   borderPoint,
+  connectorElbowHandle,
   connectorPath,
   deleteItem,
   distributeShapes,
@@ -15,6 +16,7 @@ import {
   resizeAnchor,
   resolveEndpoint,
   scaleShapes,
+  setConnectorElbowRatio,
   shapeAt,
   subsetDoc,
   translateItems,
@@ -175,6 +177,63 @@ describe('connectorPath', () => {
       { x: 10, y: 10 },
       { x: 100, y: 100 },
     ]);
+  });
+
+  it('moves the orthogonal bend per elbowRatio instead of the fixed midpoint', () => {
+    const c: Connector = {
+      id: 'c3',
+      from: { x: 0, y: 0 },
+      to: { x: 100, y: 40 },
+      label: '',
+      routing: 'orthogonal',
+      elbowRatio: 0.25,
+    };
+    expect(connectorPath(emptyDoc, c)).toEqual([
+      { x: 0, y: 0 },
+      { x: 25, y: 0 },
+      { x: 25, y: 40 },
+      { x: 100, y: 40 },
+    ]);
+  });
+});
+
+describe('connectorElbowHandle', () => {
+  const emptyDoc: Doc = { shapes: [], connectors: [] };
+
+  it('returns the bend-segment midpoint and free axis for an orthogonal connector', () => {
+    const c: Connector = { id: 'c1', from: { x: 0, y: 0 }, to: { x: 100, y: 40 }, label: '', routing: 'orthogonal' };
+    expect(connectorElbowHandle(emptyDoc, c)).toEqual({ pos: { x: 50, y: 20 }, axis: 'x' });
+  });
+
+  it('is undefined for straight connectors', () => {
+    const c: Connector = { id: 'c1', from: { x: 0, y: 0 }, to: { x: 100, y: 40 }, label: '' };
+    expect(connectorElbowHandle(emptyDoc, c)).toBeUndefined();
+  });
+
+  it('is undefined when waypoints override orthogonal routing', () => {
+    const c: Connector = {
+      id: 'c1',
+      from: { x: 0, y: 0 },
+      to: { x: 100, y: 40 },
+      label: '',
+      routing: 'orthogonal',
+      waypoints: [{ x: 10, y: 10 }],
+    };
+    expect(connectorElbowHandle(emptyDoc, c)).toBeUndefined();
+  });
+});
+
+describe('setConnectorElbowRatio', () => {
+  it('derives the ratio from the dragged point along the bend axis and clamps to 0..1', () => {
+    const doc: Doc = {
+      shapes: [],
+      connectors: [{ id: 'c1', from: { x: 0, y: 0 }, to: { x: 100, y: 40 }, label: '', routing: 'orthogonal' }],
+    };
+    const moved = setConnectorElbowRatio(doc, 'c1', { x: 20, y: 0 });
+    expect(moved.connectors[0].elbowRatio).toBe(0.2);
+
+    const clamped = setConnectorElbowRatio(doc, 'c1', { x: 500, y: 0 });
+    expect(clamped.connectors[0].elbowRatio).toBe(1);
   });
 });
 

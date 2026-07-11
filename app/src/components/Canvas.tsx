@@ -3,6 +3,7 @@ import type { Dispatch } from 'react';
 import {
   bboxOf,
   connectorAt,
+  connectorElbowHandle,
   connectorLabelPos,
   connectorPath,
   edgeResizeHandles,
@@ -456,7 +457,7 @@ function bestAlign(moving: [number, number, number], candidates: number[], thres
 
 interface DragState {
   id: string;
-  kind: 'move' | 'moveconn' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint' | 'waypoint';
+  kind: 'move' | 'moveconn' | 'resize' | 'pan' | 'draw' | 'arrowdrag' | 'text' | 'sketch' | 'marquee' | 'endpoint' | 'waypoint' | 'elbow';
   /** which end of the connector is being dragged (kind === 'endpoint') */
   end?: 'from' | 'to';
   /** which waypoint index is being dragged (kind === 'waypoint') */
@@ -585,6 +586,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       handle === 'endpoint-from' ? 'from' : handle === 'endpoint-to' ? 'to' : null;
     const waypointIndex =
       handle === 'waypoint' ? Number((e.target as Element).getAttribute('data-index')) : null;
+    const isElbow = handle === 'elbow';
     const connectShapeId =
       handle === 'connect' ? ((e.target as Element).getAttribute('data-shape') ?? undefined) : undefined;
     const targetId = resize || edgeDir || endpointEnd ? state.selectedIds[0] : id;
@@ -630,6 +632,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (waypointIndex !== null && id) {
       drag.current = { ...newDrag('waypoint', e, id), end: undefined, index: waypointIndex };
       dispatch({ type: 'WAYPOINT_DRAG_START', id, index: waypointIndex });
+      return;
+    }
+    if (isElbow && id) {
+      drag.current = newDrag('elbow', e, id);
+      dispatch({ type: 'ELBOW_DRAG_START', id });
       return;
     }
     if (state.tool === 'arrow') {
@@ -724,6 +731,11 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'WAYPOINT_DRAG_MOVE', id: d.id, index: d.index as number, p: toWorld(e) });
       return;
     }
+    if (d.kind === 'elbow') {
+      d.moved = true;
+      dispatch({ type: 'ELBOW_DRAG_MOVE', id: d.id, p: toWorld(e) });
+      return;
+    }
     const world = toWorld(e);
     const dx = world.x - d.startWorld.x;
     const dy = world.y - d.startWorld.y;
@@ -808,6 +820,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           return;
         case 'endpoint':
         case 'waypoint':
+        case 'elbow':
           dispatch({ type: 'DRAG_END' });
           return;
         case 'pan':
@@ -906,6 +919,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     const path = connectorPath(doc, c);
     const points = path.map((p) => `${p.x},${p.y}`).join(' ');
     const labelPos = connectorLabelPos(doc, c);
+    const elbowHandle = connectorElbowHandle(doc, c);
     const selected = state.selectedIds.includes(c.id);
     const hot = hotConn?.id === c.id;
     // The connector's own color always stays visible; selection/hot is a
@@ -966,6 +980,18 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
               style={{ cursor: 'move' }}
             />
           ))}
+        {selected && elbowHandle && (
+          <circle
+            data-handle="elbow"
+            cx={elbowHandle.pos.x}
+            cy={elbowHandle.pos.y}
+            r={5}
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            strokeWidth={1.5}
+            style={{ cursor: elbowHandle.axis === 'x' ? 'ew-resize' : 'ns-resize' }}
+          />
+        )}
         <Label
           label={c.label}
           cx={labelPos.x}

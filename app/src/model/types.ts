@@ -70,6 +70,9 @@ export interface Connector {
   color?: string;
   /** Auto-routing style; undefined = straight. Ignored when `waypoints` is set. */
   routing?: 'straight' | 'orthogonal';
+  /** Orthogonal-routing bend position, 0..1 from `from` to `to` along the
+   * axis the bend runs on; undefined = 0.5 (midpoint, the original default). */
+  elbowRatio?: number;
   /** Manual bend points, in order from `from` to `to`. */
   waypoints?: Pt[];
   /** Dashed vs solid stroke; undefined = solid. */

@@ -269,12 +269,13 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
   if (c.routing === 'orthogonal') {
     const dx = to.p.x - from.p.x;
     const dy = to.p.y - from.p.y;
+    const ratio = c.elbowRatio ?? 0.5;
     let bend: [Pt, Pt];
     if (Math.abs(dx) >= Math.abs(dy)) {
-      const midX = from.p.x + dx / 2;
+      const midX = from.p.x + dx * ratio;
       bend = [{ x: midX, y: from.p.y }, { x: midX, y: to.p.y }];
     } else {
-      const midY = from.p.y + dy / 2;
+      const midY = from.p.y + dy * ratio;
       bend = [{ x: from.p.x, y: midY }, { x: to.p.x, y: midY }];
     }
     const a = from.shape ? borderPoint(from.shape, bend[0]) : from.p;
@@ -637,6 +638,40 @@ export function groupMembers(doc: Doc, groupId: string): string[] {
 /** The groupId of a shape or connector, if any. */
 export function groupIdOf(doc: Doc, id: string): string | undefined {
   return findShape(doc, id)?.groupId ?? findConnector(doc, id)?.groupId;
+}
+
+/** World-space position and free axis of an orthogonal connector's bend
+ * handle (the midpoint of its bend segment); undefined if the connector
+ * isn't using elbowed auto-routing (straight, or overridden by `waypoints`). */
+export function connectorElbowHandle(doc: Doc, c: Connector): { pos: Pt; axis: 'x' | 'y' } | undefined {
+  if (c.routing !== 'orthogonal' || (c.waypoints && c.waypoints.length)) return undefined;
+  const from = resolveEndpoint(doc, c.from);
+  const to = resolveEndpoint(doc, c.to);
+  const dx = to.p.x - from.p.x;
+  const dy = to.p.y - from.p.y;
+  const ratio = c.elbowRatio ?? 0.5;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { pos: { x: from.p.x + dx * ratio, y: (from.p.y + to.p.y) / 2 }, axis: 'x' };
+  }
+  return { pos: { x: (from.p.x + to.p.x) / 2, y: from.p.y + dy * ratio }, axis: 'y' };
+}
+
+/** Update an orthogonal connector's bend ratio from a dragged world point,
+ * re-deriving it along whichever axis the bend currently runs on. */
+export function setConnectorElbowRatio(doc: Doc, id: string, p: Pt): Doc {
+  const c = findConnector(doc, id);
+  if (!c) return doc;
+  const from = resolveEndpoint(doc, c.from);
+  const to = resolveEndpoint(doc, c.to);
+  const dx = to.p.x - from.p.x;
+  const dy = to.p.y - from.p.y;
+  const useX = Math.abs(dx) >= Math.abs(dy);
+  const raw = useX ? (dx === 0 ? 0.5 : (p.x - from.p.x) / dx) : dy === 0 ? 0.5 : (p.y - from.p.y) / dy;
+  const ratio = Math.max(0, Math.min(1, raw));
+  return {
+    ...doc,
+    connectors: doc.connectors.map((x) => (x.id === id ? { ...x, elbowRatio: ratio } : x)),
+  };
 }
 
 /** Move (or add) one bend point of a connector. */

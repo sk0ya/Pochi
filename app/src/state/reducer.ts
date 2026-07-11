@@ -23,6 +23,7 @@ import {
   scaleShapes,
   setConnectorEndpoint,
   setConnectorWaypoint,
+  setConnectorElbowRatio,
   resizeAnchor,
   shapeAt,
   translateItems,
@@ -178,6 +179,8 @@ export type Action =
   | { type: 'ENDPOINT_DRAG_MOVE'; id: string; end: 'from' | 'to'; p: Pt }
   | { type: 'WAYPOINT_DRAG_START'; id: string; index: number }
   | { type: 'WAYPOINT_DRAG_MOVE'; id: string; index: number; p: Pt }
+  | { type: 'ELBOW_DRAG_START'; id: string }
+  | { type: 'ELBOW_DRAG_MOVE'; id: string; p: Pt }
   | { type: 'ADD_WAYPOINT'; id: string; p: Pt }
   | { type: 'CLEAR_WAYPOINTS'; id: string }
   | { type: 'SET_CONNECTOR_ROUTING'; id: string; routing: 'straight' | 'orthogonal' }
@@ -1209,7 +1212,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
  * on, and the next keypress must act normally instead of being swallowed as a mark letter. */
 const MOUSE_CANCEL_ACTIONS = new Set<Action['type']>([
   'CLICK', 'DBL_CLICK', 'DRAG_START', 'SKETCH_START', 'MARQUEE_START',
-  'ENDPOINT_DRAG_START', 'WAYPOINT_DRAG_START',
+  'ENDPOINT_DRAG_START', 'WAYPOINT_DRAG_START', 'ELBOW_DRAG_START',
   'START_DRAW_AT', 'START_ARROW_AT', 'TEXT_AT', 'CONTEXT_MENU_OPEN',
 ]);
 
@@ -1762,6 +1765,12 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'WAYPOINT_DRAG_MOVE':
       return { ...state, doc: setConnectorWaypoint(state.doc, action.id, action.index, snapPt(action.p)) };
+
+    case 'ELBOW_DRAG_START':
+      return { ...state, base: state.doc, selectedIds: [action.id] };
+
+    case 'ELBOW_DRAG_MOVE':
+      return { ...state, doc: setConnectorElbowRatio(state.doc, action.id, action.p) };
 
     case 'ADD_WAYPOINT':
       return commit(state, insertConnectorWaypoint(state.doc, action.id, snapPt(action.p)), {
