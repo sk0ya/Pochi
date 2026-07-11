@@ -2,6 +2,14 @@
  * Codec for the `:share` command: Doc -> deflate-compressed, base64url-encoded payload
  * embeddable in a URL fragment (`#d=<payload>`), and back.
  *
+ * Before compression, the Doc is transformed into a compact wire format (see
+ * `toCompactDoc`/`fromCompactDoc` below): shapes/connectors become positional tuples
+ * instead of keyed objects (trimmed of trailing absent fields), and every id (shape,
+ * connector, group) is remapped to a short sequential token. The receiver only needs
+ * ids that are internally consistent, not the sender's original random strings, so this
+ * is lossless for anything that matters and roughly halves the compressed payload size
+ * versus encoding the Doc as-is.
+ *
  * The byte<->base64url helpers are pure/sync so they're trivially unit-testable; the
  * compress/decompress helpers wrap the native CompressionStream/DecompressionStream
  * (no new dependency) and are therefore async, same as the rest of Pochi's Web-API-backed
@@ -9,7 +17,7 @@
  * a corrupted or truncated payload resolves `decodeShareDoc` to `null` so callers (startup
  * hash parsing in App.tsx) can fall back to the normal autosave restore instead of crashing.
  */
-import type { Doc } from './model/types';
+import type { ArrowDirection, Connector, Doc, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from './model/types';
 
 /** Bytes -> base64url (RFC 4648 §5): '+'/'/' become '-'/'_', and padding is stripped
  * (both are illegal/unnecessary in a URL fragment). Pure/sync. */
@@ -73,24 +81,199 @@ const textDecoder = new TextDecoder();
  * older browsers, some proxies); `:share` still copies but warns past this point. */
 export const SHARE_URL_WARN_CHARS = 8000;
 
-/** Serializes `doc`, deflates it, and base64url-encodes the result for embedding as
- * `#d=<payload>` in a share URL. */
+/** Assigns each distinct id (shape id, connector id, or groupId) a short sequential
+ * base36 token the first time it's seen, in shapes-then-connectors order. All three id
+ * kinds share one counter/map since a `groupId` can equal a shape's own id. */
+function shortIds(doc: Doc): { shapes: Shape[]; connectors: Connector[] } {
+  const map = new Map<string, string>();
+  let n = 0;
+  const get = (id: string): string => {
+    let v = map.get(id);
+    if (v === undefined) {
+      v = n.toString(36);
+      n += 1;
+      map.set(id, v);
+    }
+    return v;
+  };
+  const shapes = doc.shapes.map((s) => ({
+    ...s,
+    id: get(s.id),
+    groupId: s.groupId ? get(s.groupId) : undefined,
+  }));
+  const connectors = doc.connectors.map((c) => ({
+    ...c,
+    id: get(c.id),
+    from: { ...c.from, shapeId: c.from.shapeId ? get(c.from.shapeId) : undefined },
+    to: { ...c.to, shapeId: c.to.shapeId ? get(c.to.shapeId) : undefined },
+    groupId: c.groupId ? get(c.groupId) : undefined,
+  }));
+  return { shapes, connectors };
+}
+
+/** Drops trailing `undefined`/`null` entries so an all-default tail of optional fields
+ * doesn't serialize as a run of `null`s. Mutates and returns `arr`. */
+function trimTrailing<T extends unknown[]>(arr: T): T {
+  while (arr.length && (arr[arr.length - 1] === undefined || arr[arr.length - 1] === null)) arr.pop();
+  return arr;
+}
+
+type PtTuple = [number, number];
+const ptToTuple = (p: Pt): PtTuple => [p.x, p.y];
+const tupleToPt = (t: PtTuple): Pt => ({ x: t[0], y: t[1] });
+
+/** Positional tuple for a Shape. Required fields come first (always present, never
+ * trimmed); optional fields are ordered roughly least- to most-common so the common case
+ * (no color/direction/filled/fontSize/groupId/src) trims down to just the required ones. */
+type ShapeTuple = [
+  ShapeKind,
+  number,
+  number,
+  number,
+  number,
+  string,
+  string,
+  string?,
+  TriangleDirection?,
+  boolean?,
+  FontSize?,
+  string?,
+  string?,
+];
+
+function shapeToTuple(s: Shape): ShapeTuple {
+  return trimTrailing([
+    s.kind,
+    s.x,
+    s.y,
+    s.w,
+    s.h,
+    s.label,
+    s.id,
+    s.color,
+    s.direction,
+    s.filled,
+    s.fontSize,
+    s.groupId,
+    s.src,
+  ]) as ShapeTuple;
+}
+
+function tupleToShape(t: unknown[]): Shape {
+  const [kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src] = t as ShapeTuple;
+  return { kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src };
+}
+
+/** Positional tuple for a Connector, with `from`/`to` flattened to their shapeId/x/y and
+ * `waypoints` (if any) as `[x, y]` tuples rather than `{x, y}` objects. */
+type ConnectorTuple = [
+  string,
+  string | undefined,
+  number,
+  number,
+  string | undefined,
+  number,
+  number,
+  string,
+  string?,
+  boolean?,
+  ArrowDirection?,
+  FontSize?,
+  Connector['routing']?,
+  number?,
+  PtTuple[]?,
+  string?,
+];
+
+function connectorToTuple(c: Connector): ConnectorTuple {
+  return trimTrailing([
+    c.id,
+    c.from.shapeId,
+    c.from.x,
+    c.from.y,
+    c.to.shapeId,
+    c.to.x,
+    c.to.y,
+    c.label,
+    c.color,
+    c.dashed,
+    c.arrowDirection,
+    c.fontSize,
+    c.routing,
+    c.elbowRatio,
+    c.waypoints?.map(ptToTuple),
+    c.groupId,
+  ]) as ConnectorTuple;
+}
+
+function tupleToConnector(t: unknown[]): Connector {
+  const [
+    id,
+    fromShapeId,
+    fromX,
+    fromY,
+    toShapeId,
+    toX,
+    toY,
+    label,
+    color,
+    dashed,
+    arrowDirection,
+    fontSize,
+    routing,
+    elbowRatio,
+    waypoints,
+    groupId,
+  ] = t as ConnectorTuple;
+  return {
+    id,
+    from: { shapeId: fromShapeId, x: fromX, y: fromY },
+    to: { shapeId: toShapeId, x: toX, y: toY },
+    label,
+    color,
+    dashed,
+    arrowDirection,
+    fontSize,
+    routing,
+    elbowRatio,
+    waypoints: waypoints?.map(tupleToPt),
+    groupId,
+  };
+}
+
+interface CompactDoc {
+  s: ShapeTuple[];
+  c: ConnectorTuple[];
+}
+
+function toCompactDoc(doc: Doc): CompactDoc {
+  const { shapes, connectors } = shortIds(doc);
+  return { s: shapes.map(shapeToTuple), c: connectors.map(connectorToTuple) };
+}
+
+function fromCompactDoc(compact: CompactDoc): Doc {
+  return { shapes: compact.s.map(tupleToShape), connectors: compact.c.map(tupleToConnector) };
+}
+
+/** Serializes `doc` into the compact wire format, deflates it, and base64url-encodes the
+ * result for embedding as `#d=<payload>` in a share URL. */
 export async function encodeShareDoc(doc: Doc): Promise<string> {
-  const json = JSON.stringify(doc);
+  const json = JSON.stringify(toCompactDoc(doc));
   const compressed = await compress(textEncoder.encode(json));
   return bytesToBase64Url(compressed);
 }
 
 /** Inverse of `encodeShareDoc`. Never throws: a malformed/truncated payload (bad base64,
- * a corrupt deflate stream, invalid JSON, or JSON that isn't doc-shaped) resolves to `null`. */
+ * a corrupt deflate stream, invalid JSON, JSON that isn't compact-doc-shaped, or a tuple
+ * too short/malformed to destructure) resolves to `null`. */
 export async function decodeShareDoc(payload: string): Promise<Doc | null> {
   try {
     const bytes = base64UrlToBytes(payload);
     const decompressed = await decompress(bytes);
     const json = textDecoder.decode(decompressed);
-    const parsed = JSON.parse(json) as Doc;
-    if (!Array.isArray(parsed.shapes) || !Array.isArray(parsed.connectors)) return null;
-    return parsed;
+    const parsed = JSON.parse(json) as CompactDoc;
+    if (!Array.isArray(parsed.s) || !Array.isArray(parsed.c)) return null;
+    return fromCompactDoc(parsed);
   } catch {
     return null;
   }

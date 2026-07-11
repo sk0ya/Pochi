@@ -40,11 +40,22 @@ describe('encodeShareDoc / decodeShareDoc', () => {
     ],
   };
 
-  it('round-trips a doc through encode -> decode', async () => {
+  it('round-trips a doc through encode -> decode, up to id renaming', async () => {
+    // encodeShareDoc remaps ids to short sequential tokens (see share.ts), so the
+    // decoded doc's ids won't match the original strings — only the shape/label/position
+    // data and the shapeId *references* (still internally consistent) should match.
     const payload = await encodeShareDoc(doc);
     expect(typeof payload).toBe('string');
     const decoded = await decodeShareDoc(payload);
-    expect(decoded).toEqual(doc);
+    expect(decoded).not.toBeNull();
+    const d = decoded!;
+    expect(d.shapes.map((s) => ({ ...s, id: undefined }))).toEqual(
+      doc.shapes.map((s) => ({ ...s, id: undefined })),
+    );
+    expect(d.connectors.map((c) => c.label)).toEqual(doc.connectors.map((c) => c.label));
+    // the rewritten connector endpoints still point at the rewritten shape ids
+    expect(d.connectors[0].from.shapeId).toBe(d.shapes[0].id);
+    expect(d.connectors[0].to.shapeId).toBe(d.shapes[1].id);
   });
 
   it('round-trips an empty doc', async () => {
@@ -63,10 +74,32 @@ describe('encodeShareDoc / decodeShareDoc', () => {
     await expect(decodeShareDoc('not!!!valid***base64url///')).resolves.toBeNull();
   });
 
-  it('rejects a payload that decodes to well-formed JSON missing shapes/connectors arrays', async () => {
+  it('rejects a payload that decodes to well-formed JSON missing the s/c tuple arrays', async () => {
     // Valid compressed base64url, but the wrong shape once parsed - exercises the
-    // post-JSON.parse validation, not just the base64/deflate error paths above.
-    const payload = await encodeShareDoc({ foo: 'bar' } as unknown as Doc);
+    // post-JSON.parse validation, not just the base64/deflate error paths above. Built by
+    // hand (not via encodeShareDoc, which now assumes a real Doc) using the same
+    // compress-then-base64url steps encodeShareDoc uses internally.
+    const bytes = new TextEncoder().encode(JSON.stringify({ foo: 'bar' }));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+    }).pipeThrough(new CompressionStream('deflate-raw'));
+    const chunks: Uint8Array[] = [];
+    const reader = stream.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+    const compressed = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+    let offset = 0;
+    for (const c of chunks) {
+      compressed.set(c, offset);
+      offset += c.length;
+    }
+    const payload = bytesToBase64Url(compressed);
     await expect(decodeShareDoc(payload)).resolves.toBeNull();
   });
 
