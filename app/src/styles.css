@@ -103,7 +103,8 @@ body {
   border-color: var(--border);
 }
 
-.toolbar button.vim-on {
+.toolbar button.vim-on,
+.toolbar button.collab-on {
   color: var(--accent);
   border-color: var(--accent-dim);
 }
@@ -181,6 +182,33 @@ body {
   position: relative;
   flex: 1;
   overflow: hidden;
+}
+
+/* other collaborators' cursors (collab mode) */
+.remote-cursors {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.remote-cursor {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  transition: left 60ms linear, top 60ms linear;
+}
+
+.remote-cursor-name {
+  background: var(--peer-color);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-top: 10px;
 }
 
 .canvas {

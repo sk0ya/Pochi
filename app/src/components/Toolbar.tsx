@@ -122,6 +122,8 @@ export function Toolbar({
   recentFiles,
   onOpenRecent,
   onRemoveRecent,
+  collab,
+  onToggleCollab,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
@@ -138,6 +140,9 @@ export function Toolbar({
   recentFiles: RecentFile[];
   onOpenRecent: (path: string) => void;
   onRemoveRecent: (path: string) => void;
+  /** Active collab room, if any; `peers` counts the *other* participants. */
+  collab: { roomId: string; peers: number } | null;
+  onToggleCollab: () => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
   const [showFileMenu, setShowFileMenu] = useState(false);
@@ -200,6 +205,17 @@ export function Toolbar({
         PNG
       </button>
       <span className="spacer" />
+      <button
+        className={collab ? 'collab-on' : ''}
+        onClick={onToggleCollab}
+        title={
+          collab
+            ? `共同編集中 (room: ${collab.roomId}, 他${collab.peers}人) — クリックで終了 (:collab off)`
+            : '共同編集を開始 — P2PルームのURLをコピーし、URLを知っている人が参加できる (:collab)'
+        }
+      >
+        {collab ? `👥 ${collab.peers + 1}` : '👥'}
+      </button>
       <button className="icon-btn" onClick={onToggleTheme} title="画面と書き出しのテーマを切替 (:theme)。書き出しのみ変えるなら :svg dark / :png light">
         {theme === 'dark' ? '🌙' : '☀'}
       </button>

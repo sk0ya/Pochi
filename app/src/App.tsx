@@ -10,9 +10,11 @@ import {
   saveFileDialog,
   writeFile,
 } from './bridge';
+import { CollabSession } from './collab/session';
 import { Canvas } from './components/Canvas';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
+import { RemoteCursors } from './components/RemoteCursors';
 import { StatusBar } from './components/StatusBar';
 import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
@@ -20,7 +22,7 @@ import { docToExcalidraw, excalidrawToDoc } from './excalidraw';
 import { subsetDoc } from './model/doc';
 import { exportBackground, exportSvg, exportViewport } from './model/svg';
 import type { ExportTheme } from './model/svg';
-import type { Doc } from './model/types';
+import type { Doc, Pt } from './model/types';
 import { GRID } from './model/types';
 import { copySvgAsPng } from './pngClipboard';
 import { decodeShareDoc, encodeShareDoc, SHARE_URL_WARN_CHARS } from './share';
@@ -33,6 +35,14 @@ const THEME_KEY = 'pochi.theme';
 const RECENT_KEY = 'pochi.recentFiles';
 const RECENT_MAX = 8;
 const SHARE_HASH_PREFIX = '#d=';
+const ROOM_HASH_PREFIX = '#room=';
+/** Room ids we mint are 10 base36 chars; accept a superset so hand-shared ids stay lenient. */
+const ROOM_ID_RE = /^[a-zA-Z0-9-]{4,64}$/;
+
+function newRoomId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (b) => (b % 36).toString(36)).join('');
+}
 // The desktop shell hosts app/dist at a local virtual origin (see bridge.ts's `isDesktop`
 // detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
 // so shared links from the desktop build point at the public GitHub Pages deployment instead.
@@ -199,6 +209,100 @@ export default function App() {
       /* storage unavailable */
     }
   }, [recentFiles]);
+
+  /* P2P collaboration (see collab/session.ts). The session lives in a ref — it's an
+   * imperative connection, not render state; React state only mirrors what the UI
+   * shows (room id, peer list, remote cursors). */
+  const collabRef = useRef<CollabSession | null>(null);
+  const [collabRoom, setCollabRoom] = useState<string | null>(null);
+  const [collabPeers, setCollabPeers] = useState<string[]>([]);
+  const [peerCursors, setPeerCursors] = useState<Record<string, Pt>>({});
+
+  const joinCollab = useCallback((roomId: string, viaUrl: boolean) => {
+    if (collabRef.current) return;
+    collabRef.current = new CollabSession(roomId, stateRef.current.doc, viaUrl, {
+      applyOps: (ops) => dispatch({ type: 'COLLAB_OPS', ops }),
+      applySnapshot: (doc) => dispatch({ type: 'COLLAB_DOC', doc, msg: 'loaded diagram from room' }),
+      onPeersChange: (peers) => setCollabPeers(peers),
+      onCursor: (peerId, p) =>
+        setPeerCursors((prev) => {
+          if (!p) {
+            const { [peerId]: _gone, ...rest } = prev;
+            return rest;
+          }
+          return { ...prev, [peerId]: p };
+        }),
+    });
+    setCollabRoom(roomId);
+    setCollabPeers([]);
+    history.replaceState(null, '', location.pathname + location.search + ROOM_HASH_PREFIX + roomId);
+  }, []);
+
+  const leaveCollab = useCallback(() => {
+    if (!collabRef.current) return;
+    collabRef.current.leave();
+    collabRef.current = null;
+    setCollabRoom(null);
+    setCollabPeers([]);
+    setPeerCursors({});
+    history.replaceState(null, '', location.pathname + location.search);
+    dispatch({ type: 'MSG', msg: 'left collab room' });
+  }, []);
+
+  /** Starts a room (or re-shares the current one) and puts its URL on the clipboard.
+   * Anyone opening that URL joins the room — the room id in the hash is the only key. */
+  const startCollab = useCallback(async () => {
+    const roomId = collabRef.current?.roomId ?? newRoomId();
+    if (!collabRef.current) joinCollab(roomId, false);
+    const base = isDesktop ? PUBLIC_BASE_URL : location.origin + location.pathname;
+    const url = `${base}${ROOM_HASH_PREFIX}${roomId}`;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard API unavailable');
+      await navigator.clipboard.writeText(url);
+      dispatch({ type: 'MSG', msg: 'collab room URL copied — anyone with the URL can join' });
+    } catch {
+      window.prompt('collab room URL (copy manually):', url);
+      dispatch({ type: 'MSG', msg: 'collab room ready — clipboard unavailable, copy from the dialog' });
+    }
+  }, [joinCollab]);
+
+  /* Join a `#room=<id>` URL at startup, or when one is pasted into the address bar of an
+   * already-open tab (that's a same-document navigation — only a hashchange fires, the app
+   * doesn't remount). The hash is kept (unlike `#d=` share links) so a reload rejoins the
+   * same room and the URL stays shareable from the address bar. */
+  useEffect(() => {
+    const tryJoinFromHash = () => {
+      if (!location.hash.startsWith(ROOM_HASH_PREFIX) || collabRef.current) return;
+      const roomId = location.hash.slice(ROOM_HASH_PREFIX.length);
+      if (!ROOM_ID_RE.test(roomId)) {
+        dispatch({ type: 'MSG', msg: 'invalid collab room URL' });
+        return;
+      }
+      joinCollab(roomId, true);
+      dispatch({ type: 'MSG', msg: `joining collab room ${roomId}…` });
+    };
+    tryJoinFromHash();
+    window.addEventListener('hashchange', tryJoinFromHash);
+    return () => window.removeEventListener('hashchange', tryJoinFromHash);
+  }, [joinCollab]);
+
+  /* Feed every doc change into the collab session (batched/diffed inside). */
+  useEffect(() => {
+    collabRef.current?.docChanged(state.doc);
+  }, [state.doc]);
+
+  /* Share the local cursor with peers (throttled inside). */
+  useEffect(() => {
+    collabRef.current?.cursorMoved(state.cursor);
+  }, [state.cursor]);
+
+  /* Best-effort flush + goodbye when the tab closes, so peers see the departure
+   * immediately instead of waiting for the WebRTC connection to time out. */
+  useEffect(() => {
+    const onUnload = () => collabRef.current?.leave();
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, []);
 
   /* Mirror the internal shape clipboard onto the real OS clipboard (tagged so
    * we can recognize our own echo on paste) whenever it changes. This makes
@@ -471,6 +575,11 @@ export default function App() {
         case 'share':
           await doShare();
           break;
+        case 'collab':
+          if (rest[0] === 'off') leaveCollab();
+          else if (rest[0] === undefined) await startCollab();
+          else dispatch({ type: 'MSG', msg: 'usage: :collab [off]' });
+          break;
         case 'export': {
           if (rest[0] === 'excalidraw') {
             await doExportExcalidraw();
@@ -510,7 +619,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, requestNew, doExportSvg, doExportExcalidraw, doCopyPng, doShare],
+    [save, open, requestNew, doExportSvg, doExportExcalidraw, doCopyPng, doShare, startCollab, leaveCollab],
   );
 
   /* global keyboard */
@@ -703,9 +812,15 @@ export default function App() {
         recentFiles={isDesktop ? recentFiles : []}
         onOpenRecent={(path) => void openRecent(path)}
         onRemoveRecent={removeRecentFile}
+        collab={collabRoom ? { roomId: collabRoom, peers: collabPeers.length } : null}
+        onToggleCollab={() => {
+          if (!collabRoom) void startCollab();
+          else if (window.confirm('共同編集を終了しますか?')) leaveCollab();
+        }}
       />
       <div className="canvas-wrap">
         <Canvas state={state} dispatch={dispatch} />
+        <RemoteCursors cursors={peerCursors} view={state.view} />
         <TextEditOverlay state={state} dispatch={dispatch} />
         <ContextMenu state={state} dispatch={dispatch} />
       </div>

@@ -29,6 +29,8 @@ import {
   translateItems,
   updateShape,
 } from '../model/doc';
+import { applyOps } from '../collab/sync';
+import type { AppliedOps } from '../collab/sync';
 import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
@@ -223,6 +225,8 @@ export type Action =
   | { type: 'REDO' }
   | { type: 'NEW' }
   | { type: 'LOAD'; doc: Doc; fileName: string | null }
+  | { type: 'COLLAB_OPS'; ops: AppliedOps }
+  | { type: 'COLLAB_DOC'; doc: Doc; msg: string }
   | { type: 'MSG'; msg: string }
   | { type: 'SAVED'; fileName: string }
   | { type: 'SET_VIM'; on: boolean }
@@ -1595,6 +1599,28 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         fileName: action.fileName,
         msg: action.fileName ? `opened ${action.fileName}` : 'opened',
       });
+
+    /* Remote peers' edits, already arbitrated by the collab SyncEngine. Merged into the
+     * *current* doc (never a snapshot from when the message arrived) and deliberately not
+     * pushed onto the undo stack: `u` should revert your own edits, not a teammate's. */
+    case 'COLLAB_OPS': {
+      const doc = applyOps(state.doc, action.ops);
+      const removed = new Set(action.ops.deletes);
+      return {
+        ...state,
+        doc,
+        selectedIds: state.selectedIds.filter((id) => !removed.has(id)),
+        selectionHistory: state.selectionHistory
+          .map((sel) => sel.filter((id) => !removed.has(id)))
+          .filter((sel) => sel.length > 0),
+      };
+    }
+
+    /* The room's document adopted on join. Unlike LOAD this is undo-able (commit pushes
+     * the doc it replaces), so joining a room can't silently destroy local work, and it
+     * doesn't touch savedDoc — the adopted doc counts as unsaved changes. */
+    case 'COLLAB_DOC':
+      return commit(state, action.doc, { selectedIds: [], msg: action.msg });
 
     case 'MSG':
       return { ...state, msg: action.msg };
