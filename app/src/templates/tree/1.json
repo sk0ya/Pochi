@@ -1,9 +1,19 @@
 {
   "name": "木",
   "shapes": [
-    { "id": "foliage", "kind": "ellipse", "x": 5, "y": 0, "w": 90, "h": 90, "label": "", "groupId": "g" }
+    {
+      "id": "foliage",
+      "kind": "freedraw",
+      "x": 0,
+      "y": 0,
+      "w": 96,
+      "h": 86,
+      "label": "",
+      "groupId": "g",
+      "points": [500, 1000, 988, 1000, 1000, 951, 666, 501, 641, 452, 756, 452, 744, 407, 524, 0, 476, 0, 256, 407, 244, 452, 359, 452, 334, 501, 0, 951, 12, 1000, 500, 1000]
+    }
   ],
   "connectors": [
-    { "id": "trunk", "from": { "x": 50, "y": 85 }, "to": { "x": 50, "y": 140 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+    { "id": "trunk", "from": { "x": 48, "y": 84 }, "to": { "x": 48, "y": 116 }, "label": "", "arrowDirection": "none", "groupId": "g" }
   ]
 }
