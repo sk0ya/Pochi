@@ -1264,6 +1264,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
             ? state.selectedIds.filter((i) => i !== hit)
             : [...state.selectedIds, hit],
           count: '',
+          msg: '',
         };
       }
       const gid = hit ? groupIdOf(state.doc, hit) : undefined;
@@ -1272,6 +1273,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         cursor: p,
         selectedIds: hit ? (gid ? groupMembers(state.doc, gid) : [hit]) : [],
         count: '',
+        msg: '',
       };
     }
 

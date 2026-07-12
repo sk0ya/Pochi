@@ -310,7 +310,7 @@ body {
 .text-edit {
   background: var(--overlay-bg);
   color: var(--text);
-  border: 1px solid var(--accent);
+  border: 1.5px dashed var(--accent);
   border-radius: 4px;
   outline: none;
   resize: none;
