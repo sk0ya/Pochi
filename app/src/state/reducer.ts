@@ -122,6 +122,8 @@ export interface EditorState {
   cursor: Pt;
   /** Selection lives above vim modes: normal-mode keys act on it when non-empty. */
   selectedIds: string[];
+  /** The specific item last clicked/dragged, even when it's a member of a group and `selectedIds` was expanded to the whole group. Lets per-item UI (properties sidebar) target one group member instead of bailing out on multi-selection. */
+  activeId: string | null;
   /** Stack of previous selections, most recent last. Lets Delete/Backspace fall back to whatever was selected before, so repeated presses delete a chain of items. */
   selectionHistory: string[][];
   mode: Mode;
@@ -284,6 +286,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     base: null,
     cursor: { x: GRID * 10, y: GRID * 10 },
     selectedIds: [],
+    activeId: null,
     selectionHistory: [],
     mode: 'normal',
     draw: null,
@@ -1354,6 +1357,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
           selectedIds: has
             ? state.selectedIds.filter((i) => i !== hit)
             : [...state.selectedIds, hit],
+          activeId: has ? state.activeId : hit,
           count: '',
           msg: '',
         };
@@ -1363,6 +1367,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state,
         cursor: p,
         selectedIds: hit ? (gid ? groupMembers(state.doc, gid) : [hit]) : [],
+        activeId: hit,
         count: '',
         msg: '',
       };
@@ -1379,13 +1384,14 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     }
 
     case 'DRAG_START': {
-      if (state.selectedIds.includes(action.id)) return { ...state, base: state.doc };
+      if (state.selectedIds.includes(action.id)) return { ...state, base: state.doc, activeId: action.id };
       // Dragging an unselected item reselects it (or its whole group, if grouped).
       const gid = groupIdOf(state.doc, action.id);
       return {
         ...state,
         base: state.doc,
         selectedIds: gid ? groupMembers(state.doc, gid) : [action.id],
+        activeId: action.id,
       };
     }
 

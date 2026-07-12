@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { findConnector, findShape } from '../model/doc';
+import { findConnector, findShape, groupIdOf } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { Connector, Shape, StrokeWidthLevel } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -146,9 +146,14 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
 
   const shapes = ids.map((id) => findShape(state.doc, id)).filter((s): s is Shape => !!s);
   const connectors = ids.map((id) => findConnector(state.doc, id)).filter((c): c is Connector => !!c);
-  const single = ids.length === 1 ? (shapes[0] ?? connectors[0]) : undefined;
-  const singleShape = single && shapes[0] ? shapes[0] : undefined;
-  const singleConnector = single && connectors[0] ? connectors[0] : undefined;
+  // Within a multi-item (group) selection, fall back to the last-clicked/dragged member
+  // (`activeId`) so one item of a group can still be edited individually, mirroring how
+  // ContextMenu.tsx targets `menu.id` instead of requiring a single-item selection.
+  const singleId = ids.length === 1 ? ids[0] : state.activeId && ids.includes(state.activeId) ? state.activeId : undefined;
+  const singleShape = singleId ? findShape(state.doc, singleId) : undefined;
+  const singleConnector = singleShape ? undefined : singleId ? findConnector(state.doc, singleId) : undefined;
+  const single = singleShape ?? singleConnector;
+  const isGroupMember = ids.length > 1 && !!singleId && !!groupIdOf(state.doc, singleId);
 
   const isFillable = !!singleShape && FILLABLE_KINDS.has(singleShape.kind);
   const isStrokeable = !!singleShape && STROKEABLE_KINDS.has(singleShape.kind);
@@ -162,7 +167,13 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
 
   return (
     <div className="properties-sidebar">
-      <div className="context-label">{single ? (singleShape?.kind ?? 'connector') : `${ids.length}個選択中`}</div>
+      <div className="context-label">
+        {single
+          ? ids.length > 1
+            ? `${singleShape?.kind ?? 'connector'}(${isGroupMember ? 'グループ内・' : ''}全${ids.length}個選択中)`
+            : (singleShape?.kind ?? 'connector')
+          : `${ids.length}個選択中`}
+      </div>
 
       {canChangeShape && (
         <>
