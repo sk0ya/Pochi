@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bgc2" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff3e6"/>
+      <stop offset="1" stop-color="#ffe4c8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bgc2)"/>
+
+  <!-- sparkle -->
+  <path d="M 60 50 L 65 61 L 76 66 L 65 71 L 60 82 L 55 71 L 44 66 L 55 61 Z" fill="#c9a6ff"/>
+
+  <!-- doodle trail left by the crayon -->
+  <path d="M 52 204 Q 28 218 40 234 Q 52 248 30 244"
+        fill="none" stroke="#ffb454" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- crayon barrel -->
+  <path d="M 74 182 L 176 80" fill="none" stroke="#4da3ff" stroke-width="36" stroke-linecap="round"/>
+
+  <!-- pointed tip -->
+  <polygon points="52,205 86,194 62,170" fill="#2f7fd6"/>
+
+  <!-- paper wrapper band -->
+  <rect x="72" y="153" width="46" height="16" rx="8" fill="#ffffff" opacity="0.85" transform="rotate(-45 95 161)"/>
+
+  <!-- eraser cap -->
+  <circle cx="176" cy="80" r="16" fill="#ffd166"/>
+
+  <!-- gloss streak -->
+  <path d="M 92 158 L 166 84" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+</svg>
