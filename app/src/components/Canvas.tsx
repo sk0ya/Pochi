@@ -503,10 +503,25 @@ interface DragState {
   moved: boolean;
 }
 
+/** Minimal shape of a mousedown event that {@link Canvas}'s pointer-down handler
+ * needs — lets a swallowed mousedown be replayed from saved primitives once the
+ * text editor's blur actually lands (see `pendingInsertMouseDown` below). */
+type PointerDownInfo = Pick<
+  React.MouseEvent,
+  'clientX' | 'clientY' | 'button' | 'shiftKey' | 'ctrlKey' | 'target' | 'preventDefault'
+>;
+
 export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Dispatch<Action> }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<DragState | null>(null);
   const space = useRef(false);
+  // A mousedown that arrived while a text editor's textarea was still focused: the
+  // textarea's onBlur (which commits the edit and flips mode back to 'normal') only
+  // fires *after* this handler already returned, so `mode` here is one render stale
+  // and the gesture would otherwise be silently dropped. Stashed here and replayed
+  // once mode actually leaves 'insert' (see the effect below), so the same
+  // mousedown-drag that dismisses the editor can also start drawing/selecting.
+  const pendingInsertMouseDown = useRef<PointerDownInfo | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [guides, setGuides] = useState<{ vx?: number; hy?: number }>({});
   // Mirrors `space`/pan-drag state into React state purely so the canvas
@@ -569,7 +584,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
 
   const newDrag = (
     kind: DragState['kind'],
-    e: React.MouseEvent,
+    e: Pick<React.MouseEvent, 'clientX' | 'clientY'>,
     id = '',
     orig = { x: 0, y: 0, w: 0, h: 0 },
   ): DragState => ({
@@ -581,8 +596,19 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     moved: false,
   });
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (mode === 'insert') return;
+  const onMouseDown = (e: PointerDownInfo) => {
+    if (mode === 'insert') {
+      pendingInsertMouseDown.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        button: e.button,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        target: e.target,
+        preventDefault: () => e.preventDefault(),
+      };
+      return;
+    }
     setHoverId(null);
     // Middle button / space+drag = pan (left drag draws instead).
     if (e.button === 1 || (e.button === 0 && space.current)) {
@@ -710,9 +736,24 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     }
   };
 
+  // Replays a mousedown that landed while still in 'insert' mode, once the text
+  // editor's blur has actually committed and mode has moved on — see
+  // `pendingInsertMouseDown` above for why this can't just run inline.
+  useEffect(() => {
+    if (mode === 'insert') return;
+    const pending = pendingInsertMouseDown.current;
+    if (!pending) return;
+    pendingInsertMouseDown.current = null;
+    onMouseDown(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   const onMouseMove = (e: React.MouseEvent) => {
     const d = drag.current;
-    if (!d && mode === 'normal') {
+    // Also track hover while editing text (mode 'insert') so a shape's connect
+    // dots stay available — dragging one starts an arrow — without first having
+    // to click away to leave the text editor.
+    if (!d && (mode === 'normal' || mode === 'insert')) {
       const near = shapeNear(doc, toWorld(e), HOVER_MARGIN);
       setHoverId(near?.id ?? null);
     }
@@ -1137,7 +1178,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           />
         ))}
         {hoverShape &&
-          mode === 'normal' &&
+          (mode === 'normal' || mode === 'insert') &&
           !drag.current &&
           state.tool !== 'select' &&
           connectDots(hoverShape)}
