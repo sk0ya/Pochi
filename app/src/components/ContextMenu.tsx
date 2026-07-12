@@ -105,11 +105,17 @@ export function ContextMenu({
   if (!menu) return null;
 
   // Target set: explicit multi-selection if the right-clicked item is part of it, else just that item.
+  // Used for whole-selection actions (align, distribute, delete, reorder, group/ungroup, batch
+  // color/font-size) — right-clicking a grouped item selects the whole group, so this is often
+  // more than one id.
   const ids = menu.id && state.selectedIds.includes(menu.id) ? state.selectedIds : menu.id ? [menu.id] : [];
   const hasTarget = ids.length > 0;
-  const singleShape = ids.length === 1 ? findShape(state.doc, ids[0]) : undefined;
-  const singleConnector = ids.length === 1 ? findConnector(state.doc, ids[0]) : undefined;
-  const canEditText = ids.length === 1;
+  // Per-item edits (text, fill, shape kind, direction, connector settings) always target the
+  // specific item that was right-clicked, not the group-expanded `ids` — otherwise none of these
+  // controls could ever appear for a shape that belongs to a multi-member group.
+  const singleShape = menu.id ? findShape(state.doc, menu.id) : undefined;
+  const singleConnector = menu.id ? findConnector(state.doc, menu.id) : undefined;
+  const canEditText = !!menu.id && (!!singleShape || !!singleConnector);
 
   const targetGroupId = ids.length ? groupIdOf(state.doc, ids[0]) : undefined;
   const isFullGroup =
@@ -130,9 +136,9 @@ export function ContextMenu({
   const canDistribute = alignableCount >= 3;
   const canMoveForward = hasTarget && canReorderStep(state.doc, ids, 'forward');
   const canMoveBackward = hasTarget && canReorderStep(state.doc, ids, 'backward');
-  // Only a single-item target has one unambiguous "current" size to highlight;
+  // Only a single right-clicked item has one unambiguous "current" size to highlight;
   // a multi-selection may mix sizes, so none of the buttons is shown active then.
-  const currentFontSize = ids.length === 1 ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
+  const currentFontSize = canEditText ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
 
   // Clamp so the menu doesn't run off the viewport edge.
   const menuHeight =
@@ -201,7 +207,7 @@ export function ContextMenu({
           )}
           {canEditText && (
             <button
-              onClick={() => run({ type: 'START_INSERT', id: ids[0] })}
+              onClick={() => run({ type: 'START_INSERT', id: menu.id! })}
             >
               テキスト編集
             </button>
@@ -215,7 +221,7 @@ export function ContextMenu({
                     key={kind}
                     className={`direction-swatch${singleShape?.kind === kind ? ' active' : ''}`}
                     title={title}
-                    onClick={() => run({ type: 'SET_SHAPE_KIND', ids, kind })}
+                    onClick={() => run({ type: 'SET_SHAPE_KIND', ids: [menu.id!], kind })}
                   >
                     {icon}
                   </button>
@@ -255,17 +261,17 @@ export function ContextMenu({
                     className={`direction-swatch${(singleConnector.routing === 'orthogonal' ? 'orthogonal' : 'straight') === routing ? ' active' : ''}`}
                     style={{ fontSize: 18 }}
                     title={title}
-                    onClick={() => run({ type: 'SET_CONNECTOR_ROUTING', id: ids[0], routing })}
+                    onClick={() => run({ type: 'SET_CONNECTOR_ROUTING', id: menu.id!, routing })}
                   >
                     {icon}
                   </button>
                 ))}
               </div>
-              <button onClick={() => run({ type: 'ADD_WAYPOINT', id: ids[0], p: menu.world })}>
+              <button onClick={() => run({ type: 'ADD_WAYPOINT', id: menu.id!, p: menu.world })}>
                 ベンドポイント追加
               </button>
               {singleConnector.waypoints && singleConnector.waypoints.length > 0 && (
-                <button onClick={() => run({ type: 'CLEAR_WAYPOINTS', id: ids[0] })}>
+                <button onClick={() => run({ type: 'CLEAR_WAYPOINTS', id: menu.id! })}>
                   ベンドポイントを全て削除
                 </button>
               )}
@@ -276,7 +282,7 @@ export function ContextMenu({
                     key={title}
                     className={`direction-swatch${(singleConnector.dashed ?? false) === dashed ? ' active' : ''}`}
                     title={title}
-                    onClick={() => run({ type: 'SET_CONNECTOR_DASHED', id: ids[0], dashed })}
+                    onClick={() => run({ type: 'SET_CONNECTOR_DASHED', id: menu.id!, dashed })}
                   >
                     {icon}
                   </button>
@@ -289,7 +295,7 @@ export function ContextMenu({
                     key={dir}
                     className={`direction-swatch${(singleConnector.arrowDirection ?? 'end') === dir ? ' active' : ''}`}
                     title={title}
-                    onClick={() => run({ type: 'SET_CONNECTOR_ARROW_DIRECTION', id: ids[0], arrowDirection: dir })}
+                    onClick={() => run({ type: 'SET_CONNECTOR_ARROW_DIRECTION', id: menu.id!, arrowDirection: dir })}
                   >
                     {icon}
                   </button>
@@ -338,7 +344,7 @@ export function ContextMenu({
                     key={title}
                     className={`direction-swatch${(singleShape?.filled ?? false) === filled ? ' active' : ''}`}
                     title={title}
-                    onClick={() => run({ type: 'SET_FILLED', ids, filled })}
+                    onClick={() => run({ type: 'SET_FILLED', ids: [menu.id!], filled })}
                   >
                     {icon}
                   </button>
@@ -356,7 +362,7 @@ export function ContextMenu({
                     key={dir}
                     className={`direction-swatch${(singleShape.direction ?? 'up') === dir ? ' active' : ''}`}
                     title={title}
-                    onClick={() => run({ type: 'SET_TRIANGLE_DIRECTION', ids, direction: dir })}
+                    onClick={() => run({ type: 'SET_TRIANGLE_DIRECTION', ids: [menu.id!], direction: dir })}
                   >
                     {icon}
                   </button>
