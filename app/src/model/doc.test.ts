@@ -46,6 +46,13 @@ const rect = (id: string, x: number, y: number, w: number, h: number, extra: Par
   ...extra,
 });
 
+const conn = (id: string, x1: number, y1: number, x2: number, y2: number): Connector => ({
+  id,
+  from: { x: x1, y: y1 },
+  to: { x: x2, y: y2 },
+  label: '',
+});
+
 const frame = (id: string, x: number, y: number, w: number, h: number): Shape => ({
   id,
   kind: 'frame',
@@ -397,6 +404,23 @@ describe('canReorderStep', () => {
     const doc: Doc = { shapes: [rect('a', 0, 0, 10, 10), rect('b', 0, 0, 10, 10)], connectors: [] };
     expect(canReorderStep(doc, ['a'], 'forward')).toBe(true);
     expect(canReorderStep(doc, ['b'], 'backward')).toBe(true);
+  });
+
+  it('for connectors, checks whether the paths actually cross, not just their bounding boxes', () => {
+    // Parallel diagonal lines: their bounding boxes overlap in y (4..6) but the
+    // segments themselves never touch.
+    const parallelDoc: Doc = {
+      shapes: [],
+      connectors: [conn('a', 0, 0, 10, 6), conn('b', 0, 4, 10, 10)],
+    };
+    expect(canReorderStep(parallelDoc, ['a'], 'forward')).toBe(false);
+
+    // An actual X crossing at (5,5).
+    const crossingDoc: Doc = {
+      shapes: [],
+      connectors: [conn('a', 0, 0, 10, 10), conn('b', 0, 10, 10, 0)],
+    };
+    expect(canReorderStep(crossingDoc, ['a'], 'forward')).toBe(true);
   });
 });
 

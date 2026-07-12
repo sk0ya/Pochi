@@ -508,16 +508,17 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-function connectorRect(doc: Doc, c: Connector): Rect {
-  const path = connectorPath(doc, c);
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of path) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
+/** Whether two connectors' paths actually cross — unlike a bounding-box check, two arrows
+ * that pass near each other without crossing (e.g. a shallow "V") won't false-positive. */
+function connectorsIntersect(doc: Doc, a: Connector, b: Connector): boolean {
+  const pathA = connectorPath(doc, a);
+  const pathB = connectorPath(doc, b);
+  for (let i = 0; i < pathA.length - 1; i++) {
+    for (let j = 0; j < pathB.length - 1; j++) {
+      if (segsIntersect(pathA[i], pathA[i + 1], pathB[j], pathB[j + 1])) return true;
+    }
   }
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  return false;
 }
 
 /** Move one slot toward the front/back, jumping past unselected neighbors that don't
@@ -575,8 +576,7 @@ export function reorderItems(doc: Doc, ids: string[], dir: ReorderDir): Doc {
     return { shapes: reorder(doc.shapes), connectors: reorder(doc.connectors) };
   }
   const shapesOverlap = (a: Shape, b: Shape) => rectsOverlap(a, b);
-  const connectorsOverlap = (a: Connector, b: Connector) =>
-    rectsOverlap(connectorRect(doc, a), connectorRect(doc, b));
+  const connectorsOverlap = (a: Connector, b: Connector) => connectorsIntersect(doc, a, b);
   return {
     shapes: stepReorder(doc.shapes, idSet, dir, shapesOverlap).result,
     connectors: stepReorder(doc.connectors, idSet, dir, connectorsOverlap).result,
@@ -590,8 +590,7 @@ export function canReorderStep(doc: Doc, ids: string[], dir: ReorderStepDir): bo
   const idSet = new Set(ids);
   if (!idSet.size) return false;
   const shapesOverlap = (a: Shape, b: Shape) => rectsOverlap(a, b);
-  const connectorsOverlap = (a: Connector, b: Connector) =>
-    rectsOverlap(connectorRect(doc, a), connectorRect(doc, b));
+  const connectorsOverlap = (a: Connector, b: Connector) => connectorsIntersect(doc, a, b);
   return (
     stepReorder(doc.shapes, idSet, dir, shapesOverlap).changed ||
     stepReorder(doc.connectors, idSet, dir, connectorsOverlap).changed
