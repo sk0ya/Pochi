@@ -17,6 +17,11 @@ const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
   ['down-right', '◢', '右下向き(斜め)'],
 ];
 
+const CONNECTOR_ROUTINGS: Array<['straight' | 'orthogonal', string, string]> = [
+  ['straight', '／', '直線'],
+  ['orthogonal', '↳', '直角'],
+];
+
 const ARROW_DIRECTIONS: Array<[ArrowDirection, string, string]> = [
   ['none', '─', '矢印なし'],
   ['end', '─▶', '終点のみ'],
@@ -135,7 +140,7 @@ export function ContextMenu({
       ? singleShape?.kind === 'triangle'
         ? 470
         : singleConnector
-          ? 540
+          ? 570
           : 420
       : 90) +
     (isFillable ? 60 : 0) +
@@ -242,17 +247,20 @@ export function ContextMenu({
           )}
           {singleConnector && (
             <>
-              <button
-                onClick={() =>
-                  run({
-                    type: 'SET_CONNECTOR_ROUTING',
-                    id: ids[0],
-                    routing: singleConnector.routing === 'orthogonal' ? 'straight' : 'orthogonal',
-                  })
-                }
-              >
-                経路: {singleConnector.routing === 'orthogonal' ? '直角→直線' : '直線→直角'}
-              </button>
+              <div className="context-label">経路</div>
+              <div className="direction-row">
+                {CONNECTOR_ROUTINGS.map(([routing, icon, title]) => (
+                  <button
+                    key={routing}
+                    className={`direction-swatch${(singleConnector.routing === 'orthogonal' ? 'orthogonal' : 'straight') === routing ? ' active' : ''}`}
+                    style={{ fontSize: 18 }}
+                    title={title}
+                    onClick={() => run({ type: 'SET_CONNECTOR_ROUTING', id: ids[0], routing })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
               <button onClick={() => run({ type: 'ADD_WAYPOINT', id: ids[0], p: menu.world })}>
                 ベンドポイント追加
               </button>
