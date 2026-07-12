@@ -502,9 +502,67 @@ export function setConnectorEndpoint(doc: Doc, id: string, end: 'from' | 'to', e
 }
 
 export type ReorderDir = 'front' | 'back' | 'forward' | 'backward';
+export type ReorderStepDir = 'forward' | 'backward';
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function connectorRect(doc: Doc, c: Connector): Rect {
+  const path = connectorPath(doc, c);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of path) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** Move one slot toward the front/back, jumping past unselected neighbors that don't
+ * visually overlap the moved item (a swap with a non-overlapping neighbor would be
+ * invisible) and stopping at another selected item (keeps a selected block together). */
+function stepReorder<T extends { id: string }>(
+  arr: T[],
+  idSet: Set<string>,
+  dir: ReorderStepDir,
+  overlaps: (a: T, b: T) => boolean,
+): { result: T[]; changed: boolean } {
+  const a = [...arr];
+  let changed = false;
+  if (dir === 'forward') {
+    for (let i = a.length - 2; i >= 0; i--) {
+      if (!idSet.has(a[i].id)) continue;
+      let j = i + 1;
+      while (j < a.length && !idSet.has(a[j].id) && !overlaps(a[i], a[j])) j++;
+      if (j < a.length && !idSet.has(a[j].id)) {
+        const item = a[i];
+        for (let k = i; k < j; k++) a[k] = a[k + 1];
+        a[j] = item;
+        changed = true;
+      }
+    }
+  } else {
+    for (let i = 1; i < a.length; i++) {
+      if (!idSet.has(a[i].id)) continue;
+      let j = i - 1;
+      while (j >= 0 && !idSet.has(a[j].id) && !overlaps(a[i], a[j])) j--;
+      if (j >= 0 && !idSet.has(a[j].id)) {
+        const item = a[i];
+        for (let k = i; k > j; k--) a[k] = a[k - 1];
+        a[j] = item;
+        changed = true;
+      }
+    }
+  }
+  return { result: a, changed };
+}
 
 /** Move shapes/connectors within their own draw-order array: to the front/back,
- * or one slot toward the front/back (skipping past other selected items already adjacent). */
+ * or one slot toward the front/back. The step directions only swap past a neighbor
+ * that actually overlaps the moved item, since stepping past a non-overlapping one
+ * would change the stored order without changing anything on screen. */
 export function reorderItems(doc: Doc, ids: string[], dir: ReorderDir): Doc {
   const idSet = new Set(ids);
   if (dir === 'front' || dir === 'back') {
@@ -516,24 +574,28 @@ export function reorderItems(doc: Doc, ids: string[], dir: ReorderDir): Doc {
     };
     return { shapes: reorder(doc.shapes), connectors: reorder(doc.connectors) };
   }
-  const stepOnce = <T extends { id: string }>(arr: T[]): T[] => {
-    const a = [...arr];
-    if (dir === 'forward') {
-      for (let i = a.length - 2; i >= 0; i--) {
-        if (idSet.has(a[i].id) && !idSet.has(a[i + 1].id)) {
-          [a[i], a[i + 1]] = [a[i + 1], a[i]];
-        }
-      }
-    } else {
-      for (let i = 1; i < a.length; i++) {
-        if (idSet.has(a[i].id) && !idSet.has(a[i - 1].id)) {
-          [a[i], a[i - 1]] = [a[i - 1], a[i]];
-        }
-      }
-    }
-    return a;
+  const shapesOverlap = (a: Shape, b: Shape) => rectsOverlap(a, b);
+  const connectorsOverlap = (a: Connector, b: Connector) =>
+    rectsOverlap(connectorRect(doc, a), connectorRect(doc, b));
+  return {
+    shapes: stepReorder(doc.shapes, idSet, dir, shapesOverlap).result,
+    connectors: stepReorder(doc.connectors, idSet, dir, connectorsOverlap).result,
   };
-  return { shapes: stepOnce(doc.shapes), connectors: stepOnce(doc.connectors) };
+}
+
+/** Whether a 'forward'/'backward' REORDER would actually move anything, i.e. whether
+ * any item in `ids` overlaps a neighbor it could swap with. Used to hide the menu
+ * action when there's nothing for it to visibly do. */
+export function canReorderStep(doc: Doc, ids: string[], dir: ReorderStepDir): boolean {
+  const idSet = new Set(ids);
+  if (!idSet.size) return false;
+  const shapesOverlap = (a: Shape, b: Shape) => rectsOverlap(a, b);
+  const connectorsOverlap = (a: Connector, b: Connector) =>
+    rectsOverlap(connectorRect(doc, a), connectorRect(doc, b));
+  return (
+    stepReorder(doc.shapes, idSet, dir, shapesOverlap).changed ||
+    stepReorder(doc.connectors, idSet, dir, connectorsOverlap).changed
+  );
 }
 
 /** Bounding box of a subset of shapes (used for group resize). */

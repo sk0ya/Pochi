@@ -3,6 +3,7 @@ import {
   addShape,
   alignShapes,
   bboxOf,
+  canReorderStep,
   clearConnectorWaypoints,
   connectorAt,
   connectorLabelPos,
@@ -1719,6 +1720,12 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'REORDER': {
       if (!action.ids.length) return state;
+      if (
+        (action.dir === 'forward' || action.dir === 'backward') &&
+        !canReorderStep(state.doc, action.ids, action.dir)
+      ) {
+        return state;
+      }
       const msg = {
         front: 'brought to front',
         back: 'sent to back',

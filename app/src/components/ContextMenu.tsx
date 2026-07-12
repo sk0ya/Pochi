@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
-import { findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
+import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { ArrowDirection, FontSize, ShapeKind, TriangleDirection } from '../model/types';
@@ -123,6 +123,8 @@ export function ContextMenu({
   const alignableCount = ids.filter((id) => findShape(state.doc, id)).length;
   const canAlign = alignableCount >= 2;
   const canDistribute = alignableCount >= 3;
+  const canMoveForward = hasTarget && canReorderStep(state.doc, ids, 'forward');
+  const canMoveBackward = hasTarget && canReorderStep(state.doc, ids, 'backward');
   // Only a single-item target has one unambiguous "current" size to highlight;
   // a multi-selection may mix sizes, so none of the buttons is shown active then.
   const currentFontSize = ids.length === 1 ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
@@ -225,8 +227,12 @@ export function ContextMenu({
           <div className="context-sep" />
           <button onClick={() => run({ type: 'REORDER', ids, dir: 'front' })}>最前面へ</button>
           <button onClick={() => run({ type: 'REORDER', ids, dir: 'back' })}>最背面へ</button>
-          <button onClick={() => run({ type: 'REORDER', ids, dir: 'forward' })}>ひとつ前面へ (Ctrl+])</button>
-          <button onClick={() => run({ type: 'REORDER', ids, dir: 'backward' })}>ひとつ背面へ (Ctrl+[)</button>
+          {canMoveForward && (
+            <button onClick={() => run({ type: 'REORDER', ids, dir: 'forward' })}>ひとつ前面へ (Ctrl+])</button>
+          )}
+          {canMoveBackward && (
+            <button onClick={() => run({ type: 'REORDER', ids, dir: 'backward' })}>ひとつ背面へ (Ctrl+[)</button>
+          )}
           <div className="context-sep" />
           {ids.length >= 2 && !isFullGroup && (
             <button onClick={() => run({ type: 'GROUP' })}>グループ化 (Ctrl+G)</button>

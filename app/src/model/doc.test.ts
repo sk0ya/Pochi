@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   borderPoint,
+  canReorderStep,
   connectorElbowHandle,
   connectorPath,
   deleteItem,
@@ -362,6 +363,40 @@ describe('reorderItems', () => {
 
   it('backward swaps past only the single previous non-selected item', () => {
     expect(reorderItems(doc, ['c'], 'backward').shapes.map((s) => s.id)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('forward jumps past non-overlapping neighbors to the nearest one it actually overlaps', () => {
+    // b sits far away from a/c, which overlap each other.
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 1000, 1000, 10, 10), rect('c', 0, 0, 10, 10)],
+      connectors: [],
+    };
+    expect(reorderItems(doc, ['a'], 'forward').shapes.map((s) => s.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('forward is a no-op when nothing overlaps the moved item', () => {
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 1000, 1000, 10, 10)],
+      connectors: [],
+    };
+    expect(reorderItems(doc, ['a'], 'forward').shapes.map((s) => s.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('canReorderStep', () => {
+  it('is false when the moved item overlaps nothing to swap with', () => {
+    const doc: Doc = {
+      shapes: [rect('a', 0, 0, 10, 10), rect('b', 1000, 1000, 10, 10)],
+      connectors: [],
+    };
+    expect(canReorderStep(doc, ['a'], 'forward')).toBe(false);
+    expect(canReorderStep(doc, ['b'], 'backward')).toBe(false);
+  });
+
+  it('is true when there is an overlapping neighbor to swap with', () => {
+    const doc: Doc = { shapes: [rect('a', 0, 0, 10, 10), rect('b', 0, 0, 10, 10)], connectors: [] };
+    expect(canReorderStep(doc, ['a'], 'forward')).toBe(true);
+    expect(canReorderStep(doc, ['b'], 'backward')).toBe(true);
   });
 });
 
