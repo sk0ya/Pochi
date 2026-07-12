@@ -20,50 +20,55 @@
       "h": 22,
       "label": "",
       "groupId": "g"
-    }
-  ],
-  "connectors": [
+    },
     {
       "id": "bar1",
-      "from": {
-        "x": 20,
-        "y": 38
-      },
-      "to": {
-        "x": 20,
-        "y": 68
-      },
+      "kind": "freedraw",
+      "x": 20,
+      "y": 38,
+      "w": 1,
+      "h": 30,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        0,
+        1000
+      ],
       "groupId": "g"
     },
     {
       "id": "bar2",
-      "from": {
-        "x": 40,
-        "y": 38
-      },
-      "to": {
-        "x": 40,
-        "y": 68
-      },
+      "kind": "freedraw",
+      "x": 40,
+      "y": 38,
+      "w": 1,
+      "h": 30,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        0,
+        1000
+      ],
       "groupId": "g"
     },
     {
       "id": "bar3",
-      "from": {
-        "x": 60,
-        "y": 38
-      },
-      "to": {
-        "x": 60,
-        "y": 68
-      },
+      "kind": "freedraw",
+      "x": 60,
+      "y": 38,
+      "w": 1,
+      "h": 30,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        0,
+        1000
+      ],
       "groupId": "g"
     }
-  ]
+  ],
+  "connectors": []
 }

@@ -12,58 +12,99 @@
       "groupId": "g"
     },
     {
+      "id": "equator",
+      "kind": "freedraw",
+      "x": 0,
+      "y": 55,
+      "w": 110,
+      "h": 1,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
+      "groupId": "g"
+    },
+    {
+      "id": "lat-n",
+      "kind": "freedraw",
+      "x": 8,
+      "y": 27,
+      "w": 94,
+      "h": 1,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
+      "groupId": "g"
+    },
+    {
+      "id": "lat-s",
+      "kind": "freedraw",
+      "x": 8,
+      "y": 83,
+      "w": 94,
+      "h": 1,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
+      "groupId": "g"
+    },
+    {
       "id": "meridian",
-      "kind": "ellipse",
+      "kind": "freedraw",
       "x": 33,
       "y": 0,
       "w": 44,
       "h": 110,
       "label": "",
+      "points": [
+        500,
+        0,
+        691,
+        38,
+        854,
+        146,
+        962,
+        309,
+        1000,
+        500,
+        962,
+        691,
+        854,
+        854,
+        691,
+        962,
+        500,
+        1000,
+        309,
+        962,
+        146,
+        854,
+        38,
+        691,
+        0,
+        500,
+        38,
+        309,
+        146,
+        146,
+        309,
+        38,
+        500,
+        0
+      ],
       "groupId": "g"
     }
   ],
-  "connectors": [
-    {
-      "id": "equator",
-      "from": {
-        "x": 0,
-        "y": 55
-      },
-      "to": {
-        "x": 110,
-        "y": 55
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    },
-    {
-      "id": "lat-n",
-      "from": {
-        "x": 8,
-        "y": 27
-      },
-      "to": {
-        "x": 102,
-        "y": 27
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    },
-    {
-      "id": "lat-s",
-      "from": {
-        "x": 8,
-        "y": 83
-      },
-      "to": {
-        "x": 102,
-        "y": 83
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    }
-  ]
+  "connectors": []
 }

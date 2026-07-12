@@ -12,15 +12,65 @@
       "groupId": "g"
     },
     {
+      "id": "bar",
+      "kind": "freedraw",
+      "x": 0,
+      "y": 20,
+      "w": 130,
+      "h": 1,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
+      "groupId": "g"
+    },
+    {
+      "id": "prompt",
+      "kind": "freedraw",
+      "x": 16,
+      "y": 38,
+      "w": 14,
+      "h": 20,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        500,
+        0,
+        1000
+      ],
+      "groupId": "g"
+    },
+    {
+      "id": "cursor",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 58,
+      "w": 22,
+      "h": 1,
+      "label": "",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
+      "groupId": "g"
+    },
+    {
       "id": "dot1",
       "kind": "ellipse",
       "x": 8,
       "y": 7,
       "w": 7,
       "h": 7,
+      "filled": true,
       "label": "",
-      "groupId": "g",
-      "filled": true
+      "groupId": "g"
     },
     {
       "id": "dot2",
@@ -29,9 +79,9 @@
       "y": 7,
       "w": 7,
       "h": 7,
+      "filled": true,
       "label": "",
-      "groupId": "g",
-      "filled": true
+      "groupId": "g"
     },
     {
       "id": "dot3",
@@ -40,67 +90,10 @@
       "y": 7,
       "w": 7,
       "h": 7,
+      "filled": true,
       "label": "",
-      "groupId": "g",
-      "filled": true
+      "groupId": "g"
     }
   ],
-  "connectors": [
-    {
-      "id": "bar",
-      "from": {
-        "x": 0,
-        "y": 20
-      },
-      "to": {
-        "x": 130,
-        "y": 20
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    },
-    {
-      "id": "prompt1",
-      "from": {
-        "x": 16,
-        "y": 38
-      },
-      "to": {
-        "x": 30,
-        "y": 48
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    },
-    {
-      "id": "prompt2",
-      "from": {
-        "x": 30,
-        "y": 48
-      },
-      "to": {
-        "x": 16,
-        "y": 58
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    },
-    {
-      "id": "cursor",
-      "from": {
-        "x": 40,
-        "y": 58
-      },
-      "to": {
-        "x": 62,
-        "y": 58
-      },
-      "label": "",
-      "arrowDirection": "none",
-      "groupId": "g"
-    }
-  ]
+  "connectors": []
 }

@@ -10,64 +10,71 @@
       "h": 120,
       "label": "",
       "groupId": "g"
-    }
-  ],
-  "connectors": [
+    },
     {
       "id": "line-1",
-      "from": {
-        "x": 25,
-        "y": 25
-      },
-      "to": {
-        "x": 85,
-        "y": 25
-      },
+      "kind": "freedraw",
+      "x": 25,
+      "y": 25,
+      "w": 60,
+      "h": 1,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
       "groupId": "g"
     },
     {
       "id": "line-2",
-      "from": {
-        "x": 25,
-        "y": 45
-      },
-      "to": {
-        "x": 85,
-        "y": 45
-      },
+      "kind": "freedraw",
+      "x": 25,
+      "y": 45,
+      "w": 60,
+      "h": 1,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
       "groupId": "g"
     },
     {
       "id": "line-3",
-      "from": {
-        "x": 25,
-        "y": 65
-      },
-      "to": {
-        "x": 85,
-        "y": 65
-      },
+      "kind": "freedraw",
+      "x": 25,
+      "y": 65,
+      "w": 60,
+      "h": 1,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
       "groupId": "g"
     },
     {
       "id": "line-4",
-      "from": {
-        "x": 25,
-        "y": 85
-      },
-      "to": {
-        "x": 65,
-        "y": 85
-      },
+      "kind": "freedraw",
+      "x": 25,
+      "y": 85,
+      "w": 40,
+      "h": 1,
       "label": "",
-      "arrowDirection": "none",
+      "points": [
+        0,
+        0,
+        1000,
+        0
+      ],
       "groupId": "g"
     }
-  ]
+  ],
+  "connectors": []
 }
