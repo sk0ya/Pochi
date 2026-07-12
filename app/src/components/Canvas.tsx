@@ -723,6 +723,12 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       drag.current = newDrag('text', e);
       return;
     }
+    // Select tool on empty canvas: plain drag is a marquee, not just shift/ctrl+drag.
+    if (state.tool === 'select') {
+      drag.current = newDrag('marquee', e);
+      dispatch({ type: 'MARQUEE_START', p: toWorld(e) });
+      return;
+    }
     // Empty canvas: rubber-band draw with the active tool.
     if (
       state.tool === 'rect' ||
