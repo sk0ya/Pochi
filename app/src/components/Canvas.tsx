@@ -501,6 +501,10 @@ interface DragState {
    * the corner handle's shape-aware anchor, or an edge handle's opposite edge. */
   resizeAnchorPt?: Pt;
   moved: boolean;
+  /** kind === 'marquee': whether it started as a shift/ctrl+drag, so a click-without-move
+   * on mouseup should toggle the hit item (per shift-click semantics) rather than clear
+   * the selection like a plain click. */
+  marqueeShift?: boolean;
 }
 
 /** Minimal shape of a mousedown event that {@link Canvas}'s pointer-down handler
@@ -622,7 +626,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     if (mode === 'draw' || mode === 'arrow') return;
     // Shift/Ctrl+drag = rubber-band multi-select (shift/ctrl+click toggles on mouseup).
     if (e.shiftKey || e.ctrlKey) {
-      drag.current = newDrag('marquee', e);
+      drag.current = { ...newDrag('marquee', e), marqueeShift: true };
       dispatch({ type: 'MARQUEE_START', p: toWorld(e) });
       return;
     }
@@ -880,10 +884,14 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         case 'marquee':
           if (d.moved) {
             dispatch({ type: 'MARQUEE_END' });
-          } else {
+          } else if (d.marqueeShift) {
             // Shift/Ctrl+click without drag: toggle the item in the selection.
             dispatch({ type: 'MARQUEE_CANCEL' });
             dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target), shift: true });
+          } else {
+            // Select tool plain click without drag: normal click (selects hit, clears otherwise).
+            dispatch({ type: 'MARQUEE_CANCEL' });
+            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
           }
           return;
         case 'move':
