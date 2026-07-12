@@ -1,0 +1,9 @@
+{
+  "name": "雲",
+  "shapes": [
+    { "id": "lobe-l", "kind": "ellipse", "x": 0, "y": 20, "w": 55, "h": 35, "label": "", "groupId": "g" },
+    { "id": "lobe-m", "kind": "ellipse", "x": 35, "y": 0, "w": 60, "h": 45, "label": "", "groupId": "g" },
+    { "id": "lobe-r", "kind": "ellipse", "x": 75, "y": 20, "w": 55, "h": 35, "label": "", "groupId": "g" }
+  ],
+  "connectors": []
+}

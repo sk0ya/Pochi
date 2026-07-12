@@ -34,6 +34,8 @@ import { applyOps } from '../collab/sync';
 import type { AppliedOps } from '../collab/sync';
 import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
+import { findTemplate } from '../model/templates';
+import type { Template } from '../model/templates';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
@@ -208,6 +210,7 @@ export type Action =
   | { type: 'ADD_IMAGE'; src: string; w: number; h: number }
   | { type: 'ADD_TEXT'; text: string }
   | { type: 'PASTE_CLIP'; clip: Clipboard }
+  | { type: 'INSERT_TEMPLATE'; templateId: string; at?: Pt }
   | { type: 'CANCEL' }
   | { type: 'SKETCH_START'; p: Pt }
   | { type: 'SKETCH_POINT'; p: Pt }
@@ -678,6 +681,72 @@ function pasteClipboard(state: EditorState, clip: Clipboard, atPoint?: Pt): Edit
     selectedIds: [...shapes.map((s) => s.id), ...connectors.map((c) => c.id)],
     count: '',
     msg: 'pasted',
+  });
+}
+
+/** Clones a Template's shapes/connectors with fresh ids and a fresh shared groupId (so the
+ * stamp lands as one group, and repeated insertions never collide with each other), centered
+ * on `at` (a sidebar drag-and-drop's drop point) or, absent that, the cursor (the toolbar/vim
+ * insert path). Mirrors pasteClipboard's id-remap, but also remaps groupId — a template's
+ * shapes all deliberately share one groupId in their local definition (see templates.ts). */
+function insertTemplate(state: EditorState, tpl: Template, at?: Pt): EditorState {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const sh of tpl.shapes) {
+    minX = Math.min(minX, sh.x);
+    minY = Math.min(minY, sh.y);
+    maxX = Math.max(maxX, sh.x + sh.w);
+    maxY = Math.max(maxY, sh.y + sh.h);
+  }
+  // Line-heavy templates (see templates.ts) put most of their extent in free connector
+  // endpoints rather than shape bboxes, so those need to count toward the bbox too — mirrors
+  // pasteClipboard's own xs/ys collection.
+  for (const c of tpl.connectors) {
+    for (const e of [c.from, c.to]) {
+      if (e.shapeId) continue;
+      minX = Math.min(minX, e.x);
+      minY = Math.min(minY, e.y);
+      maxX = Math.max(maxX, e.x);
+      maxY = Math.max(maxY, e.y);
+    }
+  }
+  if (minX === Infinity) return state;
+  const anchor = snapPt(at ?? state.cursor);
+  const dx = anchor.x - (minX + maxX) / 2;
+  const dy = anchor.y - (minY + maxY) / 2;
+  const idMap = new Map<string, string>();
+  const groupIdMap = new Map<string, string>();
+  const remapGroup = (gid?: string): string | undefined => {
+    if (!gid) return undefined;
+    let mapped = groupIdMap.get(gid);
+    if (!mapped) {
+      mapped = newId();
+      groupIdMap.set(gid, mapped);
+    }
+    return mapped;
+  };
+  const shapes = tpl.shapes.map((sh) => {
+    const id = newId();
+    idMap.set(sh.id, id);
+    return { ...sh, id, x: sh.x + dx, y: sh.y + dy, groupId: remapGroup(sh.groupId) };
+  });
+  const remap = (e: Endpoint): Endpoint =>
+    e.shapeId
+      ? { shapeId: idMap.get(e.shapeId), x: e.x + dx, y: e.y + dy }
+      : { x: e.x + dx, y: e.y + dy };
+  const connectors = tpl.connectors.map((c) => ({
+    ...c,
+    id: newId(),
+    from: remap(c.from),
+    to: remap(c.to),
+    groupId: remapGroup(c.groupId),
+  }));
+  const doc: Doc = {
+    shapes: [...state.doc.shapes, ...shapes],
+    connectors: [...state.doc.connectors, ...connectors],
+  };
+  return commit(state, doc, {
+    selectedIds: [...shapes.map((sh) => sh.id), ...connectors.map((c) => c.id)],
+    msg: `inserted ${tpl.name}`,
   });
 }
 
@@ -1908,6 +1977,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       return state.vim && state.mode === 'normal'
         ? pasteClipboard(state, action.clip)
         : pasteWithOffset(state, action.clip, GRID * 2);
+
+    case 'INSERT_TEMPLATE': {
+      const tpl = findTemplate(action.templateId);
+      return tpl ? insertTemplate(state, tpl, action.at) : state;
+    }
 
     case 'CONTEXT_MENU_OPEN': {
       let selectedIds = state.selectedIds;

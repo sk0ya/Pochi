@@ -11,11 +11,13 @@ import {
   writeFile,
 } from './bridge';
 import { CollabSession } from './collab/session';
+import { ActivityBar } from './components/ActivityBar';
 import { Canvas } from './components/Canvas';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
 import { RemoteCursors } from './components/RemoteCursors';
 import { StatusBar } from './components/StatusBar';
+import { TemplateSidebar } from './components/TemplateSidebar';
 import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
 import { docToExcalidraw, excalidrawToDoc } from './excalidraw';
@@ -195,6 +197,10 @@ export default function App() {
       /* storage unavailable */
     }
   }, [theme]);
+
+  /* Whether the template-insert sidebar is open (see ActivityBar/TemplateSidebar). Session-only
+   * UI state, not persisted. */
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   /* "Recent files" (desktop only - see RecentFile above). Persisted like theme/vim; updated
    * from `save`/`open`/`openRecent` below whenever a real path is involved. */
@@ -821,11 +827,15 @@ export default function App() {
           else if (window.confirm('共同編集を終了しますか?')) leaveCollab();
         }}
       />
-      <div className="canvas-wrap">
-        <Canvas state={state} dispatch={dispatch} />
-        <RemoteCursors cursors={peerCursors} view={state.view} />
-        <TextEditOverlay state={state} dispatch={dispatch} />
-        <ContextMenu state={state} dispatch={dispatch} />
+      <div className="app-body">
+        <ActivityBar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
+        {sidebarOpen && <TemplateSidebar theme={theme} dispatch={dispatch} />}
+        <div className="canvas-wrap">
+          <Canvas state={state} dispatch={dispatch} />
+          <RemoteCursors cursors={peerCursors} view={state.view} />
+          <TextEditOverlay state={state} dispatch={dispatch} />
+          <ContextMenu state={state} dispatch={dispatch} />
+        </div>
       </div>
       <StatusBar state={state} dispatch={dispatch} runCommand={runCommand} />
       {state.showHelp && <HelpOverlay dispatch={dispatch} />}

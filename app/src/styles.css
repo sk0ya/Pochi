@@ -177,6 +177,166 @@ body {
   flex: 1;
 }
 
+/* Row below the toolbar: activity bar + (optional) template sidebar + canvas, side by side.
+ * min-height: 0 lets its flex children size/scroll correctly inside the outer column (.app) —
+ * without it a flex item defaults to its content's natural height, which would let the
+ * template sidebar's list push this row (and the canvas) taller than the viewport. */
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* VSCode-style icon strip: one button per template category (see ActivityBar.tsx). */
+.activity-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 44px;
+  flex: none;
+  padding: 8px 5px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+.activity-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.activity-icon:hover {
+  background: var(--hover);
+}
+
+.activity-icon.active {
+  background: var(--active-bg);
+  border-left-color: var(--accent);
+}
+
+/* Template-insert panel (see TemplateSidebar.tsx): a category-icon filter row on top, a
+ * 2-column card grid below (scrolls on its own — the filter row stays put). */
+.template-sidebar {
+  width: 208px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.template-filter {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 2px;
+  flex: none;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  /* Thin scrollbar (Firefox) so it doesn't eat into the row's height like a full-size one would. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Thin scrollbar (Chromium/WebView2) — same intent as scrollbar-width: thin above. */
+.template-filter::-webkit-scrollbar {
+  height: 4px;
+}
+
+.template-filter::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.template-filter::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.template-filter-icon {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.template-filter-icon:hover {
+  background: var(--hover);
+}
+
+.template-filter-icon.active {
+  background: var(--active-bg);
+  border-color: var(--accent-dim);
+}
+
+.template-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 8px;
+  align-content: start;
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+}
+
+.template-card:hover {
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.template-card:active {
+  cursor: grabbing;
+}
+
+.template-thumb {
+  width: 100%;
+  height: 56px;
+}
+
+.template-thumb svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.template-card-name {
+  font-size: 12px;
+  color: var(--text);
+}
+
 /* canvas */
 .canvas-wrap {
   position: relative;

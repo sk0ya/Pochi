@@ -24,6 +24,7 @@ import {
   triangleVertices,
 } from '../model/doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
+import { TEMPLATE_DRAG_MIME } from '../model/templates';
 import type { Connector, FontSize, Pt, Shape } from '../model/types';
 import { FONT_LINE_H, FONT_SIZE_PX, GRID, snap } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -570,6 +571,22 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       x: (e.clientX - r.left - view.x) / view.scale,
       y: (e.clientY - r.top - view.y) / view.scale,
     };
+  };
+
+  /* Drop target for a template dragged from the sidebar (see TemplateSidebar.tsx): accept only
+   * drags carrying TEMPLATE_DRAG_MIME (so an OS file/image drag, which the app doesn't handle
+   * here, still shows the "no drop" cursor instead of silently swallowing the drop), and insert
+   * centered on the drop point rather than the vim cursor. */
+  const onDragOver = (e: React.DragEvent<SVGSVGElement>) => {
+    if (!e.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDrop = (e: React.DragEvent<SVGSVGElement>) => {
+    const templateId = e.dataTransfer.getData(TEMPLATE_DRAG_MIME);
+    if (!templateId) return;
+    e.preventDefault();
+    dispatch({ type: 'INSERT_TEMPLATE', templateId, at: toWorld(e) });
   };
 
   const hitId = (target: EventTarget | null): string | undefined =>
@@ -1137,6 +1154,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       onWheel={onWheel}
       onContextMenu={onContextMenu}
       onMouseLeave={() => setHoverId(null)}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       <defs>
         <pattern id="grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">

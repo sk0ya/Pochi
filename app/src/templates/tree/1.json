@@ -1,0 +1,9 @@
+{
+  "name": "木",
+  "shapes": [
+    { "id": "foliage", "kind": "ellipse", "x": 5, "y": 0, "w": 90, "h": 90, "label": "", "groupId": "g" }
+  ],
+  "connectors": [
+    { "id": "trunk", "from": { "x": 50, "y": 85 }, "to": { "x": 50, "y": 140 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}
