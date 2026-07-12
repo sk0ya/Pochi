@@ -1,0 +1,8 @@
+{
+  "name": "フォルダ",
+  "shapes": [
+    { "id": "tab", "kind": "rect", "x": 5, "y": 10, "w": 40, "h": 15, "label": "", "groupId": "g" },
+    { "id": "body", "kind": "rect", "x": 5, "y": 25, "w": 110, "h": 70, "label": "", "groupId": "g" }
+  ],
+  "connectors": []
+}

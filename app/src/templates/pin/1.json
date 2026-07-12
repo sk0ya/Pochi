@@ -1,0 +1,11 @@
+{
+  "name": "ピン",
+  "shapes": [
+    { "id": "head", "kind": "ellipse", "x": 10, "y": 0, "w": 60, "h": 60, "label": "", "groupId": "g" },
+    { "id": "hole", "kind": "ellipse", "x": 30, "y": 10, "w": 20, "h": 20, "label": "", "groupId": "g" }
+  ],
+  "connectors": [
+    { "id": "tail-l", "from": { "x": 25, "y": 52 }, "to": { "x": 40, "y": 85 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "tail-r", "from": { "x": 55, "y": 52 }, "to": { "x": 40, "y": 85 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

@@ -45,7 +45,28 @@ interface RawTemplate {
 
 /** Explicit category order for the insert picker. Loading is glob-based (see below) so file
  * discovery order isn't meaningful (just folder-name-alphabetical) — this is the actual order. */
-const ORDER = ['house', 'person', 'cloud', 'tree', 'speech-bubble'];
+const ORDER = [
+  'house',
+  'person',
+  'cloud',
+  'tree',
+  'speech-bubble',
+  'sun',
+  'lightbulb',
+  'flag',
+  'clock',
+  'pin',
+  'folder',
+  'document',
+  'star',
+  'heart',
+  'magnifier',
+  'check',
+  'cross',
+  'car',
+  'database',
+  'laptop',
+];
 
 function isCategory(v: unknown): v is Category {
   const c = v as Partial<Category> | null;

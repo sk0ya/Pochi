@@ -1,0 +1,8 @@
+{
+  "name": "ノートPC",
+  "shapes": [
+    { "id": "screen", "kind": "rect", "x": 15, "y": 0, "w": 90, "h": 60, "label": "", "groupId": "g" },
+    { "id": "base", "kind": "rect", "x": 0, "y": 60, "w": 120, "h": 10, "label": "", "groupId": "g" }
+  ],
+  "connectors": []
+}

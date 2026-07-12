@@ -1,0 +1,11 @@
+{
+  "name": "時計",
+  "shapes": [
+    { "id": "face", "kind": "ellipse", "x": 0, "y": 0, "w": 90, "h": 90, "label": "", "groupId": "g" },
+    { "id": "center", "kind": "ellipse", "x": 42, "y": 42, "w": 6, "h": 6, "label": "", "groupId": "g", "filled": true }
+  ],
+  "connectors": [
+    { "id": "hour-hand", "from": { "x": 45, "y": 45 }, "to": { "x": 45, "y": 25 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "minute-hand", "from": { "x": 45, "y": 45 }, "to": { "x": 65, "y": 45 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

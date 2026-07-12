@@ -1,0 +1,12 @@
+{
+  "name": "車",
+  "shapes": [
+    { "id": "body", "kind": "rect", "x": 0, "y": 40, "w": 140, "h": 35, "label": "", "groupId": "g" },
+    { "id": "cabin", "kind": "rect", "x": 30, "y": 15, "w": 70, "h": 30, "label": "", "groupId": "g" },
+    { "id": "wheel-l", "kind": "ellipse", "x": 15, "y": 68, "w": 30, "h": 30, "label": "", "groupId": "g" },
+    { "id": "wheel-r", "kind": "ellipse", "x": 95, "y": 68, "w": 30, "h": 30, "label": "", "groupId": "g" }
+  ],
+  "connectors": [
+    { "id": "window", "from": { "x": 65, "y": 15 }, "to": { "x": 65, "y": 45 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "チェック",
+  "shapes": [],
+  "connectors": [
+    { "id": "short-leg", "from": { "x": 13, "y": 58 }, "to": { "x": 46, "y": 91 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "long-leg", "from": { "x": 46, "y": 91 }, "to": { "x": 110, "y": 20 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}
