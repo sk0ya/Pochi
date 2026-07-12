@@ -36,7 +36,7 @@ import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
-import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
@@ -196,6 +196,9 @@ export type Action =
   | { type: 'SET_CONNECTOR_ARROW_DIRECTION'; id: string; arrowDirection: ArrowDirection }
   | { type: 'START_INSERT'; id: string }
   | { type: 'INSERT_COMMIT'; label: string }
+  | { type: 'SET_LABEL'; id: string; label: string }
+  | { type: 'COMMIT_LABEL'; id: string }
+  | { type: 'EDIT_COMMIT' }
   | { type: 'CMD_OPEN' }
   | { type: 'CMD_SET'; text: string }
   | { type: 'CMD_CLOSE' }
@@ -240,6 +243,10 @@ export type Action =
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
   | { type: 'SET_SHAPE_KIND'; ids: string[]; kind: ShapeKind }
+  | { type: 'SET_POSITION'; id: string; x: number; y: number }
+  | { type: 'SET_SIZE'; id: string; w: number; h: number }
+  | { type: 'SET_STROKE_WIDTH'; ids: string[]; strokeWidth: StrokeWidthLevel }
+  | { type: 'SET_SHAPE_DASHED'; ids: string[]; dashed: boolean }
   | { type: 'REORDER'; ids: string[]; dir: ReorderDir }
   | { type: 'ALIGN'; ids: string[]; edge: AlignEdge }
   | { type: 'DISTRIBUTE'; ids: string[]; axis: DistributeAxis }
@@ -313,6 +320,21 @@ function commit(state: EditorState, doc: Doc, extra?: Partial<EditorState>): Edi
     doc,
     undo: [...state.undo, state.doc].slice(-UNDO_LIMIT),
     redo: [],
+    ...extra,
+  };
+}
+
+/** Ends a live-preview session started by snapshotting `state.base` (drag, or a sidebar field
+ * that dispatches on every keystroke — see SET_LABEL/SET_POSITION/SET_SIZE): pushes the
+ * pre-session snapshot to undo as a single step (not one per intermediate update) and clears
+ * `base`. A no-op if nothing actually changed during the session. */
+function commitBase(state: EditorState, extra?: Partial<EditorState>): EditorState {
+  const changed = state.base !== null && state.base !== state.doc;
+  return {
+    ...state,
+    undo: changed ? [...state.undo, state.base as Doc].slice(-UNDO_LIMIT) : state.undo,
+    redo: changed ? [] : state.redo,
+    base: null,
     ...extra,
   };
 }
@@ -1401,15 +1423,8 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
     }
 
-    case 'DRAG_END': {
-      const changed = state.base !== null && state.base !== state.doc;
-      return {
-        ...state,
-        undo: changed ? [...state.undo, state.base as Doc].slice(-UNDO_LIMIT) : state.undo,
-        redo: changed ? [] : state.redo,
-        base: null,
-      };
-    }
+    case 'DRAG_END':
+      return commitBase(state);
 
     case 'ENDPOINT_DRAG_START':
       return {
@@ -1438,6 +1453,82 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'INSERT_COMMIT':
       return commitInsert(state, action.label);
+
+    // Live preview while the PropertiesSidebar text field is being typed into — dispatched on
+    // every keystroke, so this must NOT push undo per-keystroke (that's COMMIT_LABEL's job) and
+    // must NOT trim/delete-on-empty (that would yank the shape out from under a still-focused
+    // field mid-edit). It snapshots `base` on the first keystroke of a session, same as DRAG_MOVE.
+    case 'SET_LABEL': {
+      const base = state.base ?? state.doc;
+      const conn = findConnector(state.doc, action.id);
+      let doc: Doc;
+      if (conn) {
+        doc = {
+          ...state.doc,
+          connectors: state.doc.connectors.map((c) => (c.id === action.id ? { ...c, label: action.label } : c)),
+        };
+      } else {
+        const s = findShape(state.doc, action.id);
+        if (!s) return state;
+        let patch: Partial<Shape> = { label: action.label };
+        if (s.kind === 'text') {
+          const m = measureLabel(action.label, s.fontSize);
+          patch = {
+            ...patch,
+            w: Math.max(GRID * 2, snap(m.w + GRID)),
+            h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+          };
+        }
+        doc = updateShape(state.doc, action.id, patch);
+      }
+      return { ...state, doc, base };
+    }
+
+    // Ends a SET_LABEL live session (sidebar field losing focus, or the field unmounting because
+    // the selection changed): trims trailing whitespace, deletes a text shape left empty, and
+    // folds the whole typing session into one undo step via commitBase.
+    case 'COMMIT_LABEL': {
+      const conn = findConnector(state.doc, action.id);
+      let doc = state.doc;
+      if (conn) {
+        const trimmed = conn.label.replace(/\s+$/, '');
+        if (trimmed !== conn.label) {
+          doc = { ...doc, connectors: doc.connectors.map((c) => (c.id === action.id ? { ...c, label: trimmed } : c)) };
+        }
+      } else {
+        const s = findShape(state.doc, action.id);
+        if (s) {
+          const trimmed = s.label.replace(/\s+$/, '');
+          if (s.kind === 'text' && trimmed === '') {
+            doc = deleteItem(doc, action.id);
+          } else if (trimmed !== s.label) {
+            let patch: Partial<Shape> = { label: trimmed };
+            if (s.kind === 'text') {
+              const m = measureLabel(trimmed, s.fontSize);
+              patch = {
+                ...patch,
+                w: Math.max(GRID * 2, snap(m.w + GRID)),
+                h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+              };
+            }
+            doc = updateShape(doc, action.id, patch);
+          }
+        }
+      }
+      return commitBase(
+        { ...state, doc },
+        {
+          selectedIds: state.selectedIds.filter(
+            (sid) => doc.shapes.some((s) => s.id === sid) || doc.connectors.some((c) => c.id === sid),
+          ),
+        },
+      );
+    }
+
+    // Ends any other live-preview session (SET_POSITION/SET_SIZE) the same way COMMIT_LABEL
+    // ends a label edit, minus the label-specific trim/delete step.
+    case 'EDIT_COMMIT':
+      return commitBase(state);
 
     case 'CMD_OPEN':
       return { ...state, mode: 'command', cmd: '', count: '' };
@@ -1787,6 +1878,53 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         }),
       };
       return commit(state, doc, { msg: '図形の種類を変更' });
+    }
+
+    // Live preview while the PropertiesSidebar X/Y fields are being typed into (same
+    // dispatch-per-keystroke, snapshot-`base`-once, coalesce-on-EDIT_COMMIT pattern as
+    // SET_LABEL/COMMIT_LABEL above and DRAG_MOVE/DRAG_END elsewhere in this file).
+    case 'SET_POSITION': {
+      const orig = findShape(state.doc, action.id);
+      if (!orig) return state;
+      const base = state.base ?? state.doc;
+      const ids = frameContainedIds(state.doc, [action.id]);
+      const doc = translateItems(state.doc, ids, action.x - orig.x, action.y - orig.y);
+      return { ...state, doc, base };
+    }
+
+    // Live preview while the PropertiesSidebar width/height fields are being typed into; see
+    // SET_POSITION above.
+    case 'SET_SIZE': {
+      const orig = findShape(state.doc, action.id);
+      if (!orig) return state;
+      const base = state.base ?? state.doc;
+      const newW = Math.max(GRID, snap(action.w));
+      const newH = Math.max(GRID, snap(action.h));
+      const doc = scaleShapes(state.doc, [action.id], newW, newH, { x: orig.x, y: orig.y }, orig.w, orig.h);
+      return { ...state, doc, base };
+    }
+
+    case 'SET_STROKE_WIDTH': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const strokeWidth = action.strokeWidth === 'm' ? undefined : action.strokeWidth;
+      const doc: Doc = {
+        shapes: state.doc.shapes.map((s) => (idSet.has(s.id) ? { ...s, strokeWidth } : s)),
+        connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, strokeWidth } : c)),
+      };
+      return commit(state, doc, { msg: `線の太さ: ${action.strokeWidth}` });
+    }
+
+    case 'SET_SHAPE_DASHED': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size) return state;
+      const doc: Doc = {
+        ...state.doc,
+        shapes: state.doc.shapes.map((s) =>
+          idSet.has(s.id) && s.kind !== 'text' && s.kind !== 'image' ? { ...s, dashed: action.dashed } : s,
+        ),
+      };
+      return commit(state, doc, { msg: action.dashed ? '線種: 破線' : '線種: 実線' });
     }
 
     case 'REORDER': {

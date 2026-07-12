@@ -48,7 +48,21 @@ import { connectorLabelPos, connectorPath, freedrawPoints, labelCenter, triangle
 import { strokeToFreedraw } from './model/sketch';
 import { FLAT_FILL_DEFAULT, fillTint, readableTextColor } from './model/palette';
 import { FONT_SIZE_PX } from './model/types';
-import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, TriangleDirection } from './model/types';
+import type {
+  ArrowDirection,
+  Connector,
+  Doc,
+  Endpoint,
+  FontSize,
+  Pt,
+  Shape,
+  StrokeWidthLevel,
+  TriangleDirection,
+} from './model/types';
+
+/** Pochi's thin/m/thick maps to Excalidraw's conventional 1/2/4 strokeWidth scale;
+ * 'm' -> 2 matches the fixed value this codec always wrote before the option existed. */
+const EXCALIDRAW_STROKE_WIDTH: Record<StrokeWidthLevel, number> = { thin: 1, m: 2, thick: 4 };
 
 const FONT_FAMILY_HELVETICA = 2;
 /** Default stroke color for an uncolored shape — Excalidraw's own default palette
@@ -261,6 +275,8 @@ function shapeToElements(
   const base = {
     ...baseFields(s.id, 'rectangle', s.x, s.y, s.w, s.h),
     ...shapeColors(s),
+    strokeWidth: EXCALIDRAW_STROKE_WIDTH[s.strokeWidth ?? 'm'],
+    strokeStyle: (s.dashed ? 'dashed' : 'solid') as ExcalidrawElement['strokeStyle'],
     groupIds: s.groupId ? [s.groupId] : [],
     frameId,
     boundElements: boundElements.length ? boundElements : null,
@@ -372,6 +388,7 @@ function connectorToElements(doc: Doc, c: Connector): ExcalidrawElement[] {
   const arrow: ExcalidrawElement = {
     ...baseFields(c.id, 'arrow', x, y, width, height),
     strokeColor: c.color ?? DEFAULT_STROKE,
+    strokeWidth: EXCALIDRAW_STROKE_WIDTH[c.strokeWidth ?? 'm'],
     strokeStyle: c.dashed ? 'dashed' : 'solid',
     groupIds: c.groupId ? [c.groupId] : [],
     boundElements: hasLabel ? [{ id: labelId, type: 'text' }] : null,

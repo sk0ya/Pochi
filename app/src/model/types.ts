@@ -22,6 +22,14 @@ export const FONT_SIZE_PX: Record<FontSize, number> = { s: 11, m: 14, l: 21 };
  * labels keep the same visual line spacing ratio at every size. */
 export const FONT_LINE_H: Record<FontSize, number> = { s: 16, m: 20, l: 30 };
 
+/** Stroke thickness level: 'thin' / 'm' / 'thick'; undefined = 'm'. */
+export type StrokeWidthLevel = 'thin' | 'm' | 'thick';
+
+/** Base stroke width in px per level (before the +0.5 selection bump used everywhere
+ * strokes are drawn). 'm' (1.5) matches the width Pochi always rendered strokes at
+ * before this option existed, so undefined/'m' looks identical to before. */
+export const STROKE_WIDTH_BASE: Record<StrokeWidthLevel, number> = { thin: 1, m: 1.5, thick: 3 };
+
 /** Apex direction for kind: 'triangle'. Cardinal directions produce an isosceles
  * triangle (apex at the midpoint of one bbox edge); diagonal directions produce
  * a right triangle occupying that corner of the bbox. */
@@ -57,6 +65,10 @@ export interface Shape {
   filled?: boolean;
   /** Label font size; undefined = 'm'. */
   fontSize?: FontSize;
+  /** Stroke thickness; undefined = 'm'. Ignored when `filled` (no stroke is drawn). */
+  strokeWidth?: StrokeWidthLevel;
+  /** Dashed vs solid stroke; undefined = solid. Ignored when `filled`. */
+  dashed?: boolean;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }
@@ -91,6 +103,8 @@ export interface Connector {
   arrowDirection?: ArrowDirection;
   /** Label font size; undefined = 'm'. */
   fontSize?: FontSize;
+  /** Stroke thickness; undefined = 'm'. */
+  strokeWidth?: StrokeWidthLevel;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
 }

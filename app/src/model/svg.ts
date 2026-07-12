@@ -9,7 +9,7 @@ import {
   triangleVertices,
 } from './doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from './palette';
-import { FONT_LINE_H, FONT_SIZE_PX } from './types';
+import { FONT_LINE_H, FONT_SIZE_PX, STROKE_WIDTH_BASE } from './types';
 import type { Doc, FontSize, Shape } from './types';
 
 const esc = (s: string): string =>
@@ -92,7 +92,8 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     const tint = s.filled
       ? `<rect x="${s.x + 1.5}" y="${s.y + 1.5}" width="${Math.max(s.w - 3, 0)}" height="${Math.max(s.h - 3, 0)}" rx="7" fill="${stroke}" fill-opacity="${t.frameTintOpacity}" stroke="none"/>`
       : '';
-    const body = `${tint}<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+    const dashAttr = s.dashed ? ' stroke-dasharray="6 4"' : '';
+    const body = `${tint}<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="${STROKE_WIDTH_BASE[s.strokeWidth ?? 'm']}"${dashAttr}/>`;
     const labelColor = s.color ?? t.frameStroke;
     return (
       body +
@@ -102,9 +103,10 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const stroke = s.color ?? t.stroke;
+  const strokeWidth = STROKE_WIDTH_BASE[s.strokeWidth ?? 'm'];
   const style = s.filled
     ? `fill="${s.color ?? FLAT_FILL_DEFAULT}" stroke="none"`
-    : `fill="${s.color ? fillTint(s.color) : t.shapeFill}" stroke="${stroke}" stroke-width="1.5"`;
+    : `fill="${s.color ? fillTint(s.color) : t.shapeFill}" stroke="${stroke}" stroke-width="${strokeWidth}"${s.dashed ? ' stroke-dasharray="6 4"' : ''}`;
   let body = '';
   if (s.kind === 'rect') {
     body = `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4" ${style}/>`;
@@ -118,7 +120,7 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     body = `<polygon points="${points}" ${style}/>`;
   } else if (s.kind === 'freedraw') {
     // Open stroke: never filled, `filled`/fill tint don't apply (mirrors the canvas).
-    body = `<path d="${freedrawPathD(s)}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    body = `<path d="${freedrawPathD(s)}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${s.dashed ? ' stroke-dasharray="6 4"' : ''} stroke-linecap="round" stroke-linejoin="round"/>`;
   } else if (s.kind === 'image' && s.src) {
     body = `<image href="${esc(s.src)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMid slice"/>`;
   }
@@ -165,7 +167,7 @@ export function exportSvg(doc: Doc, theme: ExportTheme = 'light'): string {
     const markerStartAttr = arrowDir === 'start' || arrowDir === 'both' ? ` marker-start="url(#${markerId})"` : '';
     const markerEndAttr = arrowDir === 'end' || arrowDir === 'both' ? ` marker-end="url(#${markerId})"` : '';
     parts.push(
-      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round"${dashAttr}${markerStartAttr}${markerEndAttr}/>`,
+      `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${STROKE_WIDTH_BASE[c.strokeWidth ?? 'm']}" stroke-linejoin="round"${dashAttr}${markerStartAttr}${markerEndAttr}/>`,
     );
     if (c.label) {
       const { x: mx, y: my, anchor } = connectorLabelPos(doc, c);

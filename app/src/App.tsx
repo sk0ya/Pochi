@@ -12,9 +12,11 @@ import {
 } from './bridge';
 import { CollabSession } from './collab/session';
 import { ActivityBar } from './components/ActivityBar';
+import type { PanelId } from './components/ActivityBar';
 import { Canvas } from './components/Canvas';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
+import { PropertiesSidebar } from './components/PropertiesSidebar';
 import { RemoteCursors } from './components/RemoteCursors';
 import { StatusBar } from './components/StatusBar';
 import { TemplateSidebar } from './components/TemplateSidebar';
@@ -198,9 +200,9 @@ export default function App() {
     }
   }, [theme]);
 
-  /* Whether the template-insert sidebar is open (see ActivityBar/TemplateSidebar). Session-only
-   * UI state, not persisted. */
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  /* Which ActivityBar panel is open (see ActivityBar/TemplateSidebar/PropertiesSidebar), if any.
+   * Session-only UI state, not persisted. */
+  const [activePanel, setActivePanel] = useState<PanelId | null>(null);
 
   /* "Recent files" (desktop only - see RecentFile above). Persisted like theme/vim; updated
    * from `save`/`open`/`openRecent` below whenever a real path is involved. */
@@ -828,8 +830,12 @@ export default function App() {
         }}
       />
       <div className="app-body">
-        <ActivityBar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
-        {sidebarOpen && <TemplateSidebar theme={theme} dispatch={dispatch} />}
+        <ActivityBar
+          active={activePanel}
+          onSelect={(panel) => setActivePanel((p) => (p === panel ? null : panel))}
+        />
+        {activePanel === 'templates' && <TemplateSidebar theme={theme} dispatch={dispatch} />}
+        {activePanel === 'properties' && <PropertiesSidebar state={state} dispatch={dispatch} />}
         <div className="canvas-wrap">
           <Canvas state={state} dispatch={dispatch} />
           <RemoteCursors cursors={peerCursors} view={state.view} />

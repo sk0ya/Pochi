@@ -26,7 +26,7 @@ import {
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
 import { TEMPLATE_DRAG_MIME } from '../model/templates';
 import type { Connector, FontSize, Pt, Shape } from '../model/types';
-import { FONT_LINE_H, FONT_SIZE_PX, GRID, snap } from '../model/types';
+import { FONT_LINE_H, FONT_SIZE_PX, GRID, snap, STROKE_WIDTH_BASE } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 /** Turn a hex color into a safe DOM id fragment for a per-color arrow marker. */
@@ -172,6 +172,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   // A frame defaults to a subdued stroke (not the brighter shape-stroke every other
   // kind uses) so it reads as a quiet container rather than another shape.
   const trueStroke = s.color ?? (s.kind === 'frame' ? 'var(--muted)' : 'var(--shape-stroke)');
+  const strokeBase = STROKE_WIDTH_BASE[s.strokeWidth ?? 'm'];
   // Flat-fill ("ベタ塗り") style trades the tinted fill + stroke for a solid
   // background and no stroke, like a sticky note.
   const common = s.filled
@@ -179,7 +180,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
     : {
         fill: s.color ? fillTint(s.color) : 'var(--shape-fill)',
         stroke: trueStroke,
-        strokeWidth: selected ? 2 : 1.5,
+        strokeWidth: selected ? strokeBase + 0.5 : strokeBase,
+        strokeDasharray: s.dashed ? '6 4' : undefined,
       };
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
@@ -223,7 +225,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
           d={freedrawPathD(s)}
           fill="none"
           stroke={trueStroke}
-          strokeWidth={selected ? 2 : 1.5}
+          strokeWidth={selected ? strokeBase + 0.5 : strokeBase}
+          strokeDasharray={s.dashed ? '6 4' : undefined}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -261,7 +264,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
             rx={8}
             fill="none"
             stroke={trueStroke}
-            strokeWidth={selected ? 2 : 1.5}
+            strokeWidth={selected ? strokeBase + 0.5 : strokeBase}
+            strokeDasharray={s.dashed ? '6 4' : undefined}
             style={{ pointerEvents: 'none' }}
           />
           {/* Wide invisible stroke so the (thin) visible border is still an easy
@@ -1058,7 +1062,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           points={points}
           fill="none"
           stroke={trueStroke}
-          strokeWidth={selected ? 2 : 1.5}
+          strokeWidth={selected ? STROKE_WIDTH_BASE[c.strokeWidth ?? 'm'] + 0.5 : STROKE_WIDTH_BASE[c.strokeWidth ?? 'm']}
           strokeLinejoin="round"
           strokeDasharray={c.dashed ? '6 4' : undefined}
           markerStart={showStartArrow ? marker : undefined}

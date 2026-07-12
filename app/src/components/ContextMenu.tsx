@@ -6,7 +6,7 @@ import { PALETTE } from '../model/palette';
 import type { ArrowDirection, FontSize, ShapeKind, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
-const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
+export const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
   ['up', '▲', '上向き'],
   ['down', '▼', '下向き'],
   ['left', '◀', '左向き'],
@@ -17,44 +17,44 @@ const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
   ['down-right', '◢', '右下向き(斜め)'],
 ];
 
-const CONNECTOR_ROUTINGS: Array<['straight' | 'orthogonal', string, string]> = [
+export const CONNECTOR_ROUTINGS: Array<['straight' | 'orthogonal', string, string]> = [
   ['straight', '／', '直線'],
   ['orthogonal', '↳', '直角'],
 ];
 
-const ARROW_DIRECTIONS: Array<[ArrowDirection, string, string]> = [
+export const ARROW_DIRECTIONS: Array<[ArrowDirection, string, string]> = [
   ['none', '─', '矢印なし'],
   ['end', '─▶', '終点のみ'],
   ['start', '◀─', '始点のみ'],
   ['both', '◀▶', '両方向'],
 ];
 
-const LINE_STYLES: Array<[boolean, string, string]> = [
+export const LINE_STYLES: Array<[boolean, string, string]> = [
   [false, '───', '実線'],
   [true, '╌╌╌', '点線'],
 ];
 
-const FILL_STYLES: Array<[boolean, string, string]> = [
+export const FILL_STYLES: Array<[boolean, string, string]> = [
   [false, '▢', 'アウトライン'],
   [true, '▩', 'ベタ塗り'],
 ];
 
 /** A frame's fill is a translucent interior tint (see Canvas.tsx), not the solid flat fill
  * other shapes get — same `filled` flag, so the toggle labels say what it actually does. */
-const FRAME_FILL_STYLES: Array<[boolean, string, string]> = [
+export const FRAME_FILL_STYLES: Array<[boolean, string, string]> = [
   [false, '▢', '枠線のみ'],
   [true, '▨', '薄塗り'],
 ];
 
-const FONT_SIZES: Array<[FontSize, string, string]> = [
+export const FONT_SIZES: Array<[FontSize, string, string]> = [
   ['s', 'S', '小'],
   ['m', 'M', '標準'],
   ['l', 'L', '大'],
 ];
 
-const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'frame']);
+export const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'frame']);
 
-const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
+export const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
   ['rect', '▭', '四角形'],
   ['ellipse', '◯', '楕円'],
   ['diamond', '◇', 'ひし形'],

@@ -1,15 +1,23 @@
-/** VSCode-style narrow icon strip. Currently a single entry — the template-insert panel (see
- * TemplateSidebar.tsx), which does its own category filtering internally — but kept as its own
- * bar/component since that's where a future second panel would go. */
-export function ActivityBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+export type PanelId = 'templates' | 'properties';
+
+/** VSCode-style narrow icon strip. Each icon toggles its panel — clicking the already-active
+ * one closes it, clicking another switches to it (see App.tsx's `activePanel`). */
+export function ActivityBar({ active, onSelect }: { active: PanelId | null; onSelect: (panel: PanelId) => void }) {
   return (
     <div className="activity-bar">
       <button
-        className={`activity-icon${open ? ' active' : ''}`}
-        onClick={onToggle}
+        className={`activity-icon${active === 'templates' ? ' active' : ''}`}
+        onClick={() => onSelect('templates')}
         title="テンプレート挿入"
       >
         🧩
+      </button>
+      <button
+        className={`activity-icon${active === 'properties' ? ' active' : ''}`}
+        onClick={() => onSelect('properties')}
+        title="プロパティ"
+      >
+        ✎
       </button>
     </div>
   );
