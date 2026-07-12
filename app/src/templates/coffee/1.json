@@ -1,0 +1,34 @@
+{
+  "name": "コーヒー",
+  "shapes": [
+    {
+      "id": "cup",
+      "kind": "freedraw",
+      "x": 10,
+      "y": 30,
+      "w": 70,
+      "h": 55,
+      "label": "",
+      "groupId": "g",
+      "points": [0, 0, 1000, 0, 886, 1000, 114, 1000, 0, 0]
+    },
+    {
+      "id": "handle",
+      "kind": "freedraw",
+      "x": 74,
+      "y": 40,
+      "w": 28,
+      "h": 28,
+      "label": "",
+      "groupId": "g",
+      "points": [161, 0, 500, 60, 860, 320, 1000, 600, 860, 850, 500, 970, 18, 1000]
+    }
+  ],
+  "connectors": [
+    { "id": "saucer", "from": { "x": 0, "y": 88 }, "to": { "x": 90, "y": 88 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "steam-l-1", "from": { "x": 35, "y": 22 }, "to": { "x": 31, "y": 12 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "steam-l-2", "from": { "x": 31, "y": 12 }, "to": { "x": 35, "y": 2 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "steam-r-1", "from": { "x": 55, "y": 22 }, "to": { "x": 51, "y": 12 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "steam-r-2", "from": { "x": 51, "y": 12 }, "to": { "x": 55, "y": 2 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

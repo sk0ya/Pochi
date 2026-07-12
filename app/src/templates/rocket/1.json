@@ -1,0 +1,26 @@
+{
+  "name": "ロケット",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "freedraw",
+      "x": 30,
+      "y": 0,
+      "w": 40,
+      "h": 90,
+      "label": "",
+      "groupId": "g",
+      "points": [0, 1000, 0, 444, 125, 222, 500, 0, 875, 222, 1000, 444, 1000, 1000, 0, 1000]
+    },
+    { "id": "window", "kind": "ellipse", "x": 42, "y": 32, "w": 16, "h": 16, "label": "", "groupId": "g" }
+  ],
+  "connectors": [
+    { "id": "fin-l-1", "from": { "x": 30, "y": 62 }, "to": { "x": 12, "y": 92 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "fin-l-2", "from": { "x": 12, "y": 92 }, "to": { "x": 30, "y": 88 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "fin-r-1", "from": { "x": 70, "y": 62 }, "to": { "x": 88, "y": 92 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "fin-r-2", "from": { "x": 88, "y": 92 }, "to": { "x": 70, "y": 88 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "flame-l", "from": { "x": 42, "y": 94 }, "to": { "x": 38, "y": 110 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "flame-c", "from": { "x": 50, "y": 94 }, "to": { "x": 50, "y": 116 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "flame-r", "from": { "x": 58, "y": 94 }, "to": { "x": 62, "y": 110 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

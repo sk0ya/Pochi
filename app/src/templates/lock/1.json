@@ -1,0 +1,20 @@
+{
+  "name": "南京錠",
+  "shapes": [
+    {
+      "id": "shackle",
+      "kind": "freedraw",
+      "x": 25,
+      "y": 25,
+      "w": 50,
+      "h": 25,
+      "label": "",
+      "groupId": "g",
+      "points": [0, 1000, 38, 616, 146, 293, 309, 76, 500, 0, 691, 76, 854, 293, 962, 616, 1000, 1000]
+    },
+    { "id": "body", "kind": "rect", "x": 10, "y": 50, "w": 80, "h": 60, "label": "", "groupId": "g" },
+    { "id": "keyhole", "kind": "ellipse", "x": 46, "y": 68, "w": 8, "h": 8, "label": "", "groupId": "g", "filled": true },
+    { "id": "keyway", "kind": "rect", "x": 48, "y": 76, "w": 4, "h": 14, "label": "", "groupId": "g", "filled": true }
+  ],
+  "connectors": []
+}

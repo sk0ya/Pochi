@@ -1,0 +1,24 @@
+{
+  "name": "トロフィー",
+  "shapes": [
+    {
+      "id": "cup",
+      "kind": "freedraw",
+      "x": 25,
+      "y": 0,
+      "w": 60,
+      "h": 55,
+      "label": "",
+      "groupId": "g",
+      "points": [0, 0, 1000, 0, 917, 364, 750, 655, 583, 836, 500, 873, 417, 836, 250, 655, 83, 364, 0, 0]
+    }
+  ],
+  "connectors": [
+    { "id": "handle-l-1", "from": { "x": 25, "y": 10 }, "to": { "x": 8, "y": 20 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "handle-l-2", "from": { "x": 8, "y": 20 }, "to": { "x": 26, "y": 34 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "handle-r-1", "from": { "x": 85, "y": 10 }, "to": { "x": 102, "y": 20 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "handle-r-2", "from": { "x": 102, "y": 20 }, "to": { "x": 84, "y": 34 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "stem", "from": { "x": 55, "y": 48 }, "to": { "x": 55, "y": 70 }, "label": "", "arrowDirection": "none", "groupId": "g" },
+    { "id": "base", "from": { "x": 35, "y": 70 }, "to": { "x": 75, "y": 70 }, "label": "", "arrowDirection": "none", "groupId": "g" }
+  ]
+}

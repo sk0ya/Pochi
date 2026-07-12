@@ -1,0 +1,15 @@
+{
+  "name": "サーバー",
+  "shapes": [
+    { "id": "unit-1", "kind": "rect", "x": 0, "y": 0, "w": 70, "h": 37, "label": "", "groupId": "g" },
+    { "id": "unit-2", "kind": "rect", "x": 0, "y": 37, "w": 70, "h": 37, "label": "", "groupId": "g" },
+    { "id": "unit-3", "kind": "rect", "x": 0, "y": 74, "w": 70, "h": 37, "label": "", "groupId": "g" },
+    { "id": "led-1", "kind": "ellipse", "x": 10, "y": 15, "w": 6, "h": 6, "label": "", "groupId": "g", "filled": true },
+    { "id": "led-2", "kind": "ellipse", "x": 10, "y": 52, "w": 6, "h": 6, "label": "", "groupId": "g", "filled": true },
+    { "id": "led-3", "kind": "ellipse", "x": 10, "y": 89, "w": 6, "h": 6, "label": "", "groupId": "g", "filled": true },
+    { "id": "vent-1", "kind": "rect", "x": 30, "y": 16, "w": 28, "h": 4, "label": "", "groupId": "g" },
+    { "id": "vent-2", "kind": "rect", "x": 30, "y": 53, "w": 28, "h": 4, "label": "", "groupId": "g" },
+    { "id": "vent-3", "kind": "rect", "x": 30, "y": 90, "w": 28, "h": 4, "label": "", "groupId": "g" }
+  ],
+  "connectors": []
+}

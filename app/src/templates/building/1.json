@@ -1,0 +1,14 @@
+{
+  "name": "ビル",
+  "shapes": [
+    { "id": "body", "kind": "rect", "x": 0, "y": 0, "w": 80, "h": 120, "label": "", "groupId": "g" },
+    { "id": "win-1", "kind": "rect", "x": 12, "y": 12, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "win-2", "kind": "rect", "x": 33, "y": 12, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "win-3", "kind": "rect", "x": 54, "y": 12, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "win-4", "kind": "rect", "x": 12, "y": 40, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "win-5", "kind": "rect", "x": 33, "y": 40, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "win-6", "kind": "rect", "x": 54, "y": 40, "w": 14, "h": 14, "label": "", "groupId": "g" },
+    { "id": "door", "kind": "rect", "x": 30, "y": 92, "w": 20, "h": 28, "label": "", "groupId": "g" }
+  ],
+  "connectors": []
+}
