@@ -1,0 +1,35 @@
+{
+  "name": "りんご",
+  "shapes": [
+    {
+      "id": "fruit",
+      "kind": "ellipse",
+      "x": 5,
+      "y": 25,
+      "w": 80,
+      "h": 75,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "leaf",
+      "kind": "ellipse",
+      "x": 50,
+      "y": 3,
+      "w": 28,
+      "h": 15,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "stem",
+      "from": { "x": 45, "y": 25 },
+      "to": { "x": 50, "y": 5 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

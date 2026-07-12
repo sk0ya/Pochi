@@ -1,0 +1,31 @@
+{
+  "name": "禁止",
+  "shapes": [
+    {
+      "id": "circle",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 90,
+      "h": 90,
+      "label": "",
+      "color": "#e74c3c",
+      "groupId": "g"
+    },
+    {
+      "id": "slash",
+      "kind": "freedraw",
+      "x": 14,
+      "y": 14,
+      "w": 62,
+      "h": 62,
+      "label": "",
+      "color": "#e74c3c",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 1000
+      ]
+    }
+  ],
+  "connectors": []
+}

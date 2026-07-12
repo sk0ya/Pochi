@@ -1,0 +1,77 @@
+{
+  "name": "電車",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 10,
+      "y": 10,
+      "w": 120,
+      "h": 70,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-1",
+      "kind": "rect",
+      "x": 22,
+      "y": 22,
+      "w": 25,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-2",
+      "kind": "rect",
+      "x": 58,
+      "y": 22,
+      "w": 25,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-3",
+      "kind": "rect",
+      "x": 93,
+      "y": 22,
+      "w": 25,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "wheel-l",
+      "kind": "ellipse",
+      "x": 28,
+      "y": 74,
+      "w": 18,
+      "h": 18,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "wheel-r",
+      "kind": "ellipse",
+      "x": 94,
+      "y": 74,
+      "w": 18,
+      "h": 18,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "rail",
+      "from": { "x": 0, "y": 100 },
+      "to": { "x": 140, "y": 100 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

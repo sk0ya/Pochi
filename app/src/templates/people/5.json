@@ -1,0 +1,51 @@
+{
+  "name": "笑顔",
+  "shapes": [
+    {
+      "id": "face",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 90,
+      "h": 90,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "eye-l",
+      "kind": "ellipse",
+      "x": 24,
+      "y": 27,
+      "w": 9,
+      "h": 12,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "eye-r",
+      "kind": "ellipse",
+      "x": 57,
+      "y": 27,
+      "w": 9,
+      "h": 12,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "smile",
+      "kind": "freedraw",
+      "x": 26,
+      "y": 54,
+      "w": 38,
+      "h": 14,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 100, 450, 280, 800, 500, 1000, 720, 800, 900, 450, 1000, 0
+      ]
+    }
+  ],
+  "connectors": []
+}

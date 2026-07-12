@@ -1,0 +1,68 @@
+{
+  "name": "フォーク&ナイフ",
+  "shapes": [
+    {
+      "id": "blade",
+      "kind": "freedraw",
+      "x": 67,
+      "y": 10,
+      "w": 18,
+      "h": 52,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        150, 0, 150, 1000, 850, 1000, 1000, 650, 900, 300, 550, 50, 150, 0
+      ]
+    }
+  ],
+  "connectors": [
+    {
+      "id": "tine-l",
+      "from": { "x": 17, "y": 10 },
+      "to": { "x": 17, "y": 35 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "tine-m",
+      "from": { "x": 25, "y": 10 },
+      "to": { "x": 25, "y": 35 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "tine-r",
+      "from": { "x": 33, "y": 10 },
+      "to": { "x": 33, "y": 35 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "tine-base",
+      "from": { "x": 17, "y": 35 },
+      "to": { "x": 33, "y": 35 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "fork-handle",
+      "from": { "x": 25, "y": 35 },
+      "to": { "x": 25, "y": 120 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "knife-handle",
+      "from": { "x": 76, "y": 62 },
+      "to": { "x": 76, "y": 120 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

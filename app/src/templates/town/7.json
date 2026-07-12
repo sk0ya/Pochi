@@ -1,0 +1,99 @@
+{
+  "name": "自転車",
+  "shapes": [
+    {
+      "id": "wheel-rear",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 50,
+      "w": 50,
+      "h": 50,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "wheel-front",
+      "kind": "ellipse",
+      "x": 90,
+      "y": 50,
+      "w": 50,
+      "h": 50,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "chainstay",
+      "from": { "x": 25, "y": 75 },
+      "to": { "x": 63, "y": 75 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "seat-stay",
+      "from": { "x": 25, "y": 75 },
+      "to": { "x": 55, "y": 32 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "seat-tube",
+      "from": { "x": 55, "y": 32 },
+      "to": { "x": 63, "y": 75 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "top-tube",
+      "from": { "x": 55, "y": 32 },
+      "to": { "x": 105, "y": 32 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "down-tube",
+      "from": { "x": 63, "y": 75 },
+      "to": { "x": 105, "y": 32 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "fork",
+      "from": { "x": 105, "y": 32 },
+      "to": { "x": 115, "y": 75 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "saddle",
+      "from": { "x": 47, "y": 26 },
+      "to": { "x": 63, "y": 26 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "stem",
+      "from": { "x": 105, "y": 32 },
+      "to": { "x": 99, "y": 16 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "handlebar",
+      "from": { "x": 92, "y": 16 },
+      "to": { "x": 106, "y": 16 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

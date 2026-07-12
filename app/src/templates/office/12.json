@@ -1,0 +1,29 @@
+{
+  "name": "円グラフ",
+  "shapes": [
+    {
+      "id": "pie",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 90,
+      "h": 90,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "slices",
+      "kind": "freedraw",
+      "x": 45,
+      "y": 0,
+      "w": 39,
+      "h": 45,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 0, 1000, 1000, 511
+      ]
+    }
+  ],
+  "connectors": []
+}

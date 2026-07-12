@@ -1,0 +1,73 @@
+{
+  "name": "プリンター",
+  "shapes": [
+    {
+      "id": "paper-in",
+      "kind": "rect",
+      "x": 35,
+      "y": 12,
+      "w": 60,
+      "h": 28,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 10,
+      "y": 40,
+      "w": 110,
+      "h": 45,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "lamp",
+      "kind": "ellipse",
+      "x": 100,
+      "y": 48,
+      "w": 8,
+      "h": 8,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "paper-out",
+      "kind": "rect",
+      "x": 30,
+      "y": 85,
+      "w": 70,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "print-line-1",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 93,
+      "w": 48,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    },
+    {
+      "id": "print-line-2",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 101,
+      "w": 35,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    }
+  ],
+  "connectors": []
+}

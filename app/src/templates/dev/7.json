@@ -1,0 +1,56 @@
+{
+  "name": "ブランチ",
+  "shapes": [
+    {
+      "id": "node-top",
+      "kind": "ellipse",
+      "x": 10,
+      "y": 0,
+      "w": 20,
+      "h": 20,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "node-bottom",
+      "kind": "ellipse",
+      "x": 10,
+      "y": 90,
+      "w": 20,
+      "h": 20,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "node-branch",
+      "kind": "ellipse",
+      "x": 80,
+      "y": 20,
+      "w": 20,
+      "h": 20,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "main-line",
+      "from": { "x": 20, "y": 20 },
+      "to": { "x": 20, "y": 90 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "branch-line",
+      "from": { "x": 20, "y": 70 },
+      "to": { "x": 90, "y": 40 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

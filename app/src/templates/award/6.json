@@ -1,0 +1,53 @@
+{
+  "name": "お札",
+  "shapes": [
+    {
+      "id": "bill",
+      "kind": "rect",
+      "x": 0,
+      "y": 0,
+      "w": 120,
+      "h": 65,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "seal",
+      "kind": "ellipse",
+      "x": 42,
+      "y": 15,
+      "w": 36,
+      "h": 36,
+      "label": "¥",
+      "fontSize": "l",
+      "groupId": "g"
+    },
+    {
+      "id": "mark-l",
+      "kind": "freedraw",
+      "x": 14,
+      "y": 32,
+      "w": 14,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    },
+    {
+      "id": "mark-r",
+      "kind": "freedraw",
+      "x": 92,
+      "y": 32,
+      "w": 14,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    }
+  ],
+  "connectors": []
+}

@@ -1,0 +1,22 @@
+{
+  "name": "プラス",
+  "shapes": [],
+  "connectors": [
+    {
+      "id": "vertical",
+      "from": { "x": 45, "y": 0 },
+      "to": { "x": 45, "y": 90 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "horizontal",
+      "from": { "x": 0, "y": 45 },
+      "to": { "x": 90, "y": 45 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

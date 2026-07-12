@@ -1,0 +1,105 @@
+{
+  "name": "チェックリスト",
+  "shapes": [
+    {
+      "id": "board",
+      "kind": "rect",
+      "x": 0,
+      "y": 10,
+      "w": 90,
+      "h": 110,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "clip",
+      "kind": "rect",
+      "x": 30,
+      "y": 0,
+      "w": 30,
+      "h": 14,
+      "label": "",
+      "filled": true,
+      "groupId": "g"
+    },
+    {
+      "id": "check-1",
+      "kind": "freedraw",
+      "x": 12,
+      "y": 30,
+      "w": 18,
+      "h": 15,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 533, 389, 1000, 1000, 0
+      ]
+    },
+    {
+      "id": "item-1",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 38,
+      "w": 38,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    },
+    {
+      "id": "check-2",
+      "kind": "freedraw",
+      "x": 12,
+      "y": 60,
+      "w": 18,
+      "h": 15,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 533, 389, 1000, 1000, 0
+      ]
+    },
+    {
+      "id": "item-2",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 68,
+      "w": 38,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    },
+    {
+      "id": "check-3",
+      "kind": "freedraw",
+      "x": 12,
+      "y": 90,
+      "w": 18,
+      "h": 15,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 533, 389, 1000, 1000, 0
+      ]
+    },
+    {
+      "id": "item-3",
+      "kind": "freedraw",
+      "x": 40,
+      "y": 98,
+      "w": 38,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    }
+  ],
+  "connectors": []
+}

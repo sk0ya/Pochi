@@ -1,0 +1,79 @@
+{
+  "name": "工場",
+  "shapes": [
+    {
+      "id": "tooth-1",
+      "kind": "triangle",
+      "direction": "up-right",
+      "x": 5,
+      "y": 32,
+      "w": 30,
+      "h": 23,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "tooth-2",
+      "kind": "triangle",
+      "direction": "up-right",
+      "x": 48,
+      "y": 32,
+      "w": 30,
+      "h": 23,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "tooth-3",
+      "kind": "triangle",
+      "direction": "up-right",
+      "x": 91,
+      "y": 32,
+      "w": 30,
+      "h": 23,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 0,
+      "y": 55,
+      "w": 130,
+      "h": 65,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "door",
+      "kind": "rect",
+      "x": 55,
+      "y": 85,
+      "w": 22,
+      "h": 35,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-l",
+      "kind": "rect",
+      "x": 15,
+      "y": 68,
+      "w": 18,
+      "h": 14,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-r",
+      "kind": "rect",
+      "x": 95,
+      "y": 68,
+      "w": 18,
+      "h": 14,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": []
+}

@@ -1,0 +1,55 @@
+{
+  "name": "メモ",
+  "shapes": [
+    {
+      "id": "note",
+      "kind": "rect",
+      "x": 0,
+      "y": 0,
+      "w": 80,
+      "h": 80,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "fold",
+      "kind": "freedraw",
+      "x": 58,
+      "y": 58,
+      "w": 22,
+      "h": 22,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 1000, 1000, 0
+      ]
+    },
+    {
+      "id": "text-1",
+      "kind": "freedraw",
+      "x": 14,
+      "y": 24,
+      "w": 48,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    },
+    {
+      "id": "text-2",
+      "kind": "freedraw",
+      "x": 14,
+      "y": 42,
+      "w": 48,
+      "h": 1,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0, 0, 1000, 0
+      ]
+    }
+  ],
+  "connectors": []
+}

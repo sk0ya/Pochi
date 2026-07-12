@@ -85,3 +85,17 @@ boxy/CAD-like). Look at `people/1.json` (limbs are lines, only the head is a sha
 `nature/1.json` (trunk is a line) for the pattern. Reserve closed shapes (`rect`/`ellipse`/
 `diamond`/`triangle`) for parts that are genuinely a filled/outlined area — a head, a wall, a
 cloud lobe — not for anything that's really just an edge.
+
+**Exception — detail *inside* a closed shape must be a `freedraw` shape, not a connector.** The
+canvas draws all connectors under all shapes, and closed shapes have an opaque background, so a
+connector line inside a shape's bbox is invisible once inserted. The sidebar thumbnail renders
+in a different order and shows it fine — deceptive; always check on the actual canvas. Follow
+`office/8.json` (メール): the envelope flap is a freedraw listed *after* its container rect.
+A straight inner line as freedraw is just `"points": [0, 0, 1000, 0]` with the line's bbox
+(`h: 1` works for horizontals). This occlusion is also why connector lines *ending at* a filled
+shape (wheels, graph nodes) are fine — the shape simply paints over the tip.
+
+**Don't use `waypoints` on template connectors.** INSERT_TEMPLATE (and translateItems) offset
+only `from`/`to`, so bends get left behind at the template's local coordinates — the stamp
+looks right in the thumbnail and shatters on insert. For a curved or bent stroke use a
+freedraw shape instead.

@@ -1,0 +1,46 @@
+{
+  "name": "コード",
+  "shapes": [],
+  "connectors": [
+    {
+      "id": "angle-l-top",
+      "from": { "x": 30, "y": 20 },
+      "to": { "x": 0, "y": 50 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "angle-l-bottom",
+      "from": { "x": 0, "y": 50 },
+      "to": { "x": 30, "y": 80 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "angle-r-top",
+      "from": { "x": 90, "y": 20 },
+      "to": { "x": 120, "y": 50 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "angle-r-bottom",
+      "from": { "x": 120, "y": 50 },
+      "to": { "x": 90, "y": 80 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "slash",
+      "from": { "x": 68, "y": 10 },
+      "to": { "x": 52, "y": 90 },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}
