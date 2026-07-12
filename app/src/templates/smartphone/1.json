@@ -1,9 +1,0 @@
-{
-  "name": "スマホ",
-  "shapes": [
-    { "id": "body", "kind": "rect", "x": 0, "y": 0, "w": 60, "h": 110, "label": "", "groupId": "g" },
-    { "id": "speaker", "kind": "rect", "x": 20, "y": 8, "w": 20, "h": 4, "label": "", "groupId": "g" },
-    { "id": "home", "kind": "ellipse", "x": 26, "y": 94, "w": 8, "h": 8, "label": "", "groupId": "g" }
-  ],
-  "connectors": []
-}

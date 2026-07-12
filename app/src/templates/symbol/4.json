@@ -1,0 +1,39 @@
+{
+  "name": "警告",
+  "shapes": [
+    {
+      "id": "sign",
+      "kind": "triangle",
+      "x": 0,
+      "y": 0,
+      "w": 110,
+      "h": 95,
+      "label": "",
+      "groupId": "g",
+      "direction": "up"
+    },
+    {
+      "id": "bang",
+      "kind": "rect",
+      "x": 51,
+      "y": 34,
+      "w": 8,
+      "h": 28,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "dot",
+      "kind": "ellipse",
+      "x": 51,
+      "y": 70,
+      "w": 8,
+      "h": 8,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": []
+}

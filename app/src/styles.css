@@ -239,7 +239,9 @@ body {
 
 .template-filter {
   display: flex;
-  flex-wrap: nowrap;
+  /* "全" + the 9 group icons fit in two rows; wrapping beats the horizontal scroll this row
+   * needed back when every motif was its own category (~58 icons). */
+  flex-wrap: wrap;
   overflow-x: auto;
   gap: 2px;
   flex: none;

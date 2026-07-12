@@ -1,0 +1,32 @@
+{
+  "name": "旗",
+  "shapes": [
+    {
+      "id": "banner",
+      "kind": "triangle",
+      "x": 20,
+      "y": 0,
+      "w": 50,
+      "h": 35,
+      "label": "",
+      "groupId": "g",
+      "direction": "right"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "pole",
+      "from": {
+        "x": 20,
+        "y": 0
+      },
+      "to": {
+        "x": 20,
+        "y": 100
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

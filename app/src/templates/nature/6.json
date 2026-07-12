@@ -1,0 +1,81 @@
+{
+  "name": "花",
+  "shapes": [
+    {
+      "id": "petal-n",
+      "kind": "ellipse",
+      "x": 45,
+      "y": 2,
+      "w": 20,
+      "h": 32,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "petal-s",
+      "kind": "ellipse",
+      "x": 45,
+      "y": 56,
+      "w": 20,
+      "h": 32,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "petal-w",
+      "kind": "ellipse",
+      "x": 13,
+      "y": 35,
+      "w": 32,
+      "h": 20,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "petal-e",
+      "kind": "ellipse",
+      "x": 65,
+      "y": 35,
+      "w": 32,
+      "h": 20,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "leaf",
+      "kind": "ellipse",
+      "x": 55,
+      "y": 105,
+      "w": 28,
+      "h": 14,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "center",
+      "kind": "ellipse",
+      "x": 43,
+      "y": 33,
+      "w": 24,
+      "h": 24,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "stem",
+      "from": {
+        "x": 55,
+        "y": 88
+      },
+      "to": {
+        "x": 55,
+        "y": 138
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

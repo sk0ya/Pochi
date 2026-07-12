@@ -1,0 +1,87 @@
+{
+  "name": "人",
+  "shapes": [
+    {
+      "id": "head",
+      "kind": "ellipse",
+      "x": 55,
+      "y": 0,
+      "w": 30,
+      "h": 30,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "body",
+      "from": {
+        "x": 70,
+        "y": 30
+      },
+      "to": {
+        "x": 70,
+        "y": 80
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "arm-l",
+      "from": {
+        "x": 70,
+        "y": 45
+      },
+      "to": {
+        "x": 30,
+        "y": 75
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "arm-r",
+      "from": {
+        "x": 70,
+        "y": 45
+      },
+      "to": {
+        "x": 110,
+        "y": 75
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-l",
+      "from": {
+        "x": 70,
+        "y": 80
+      },
+      "to": {
+        "x": 40,
+        "y": 140
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-r",
+      "from": {
+        "x": 70,
+        "y": 80
+      },
+      "to": {
+        "x": 100,
+        "y": 140
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

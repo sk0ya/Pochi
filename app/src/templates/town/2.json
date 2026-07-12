@@ -1,0 +1,56 @@
+{
+  "name": "家2",
+  "shapes": [
+    {
+      "id": "wall",
+      "kind": "rect",
+      "x": 15,
+      "y": 40,
+      "w": 110,
+      "h": 100,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "roof",
+      "kind": "rect",
+      "x": 0,
+      "y": 32,
+      "w": 140,
+      "h": 10,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "door",
+      "kind": "rect",
+      "x": 65,
+      "y": 105,
+      "w": 25,
+      "h": 35,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-l",
+      "kind": "rect",
+      "x": 30,
+      "y": 55,
+      "w": 25,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "window-r",
+      "kind": "rect",
+      "x": 85,
+      "y": 55,
+      "w": 25,
+      "h": 25,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": []
+}

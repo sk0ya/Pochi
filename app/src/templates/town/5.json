@@ -1,0 +1,52 @@
+{
+  "name": "信号",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 30,
+      "y": 0,
+      "w": 56,
+      "h": 130,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "red",
+      "kind": "ellipse",
+      "x": 43,
+      "y": 10,
+      "w": 30,
+      "h": 30,
+      "label": "",
+      "groupId": "g",
+      "filled": true,
+      "color": "#e74c3c"
+    },
+    {
+      "id": "yellow",
+      "kind": "ellipse",
+      "x": 43,
+      "y": 50,
+      "w": 30,
+      "h": 30,
+      "label": "",
+      "groupId": "g",
+      "filled": true,
+      "color": "#f1c40f"
+    },
+    {
+      "id": "green",
+      "kind": "ellipse",
+      "x": 43,
+      "y": 90,
+      "w": 30,
+      "h": 30,
+      "label": "",
+      "groupId": "g",
+      "filled": true,
+      "color": "#2ecc71"
+    }
+  ],
+  "connectors": []
+}

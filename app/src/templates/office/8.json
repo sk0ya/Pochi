@@ -1,0 +1,34 @@
+{
+  "name": "メール",
+  "shapes": [
+    {
+      "id": "envelope",
+      "kind": "rect",
+      "x": 0,
+      "y": 0,
+      "w": 120,
+      "h": 80,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "flap",
+      "kind": "freedraw",
+      "x": 0,
+      "y": 0,
+      "w": 120,
+      "h": 45,
+      "label": "",
+      "groupId": "g",
+      "points": [
+        0,
+        0,
+        500,
+        1000,
+        1000,
+        0
+      ]
+    }
+  ],
+  "connectors": []
+}

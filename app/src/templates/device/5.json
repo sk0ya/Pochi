@@ -1,0 +1,36 @@
+{
+  "name": "データベース",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 0,
+      "y": 12,
+      "w": 100,
+      "h": 66,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "top",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 100,
+      "h": 24,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "bottom",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 66,
+      "w": 100,
+      "h": 24,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": []
+}

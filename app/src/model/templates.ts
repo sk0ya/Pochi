@@ -4,8 +4,8 @@ import type { Connector, Shape } from './types';
  * to identify "a template id is being dragged" — see TemplateSidebar.tsx / Canvas.tsx. */
 export const TEMPLATE_DRAG_MIME = 'application/x-pochi-template';
 
-/** A group of related stamps sharing one icon in the insert picker (e.g. "家" for every house
- * variant). Data lives at `../templates/<categoryId>/category.json`. */
+/** A themed group of stamps sharing one icon in the insert picker (e.g. "自然" for tree, cloud,
+ * sun, ...). Data lives at `../templates/<categoryId>/category.json`. */
 export interface Category {
   id: string;
   name: string;
@@ -24,7 +24,7 @@ export interface Category {
  * adding a stamp to an existing category is just dropping in a new numbered data file (no icon
  * needed there, the category owns it; no TypeScript required). A brand new category needs a
  * sibling `category.json` (id/name/icon) alongside its first numbered file. Array order within
- * a data file is draw (z-)order, earlier = further back (see house/1.json, where the wall is
+ * a data file is draw (z-)order, earlier = further back (see town/1.json, where the wall is
  * listed before the roof so the roof's sloped edges paint over — not under — the wall's
  * overlapping top corners). Deliberately line-heavy rather than box-heavy: a plain
  * (arrowDirection: 'none') connector reads as a hand-drawn stroke, so most structure (limbs, a
@@ -46,44 +46,15 @@ interface RawTemplate {
 /** Explicit category order for the insert picker. Loading is glob-based (see below) so file
  * discovery order isn't meaningful (just folder-name-alphabetical) — this is the actual order. */
 const ORDER = [
-  'house',
-  'person',
-  'cloud',
-  'tree',
-  'speech-bubble',
-  'sun',
-  'lightbulb',
-  'flag',
-  'clock',
-  'pin',
-  'folder',
-  'document',
-  'star',
-  'heart',
-  'magnifier',
-  'check',
-  'cross',
-  'car',
-  'database',
-  'laptop',
-  'smartphone',
-  'server',
-  'mail',
-  'calendar',
-  'chart',
-  'book',
-  'building',
-  'gear',
-  'lock',
-  'key',
-  'warning',
-  'target',
-  'shield',
-  'bell',
-  'rocket',
-  'trophy',
-  'money',
-  'coffee',
+  'people',
+  'nature',
+  'town',
+  'device',
+  'dev',
+  'office',
+  'symbol',
+  'award',
+  'life',
 ];
 
 function isCategory(v: unknown): v is Category {

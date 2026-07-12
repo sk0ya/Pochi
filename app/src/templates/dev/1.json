@@ -1,0 +1,143 @@
+{
+  "name": "バグ",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "ellipse",
+      "x": 30,
+      "y": 28,
+      "w": 50,
+      "h": 72,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "ant-l",
+      "from": {
+        "x": 45,
+        "y": 30
+      },
+      "to": {
+        "x": 34,
+        "y": 8
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "ant-r",
+      "from": {
+        "x": 65,
+        "y": 30
+      },
+      "to": {
+        "x": 76,
+        "y": 8
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-l1",
+      "from": {
+        "x": 30,
+        "y": 48
+      },
+      "to": {
+        "x": 8,
+        "y": 38
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-l2",
+      "from": {
+        "x": 30,
+        "y": 64
+      },
+      "to": {
+        "x": 4,
+        "y": 64
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-l3",
+      "from": {
+        "x": 30,
+        "y": 80
+      },
+      "to": {
+        "x": 8,
+        "y": 92
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-r1",
+      "from": {
+        "x": 80,
+        "y": 48
+      },
+      "to": {
+        "x": 102,
+        "y": 38
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-r2",
+      "from": {
+        "x": 80,
+        "y": 64
+      },
+      "to": {
+        "x": 106,
+        "y": 64
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "leg-r3",
+      "from": {
+        "x": 80,
+        "y": 80
+      },
+      "to": {
+        "x": 102,
+        "y": 92
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "split",
+      "from": {
+        "x": 55,
+        "y": 28
+      },
+      "to": {
+        "x": 55,
+        "y": 100
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

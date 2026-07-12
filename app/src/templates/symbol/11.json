@@ -1,0 +1,76 @@
+{
+  "name": "紙飛行機",
+  "shapes": [],
+  "connectors": [
+    {
+      "id": "top",
+      "from": {
+        "x": 0,
+        "y": 32
+      },
+      "to": {
+        "x": 128,
+        "y": 0
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "right",
+      "from": {
+        "x": 128,
+        "y": 0
+      },
+      "to": {
+        "x": 38,
+        "y": 88
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "notch",
+      "from": {
+        "x": 38,
+        "y": 88
+      },
+      "to": {
+        "x": 32,
+        "y": 54
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "left",
+      "from": {
+        "x": 32,
+        "y": 54
+      },
+      "to": {
+        "x": 0,
+        "y": 32
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "fold",
+      "from": {
+        "x": 32,
+        "y": 54
+      },
+      "to": {
+        "x": 128,
+        "y": 0
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

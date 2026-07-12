@@ -23,12 +23,12 @@ describe('templates: category/data loading', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('groups multiple variants under one category (house: 家1/家2)', () => {
-    const houseTemplates = templatesByCategory('house');
-    expect(houseTemplates.length).toBeGreaterThanOrEqual(2);
-    expect(houseTemplates.map((t) => t.id)).toEqual(['house-1', 'house-2']);
-    expect(findTemplate('house-1')?.name).toBe('家1');
-    expect(findTemplate('house-2')?.name).toBe('家2');
+  it('groups multiple stamps under one category (town: 家1/家2/...)', () => {
+    const townTemplates = templatesByCategory('town');
+    expect(townTemplates.length).toBeGreaterThanOrEqual(2);
+    expect(townTemplates.slice(0, 2).map((t) => t.id)).toEqual(['town-1', 'town-2']);
+    expect(findTemplate('town-1')?.name).toBe('家1');
+    expect(findTemplate('town-2')?.name).toBe('家2');
   });
 
   it('findTemplate returns undefined for an unknown id', () => {

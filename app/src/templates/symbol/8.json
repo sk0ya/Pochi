@@ -1,0 +1,37 @@
+{
+  "name": "ターゲット",
+  "shapes": [
+    {
+      "id": "outer",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 100,
+      "h": 100,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "middle",
+      "kind": "ellipse",
+      "x": 18,
+      "y": 18,
+      "w": 64,
+      "h": 64,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "bull",
+      "kind": "ellipse",
+      "x": 38,
+      "y": 38,
+      "w": 24,
+      "h": 24,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": []
+}

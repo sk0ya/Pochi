@@ -1,0 +1,106 @@
+{
+  "name": "ターミナル",
+  "shapes": [
+    {
+      "id": "window",
+      "kind": "rect",
+      "x": 0,
+      "y": 0,
+      "w": 130,
+      "h": 90,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "dot1",
+      "kind": "ellipse",
+      "x": 8,
+      "y": 7,
+      "w": 7,
+      "h": 7,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "dot2",
+      "kind": "ellipse",
+      "x": 20,
+      "y": 7,
+      "w": 7,
+      "h": 7,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "dot3",
+      "kind": "ellipse",
+      "x": 32,
+      "y": 7,
+      "w": 7,
+      "h": 7,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": [
+    {
+      "id": "bar",
+      "from": {
+        "x": 0,
+        "y": 20
+      },
+      "to": {
+        "x": 130,
+        "y": 20
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "prompt1",
+      "from": {
+        "x": 16,
+        "y": 38
+      },
+      "to": {
+        "x": 30,
+        "y": 48
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "prompt2",
+      "from": {
+        "x": 30,
+        "y": 48
+      },
+      "to": {
+        "x": 16,
+        "y": 58
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "cursor",
+      "from": {
+        "x": 40,
+        "y": 58
+      },
+      "to": {
+        "x": 62,
+        "y": 58
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

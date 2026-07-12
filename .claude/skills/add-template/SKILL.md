@@ -1,6 +1,6 @@
 ---
 name: add-template
-description: Add a new stamp/template to Pochi's insert sidebar (the drag-and-drop panel opened via the 🧩 activity-bar icon) — either a new variant in an existing category (e.g. a second "car" design) or a brand-new category. Use whenever the user asks to add, create, or design a template, stamp, icon-drawing, or sidebar item for Pochi.
+description: Add a new stamp/template to Pochi's insert sidebar (the drag-and-drop panel opened via the 🧩 activity-bar icon) — usually a new stamp inside one of the themed category groups (人・気持ち / 自然 / 街・乗り物 / IT機器 / 開発・セキュリティ / 仕事・文具 / 記号・マーク / 達成・お金 / 生活), rarely a brand-new group. Use whenever the user asks to add, create, or design a template, stamp, icon-drawing, or sidebar item for Pochi.
 ---
 
 # Add a Pochi template
@@ -12,20 +12,25 @@ shape data itself (see that file's module doc for the full loading mechanics).
 ```
 app/src/templates/<categoryId>/
   category.json   { "id": "<categoryId>", "name": "<表示名>", "icon": "<emoji>" }
-  1.json           first variant: { "name": "...", "shapes": [...], "connectors": [...] }
-  2.json           second variant, etc.
+  1.json           first stamp: { "name": "...", "shapes": [...], "connectors": [...] }
+  2.json           second stamp, etc.
 ```
 
-A template's id is derived from its path (`<categoryId>-<filename>`, e.g. `house-2`) — never
+Categories are **themed groups**, each holding many stamps (e.g. `nature` = 木/雲/太陽/月/山/花/傘,
+`device` = ノートPC/スマホ/…). A new stamp almost always belongs in one of the 9 existing groups —
+pick the closest one rather than creating a new category per motif.
+
+A template's id is derived from its path (`<categoryId>-<filename>`, e.g. `town-2`) — never
 put an `id` field in a numbered file. `category.json` is the only file that owns an icon; the
-numbered variant files don't need one.
+numbered stamp files don't need one.
 
 ## Steps
 
-1. **New variant in an existing category** (e.g. add `house/3.json`): just add the next
-   sequential `<n>.json` — no other file needs to change.
+1. **New stamp in an existing group** (e.g. add `nature/8.json`): just add the next
+   sequential `<n>.json` — no other file needs to change. The file's `name` is the label shown
+   under the card, so give each stamp in a group a distinct name.
 
-2. **Brand-new category**: create `<categoryId>/category.json` **and** add `<categoryId>` to
+2. **Brand-new category group** (rare): create `<categoryId>/category.json` **and** add `<categoryId>` to
    the `ORDER` array in `app/src/model/templates.ts`. Skipping `ORDER` either throws
    (`missing category data file for "..."`, if you reference it) or — more subtly — leaves the
    category icon missing from the filter row while its templates still show up under "All",
@@ -68,7 +73,7 @@ shape by id.
 
 **Array order is draw (z-)order**, earlier = further back. Watch for this whenever two shapes'
 bboxes overlap even slightly: list the one that should appear "under" first. Example
-(`house/1.json`) — the wall is listed before the roof so the roof's sloped edges paint over,
+(`town/1.json`, the 家1 stamp) — the wall is listed before the roof so the roof's sloped edges paint over,
 not under, the wall's overlapping top corners; getting this backwards leaves a visible flat
 line/corner cutting across the roof.
 
@@ -76,7 +81,7 @@ line/corner cutting across the roof.
 
 Prefer plain (`arrowDirection: "none"`) connector lines over `rect` wherever a stroke can read
 as the same structure — this is a deliberate, user-requested style choice (hand-drawn, not
-boxy/CAD-like). Look at `person/1.json` (limbs are lines, only the head is a shape) and
-`tree/1.json` (trunk is a line) for the pattern. Reserve closed shapes (`rect`/`ellipse`/
+boxy/CAD-like). Look at `people/1.json` (limbs are lines, only the head is a shape) and
+`nature/1.json` (trunk is a line) for the pattern. Reserve closed shapes (`rect`/`ellipse`/
 `diamond`/`triangle`) for parts that are genuinely a filled/outlined area — a head, a wall, a
 cloud lobe — not for anything that's really just an edge.

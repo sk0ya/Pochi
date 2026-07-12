@@ -1,8 +1,0 @@
-{
-  "name": "バツ",
-  "shapes": [],
-  "connectors": [
-    { "id": "diag-1", "from": { "x": 10, "y": 10 }, "to": { "x": 90, "y": 90 }, "label": "", "arrowDirection": "none", "groupId": "g" },
-    { "id": "diag-2", "from": { "x": 90, "y": 10 }, "to": { "x": 10, "y": 90 }, "label": "", "arrowDirection": "none", "groupId": "g" }
-  ]
-}

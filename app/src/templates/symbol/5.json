@@ -1,0 +1,69 @@
+{
+  "name": "電球",
+  "shapes": [
+    {
+      "id": "bulb",
+      "kind": "ellipse",
+      "x": 15,
+      "y": 0,
+      "w": 50,
+      "h": 50,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "base",
+      "kind": "rect",
+      "x": 28,
+      "y": 46,
+      "w": 24,
+      "h": 16,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "ridge-1",
+      "from": {
+        "x": 28,
+        "y": 52
+      },
+      "to": {
+        "x": 52,
+        "y": 52
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "ridge-2",
+      "from": {
+        "x": 28,
+        "y": 58
+      },
+      "to": {
+        "x": 52,
+        "y": 58
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "stem",
+      "from": {
+        "x": 40,
+        "y": 62
+      },
+      "to": {
+        "x": 40,
+        "y": 70
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

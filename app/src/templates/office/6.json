@@ -1,0 +1,68 @@
+{
+  "name": "棒グラフ",
+  "shapes": [
+    {
+      "id": "bar-1",
+      "kind": "rect",
+      "x": 25,
+      "y": 70,
+      "w": 18,
+      "h": 30,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "bar-2",
+      "kind": "rect",
+      "x": 55,
+      "y": 45,
+      "w": 18,
+      "h": 55,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "bar-3",
+      "kind": "rect",
+      "x": 85,
+      "y": 25,
+      "w": 18,
+      "h": 75,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": [
+    {
+      "id": "axis-y",
+      "from": {
+        "x": 10,
+        "y": 10
+      },
+      "to": {
+        "x": 10,
+        "y": 100
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "axis-x",
+      "from": {
+        "x": 10,
+        "y": 100
+      },
+      "to": {
+        "x": 120,
+        "y": 100
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

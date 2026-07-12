@@ -1,0 +1,69 @@
+{
+  "name": "地球",
+  "shapes": [
+    {
+      "id": "sphere",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 110,
+      "h": 110,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "meridian",
+      "kind": "ellipse",
+      "x": 33,
+      "y": 0,
+      "w": 44,
+      "h": 110,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "equator",
+      "from": {
+        "x": 0,
+        "y": 55
+      },
+      "to": {
+        "x": 110,
+        "y": 55
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "lat-n",
+      "from": {
+        "x": 8,
+        "y": 27
+      },
+      "to": {
+        "x": 102,
+        "y": 27
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "lat-s",
+      "from": {
+        "x": 8,
+        "y": 83
+      },
+      "to": {
+        "x": 102,
+        "y": 83
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

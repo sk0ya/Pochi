@@ -1,0 +1,73 @@
+{
+  "name": "書類",
+  "shapes": [
+    {
+      "id": "page",
+      "kind": "rect",
+      "x": 10,
+      "y": 0,
+      "w": 90,
+      "h": 120,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "line-1",
+      "from": {
+        "x": 25,
+        "y": 25
+      },
+      "to": {
+        "x": 85,
+        "y": 25
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "line-2",
+      "from": {
+        "x": 25,
+        "y": 45
+      },
+      "to": {
+        "x": 85,
+        "y": 45
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "line-3",
+      "from": {
+        "x": 25,
+        "y": 65
+      },
+      "to": {
+        "x": 85,
+        "y": 65
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "line-4",
+      "from": {
+        "x": 25,
+        "y": 85
+      },
+      "to": {
+        "x": 65,
+        "y": 85
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

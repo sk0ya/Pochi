@@ -1,0 +1,138 @@
+{
+  "name": "王冠",
+  "shapes": [
+    {
+      "id": "jewel-l",
+      "kind": "ellipse",
+      "x": 1,
+      "y": 23,
+      "w": 10,
+      "h": 10,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "jewel-m",
+      "kind": "ellipse",
+      "x": 57,
+      "y": 11,
+      "w": 10,
+      "h": 10,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "jewel-r",
+      "kind": "ellipse",
+      "x": 113,
+      "y": 23,
+      "w": 10,
+      "h": 10,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": [
+    {
+      "id": "side-l",
+      "from": {
+        "x": 12,
+        "y": 88
+      },
+      "to": {
+        "x": 6,
+        "y": 28
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "dip-l",
+      "from": {
+        "x": 6,
+        "y": 28
+      },
+      "to": {
+        "x": 36,
+        "y": 52
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "peak-l",
+      "from": {
+        "x": 36,
+        "y": 52
+      },
+      "to": {
+        "x": 62,
+        "y": 16
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "peak-r",
+      "from": {
+        "x": 62,
+        "y": 16
+      },
+      "to": {
+        "x": 88,
+        "y": 52
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "dip-r",
+      "from": {
+        "x": 88,
+        "y": 52
+      },
+      "to": {
+        "x": 118,
+        "y": 28
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "side-r",
+      "from": {
+        "x": 118,
+        "y": 28
+      },
+      "to": {
+        "x": 112,
+        "y": 88
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "base",
+      "from": {
+        "x": 12,
+        "y": 88
+      },
+      "to": {
+        "x": 112,
+        "y": 88
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

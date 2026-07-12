@@ -1,0 +1,104 @@
+{
+  "name": "えんぴつ",
+  "shapes": [],
+  "connectors": [
+    {
+      "id": "side1",
+      "from": {
+        "x": 32,
+        "y": 88
+      },
+      "to": {
+        "x": 92,
+        "y": 28
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "side2",
+      "from": {
+        "x": 48,
+        "y": 104
+      },
+      "to": {
+        "x": 108,
+        "y": 44
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "cap",
+      "from": {
+        "x": 92,
+        "y": 28
+      },
+      "to": {
+        "x": 108,
+        "y": 44
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "band",
+      "from": {
+        "x": 84,
+        "y": 36
+      },
+      "to": {
+        "x": 100,
+        "y": 52
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "collar",
+      "from": {
+        "x": 32,
+        "y": 88
+      },
+      "to": {
+        "x": 48,
+        "y": 104
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "tip1",
+      "from": {
+        "x": 32,
+        "y": 88
+      },
+      "to": {
+        "x": 14,
+        "y": 106
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "tip2",
+      "from": {
+        "x": 48,
+        "y": 104
+      },
+      "to": {
+        "x": 14,
+        "y": 106
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

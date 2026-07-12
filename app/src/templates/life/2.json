@@ -1,0 +1,111 @@
+{
+  "name": "カート",
+  "shapes": [
+    {
+      "id": "wheel-l",
+      "kind": "ellipse",
+      "x": 30,
+      "y": 76,
+      "w": 18,
+      "h": 18,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "wheel-r",
+      "kind": "ellipse",
+      "x": 78,
+      "y": 76,
+      "w": 18,
+      "h": 18,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "handle1",
+      "from": {
+        "x": 0,
+        "y": 10
+      },
+      "to": {
+        "x": 14,
+        "y": 10
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "handle2",
+      "from": {
+        "x": 14,
+        "y": 10
+      },
+      "to": {
+        "x": 16,
+        "y": 26
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "rim",
+      "from": {
+        "x": 16,
+        "y": 26
+      },
+      "to": {
+        "x": 112,
+        "y": 26
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "side-l",
+      "from": {
+        "x": 16,
+        "y": 26
+      },
+      "to": {
+        "x": 28,
+        "y": 72
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "side-r",
+      "from": {
+        "x": 112,
+        "y": 26
+      },
+      "to": {
+        "x": 100,
+        "y": 72
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "bottom",
+      "from": {
+        "x": 28,
+        "y": 72
+      },
+      "to": {
+        "x": 100,
+        "y": 72
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "name": "音符",
+  "shapes": [
+    {
+      "id": "head1",
+      "kind": "ellipse",
+      "x": 10,
+      "y": 82,
+      "w": 26,
+      "h": 18,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "head2",
+      "kind": "ellipse",
+      "x": 64,
+      "y": 74,
+      "w": 26,
+      "h": 18,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    }
+  ],
+  "connectors": [
+    {
+      "id": "stem1",
+      "from": {
+        "x": 36,
+        "y": 91
+      },
+      "to": {
+        "x": 36,
+        "y": 22
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "stem2",
+      "from": {
+        "x": 90,
+        "y": 83
+      },
+      "to": {
+        "x": 90,
+        "y": 14
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "beam1",
+      "from": {
+        "x": 36,
+        "y": 22
+      },
+      "to": {
+        "x": 90,
+        "y": 14
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "beam2",
+      "from": {
+        "x": 36,
+        "y": 34
+      },
+      "to": {
+        "x": 90,
+        "y": 26
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

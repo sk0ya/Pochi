@@ -1,0 +1,17 @@
+{
+  "name": "コイン",
+  "shapes": [
+    {
+      "id": "coin",
+      "kind": "ellipse",
+      "x": 0,
+      "y": 0,
+      "w": 85,
+      "h": 85,
+      "label": "¥",
+      "groupId": "g",
+      "fontSize": "l"
+    }
+  ],
+  "connectors": []
+}

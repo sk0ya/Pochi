@@ -1,0 +1,66 @@
+{
+  "name": "カレンダー",
+  "shapes": [
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 0,
+      "y": 15,
+      "w": 110,
+      "h": 85,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "header",
+      "kind": "rect",
+      "x": 0,
+      "y": 15,
+      "w": 110,
+      "h": 25,
+      "label": "",
+      "groupId": "g",
+      "filled": true
+    },
+    {
+      "id": "date",
+      "kind": "rect",
+      "x": 70,
+      "y": 60,
+      "w": 16,
+      "h": 14,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "ring-l",
+      "from": {
+        "x": 30,
+        "y": 15
+      },
+      "to": {
+        "x": 30,
+        "y": 0
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "ring-r",
+      "from": {
+        "x": 80,
+        "y": 15
+      },
+      "to": {
+        "x": 80,
+        "y": 0
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

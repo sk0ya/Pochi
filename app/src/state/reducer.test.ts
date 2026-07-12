@@ -1087,7 +1087,7 @@ describe('pen tool: SKETCH_END keeps the stroke as a freedraw shape', () => {
 describe('INSERT_TEMPLATE', () => {
   it('stamps a line-and-shape template as one new group, selected, centered on the cursor', () => {
     const state = initialState(null, false);
-    const next = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'person-1' });
+    const next = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'people-1' });
     expect(next.doc.shapes.length).toBeGreaterThan(0);
     expect(next.doc.connectors.length).toBeGreaterThan(0); // limbs are plain (line-art) connectors
     for (const c of next.doc.connectors) expect(c.arrowDirection).toBe('none'); // strokes, not arrows
@@ -1115,7 +1115,7 @@ describe('INSERT_TEMPLATE', () => {
 
   it('is undoable as a single edit', () => {
     let state = initialState(null, false);
-    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'person-1' });
+    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'people-1' });
     expect(state.doc.shapes.length).toBeGreaterThan(0);
     state = reduce(state, { type: 'UNDO' });
     expect(state.doc.shapes).toHaveLength(0);
@@ -1125,9 +1125,9 @@ describe('INSERT_TEMPLATE', () => {
 
   it('inserting the same template twice produces two independently-grouped copies', () => {
     let state = initialState(null, false);
-    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'cloud-1' });
+    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'nature-2' });
     const firstIds = new Set(state.doc.shapes.map((s) => s.id));
-    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'cloud-1' });
+    state = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'nature-2' });
     const gids = new Set(state.doc.shapes.map((s) => s.groupId));
     expect(gids.size).toBe(2);
     // no id collisions between the two insertions
@@ -1138,7 +1138,7 @@ describe('INSERT_TEMPLATE', () => {
   it('centers on an explicit `at` point (drag-and-drop drop location) instead of the cursor', () => {
     const state = initialState(null, false);
     const dropPoint = { x: state.cursor.x + GRID * 25, y: state.cursor.y - GRID * 20 };
-    const next = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'cloud-1', at: dropPoint });
+    const next = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'nature-2', at: dropPoint });
     const xs = next.doc.shapes.flatMap((s) => [s.x, s.x + s.w]);
     const ys = next.doc.shapes.flatMap((s) => [s.y, s.y + s.h]);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;

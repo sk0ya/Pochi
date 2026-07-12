@@ -1,0 +1,85 @@
+{
+  "name": "山",
+  "shapes": [
+    {
+      "id": "peak-r",
+      "kind": "triangle",
+      "x": 55,
+      "y": 42,
+      "w": 70,
+      "h": 58,
+      "label": "",
+      "groupId": "g",
+      "direction": "up"
+    },
+    {
+      "id": "peak-l",
+      "kind": "triangle",
+      "x": 0,
+      "y": 18,
+      "w": 95,
+      "h": 82,
+      "label": "",
+      "groupId": "g",
+      "direction": "up"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "snow1",
+      "from": {
+        "x": 31,
+        "y": 48
+      },
+      "to": {
+        "x": 39,
+        "y": 55
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "snow2",
+      "from": {
+        "x": 39,
+        "y": 55
+      },
+      "to": {
+        "x": 47,
+        "y": 48
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "snow3",
+      "from": {
+        "x": 47,
+        "y": 48
+      },
+      "to": {
+        "x": 55,
+        "y": 55
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "snow4",
+      "from": {
+        "x": 55,
+        "y": 55
+      },
+      "to": {
+        "x": 63,
+        "y": 48
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

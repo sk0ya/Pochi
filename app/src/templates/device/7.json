@@ -1,0 +1,56 @@
+{
+  "name": "カメラ",
+  "shapes": [
+    {
+      "id": "bump",
+      "kind": "rect",
+      "x": 18,
+      "y": 8,
+      "w": 34,
+      "h": 20,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "body",
+      "kind": "rect",
+      "x": 0,
+      "y": 28,
+      "w": 130,
+      "h": 82,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "lens",
+      "kind": "ellipse",
+      "x": 40,
+      "y": 44,
+      "w": 50,
+      "h": 50,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "lens-inner",
+      "kind": "ellipse",
+      "x": 52,
+      "y": 56,
+      "w": 26,
+      "h": 26,
+      "label": "",
+      "groupId": "g"
+    },
+    {
+      "id": "flash",
+      "kind": "rect",
+      "x": 100,
+      "y": 38,
+      "w": 18,
+      "h": 10,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": []
+}

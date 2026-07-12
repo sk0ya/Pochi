@@ -1,0 +1,45 @@
+{
+  "name": "モニター",
+  "shapes": [
+    {
+      "id": "screen",
+      "kind": "rect",
+      "x": 0,
+      "y": 0,
+      "w": 130,
+      "h": 85,
+      "label": "",
+      "groupId": "g"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "stand",
+      "from": {
+        "x": 65,
+        "y": 85
+      },
+      "to": {
+        "x": 65,
+        "y": 102
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "base",
+      "from": {
+        "x": 38,
+        "y": 102
+      },
+      "to": {
+        "x": 92,
+        "y": 102
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}

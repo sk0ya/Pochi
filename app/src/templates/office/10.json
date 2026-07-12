@@ -1,0 +1,58 @@
+{
+  "name": "砂時計",
+  "shapes": [
+    {
+      "id": "top",
+      "kind": "triangle",
+      "x": 25,
+      "y": 6,
+      "w": 70,
+      "h": 52,
+      "label": "",
+      "groupId": "g",
+      "direction": "down"
+    },
+    {
+      "id": "bottom",
+      "kind": "triangle",
+      "x": 25,
+      "y": 64,
+      "w": 70,
+      "h": 52,
+      "label": "",
+      "groupId": "g",
+      "direction": "up",
+      "filled": true
+    }
+  ],
+  "connectors": [
+    {
+      "id": "bar-t",
+      "from": {
+        "x": 14,
+        "y": 2
+      },
+      "to": {
+        "x": 106,
+        "y": 2
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    },
+    {
+      "id": "bar-b",
+      "from": {
+        "x": 14,
+        "y": 120
+      },
+      "to": {
+        "x": 106,
+        "y": 120
+      },
+      "label": "",
+      "arrowDirection": "none",
+      "groupId": "g"
+    }
+  ]
+}
