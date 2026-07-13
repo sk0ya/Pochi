@@ -1,0 +1,10 @@
+{
+  "name": "pochi-turn",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "vars": {
+    // GB of TURN egress per month before the Worker stops issuing relay credentials and
+    // returns STUN only. Kept under the 1 TB free tier (shared with SFU) for safety margin.
+    "TURN_MONTHLY_CAP_GB": "900"
+  }
+}

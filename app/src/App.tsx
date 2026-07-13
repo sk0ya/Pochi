@@ -11,6 +11,7 @@ import {
   writeFile,
 } from './bridge';
 import { CollabSession } from './collab/session';
+import { fetchIceServers } from './collab/ice';
 import { ActivityBar } from './components/ActivityBar';
 import type { PanelId } from './components/ActivityBar';
 import { Canvas } from './components/Canvas';
@@ -231,28 +232,46 @@ export default function App() {
    * imperative connection, not render state; React state only mirrors what the UI
    * shows (room id, peer list, remote cursors). */
   const collabRef = useRef<CollabSession | null>(null);
+  // Guards the async gap in joinCollab (fetching TURN credentials) so a second join
+  // can't slip in before collabRef is set — collabRef alone only becomes truthy after.
+  const joiningRef = useRef(false);
   const [collabRoom, setCollabRoom] = useState<string | null>(null);
   const [collabPeers, setCollabPeers] = useState<string[]>([]);
   const [peerCursors, setPeerCursors] = useState<Record<string, Pt>>({});
 
-  const joinCollab = useCallback((roomId: string, viaUrl: boolean) => {
-    if (collabRef.current) return;
-    collabRef.current = new CollabSession(roomId, stateRef.current.doc, viaUrl, {
-      applyOps: (ops) => dispatch({ type: 'COLLAB_OPS', ops }),
-      applySnapshot: (doc) => dispatch({ type: 'COLLAB_DOC', doc, msg: 'loaded diagram from room' }),
-      onPeersChange: (peers) => setCollabPeers(peers),
-      onCursor: (peerId, p) =>
-        setPeerCursors((prev) => {
-          if (!p) {
-            const { [peerId]: _gone, ...rest } = prev;
-            return rest;
-          }
-          return { ...prev, [peerId]: p };
-        }),
-    });
-    setCollabRoom(roomId);
-    setCollabPeers([]);
-    history.replaceState(null, '', location.pathname + location.search + ROOM_HASH_PREFIX + roomId);
+  const joinCollab = useCallback(async (roomId: string, viaUrl: boolean) => {
+    if (collabRef.current || joiningRef.current) return;
+    joiningRef.current = true;
+    try {
+      // TURN credentials come from a Worker; fetch before joining so peers behind a VPN
+      // can relay. Best-effort (STUN-only fallback) — this never blocks joining a room.
+      const iceServers = await fetchIceServers();
+      if (collabRef.current) return; // left/rejoined during the fetch — abandon this join
+      collabRef.current = new CollabSession(
+        roomId,
+        stateRef.current.doc,
+        viaUrl,
+        {
+          applyOps: (ops) => dispatch({ type: 'COLLAB_OPS', ops }),
+          applySnapshot: (doc) => dispatch({ type: 'COLLAB_DOC', doc, msg: 'loaded diagram from room' }),
+          onPeersChange: (peers) => setCollabPeers(peers),
+          onCursor: (peerId, p) =>
+            setPeerCursors((prev) => {
+              if (!p) {
+                const { [peerId]: _gone, ...rest } = prev;
+                return rest;
+              }
+              return { ...prev, [peerId]: p };
+            }),
+        },
+        { iceServers },
+      );
+      setCollabRoom(roomId);
+      setCollabPeers([]);
+      history.replaceState(null, '', location.pathname + location.search + ROOM_HASH_PREFIX + roomId);
+    } finally {
+      joiningRef.current = false;
+    }
   }, []);
 
   const leaveCollab = useCallback(() => {
@@ -270,7 +289,7 @@ export default function App() {
    * Anyone opening that URL joins the room — the room id in the hash is the only key. */
   const startCollab = useCallback(async () => {
     const roomId = collabRef.current?.roomId ?? newRoomId();
-    if (!collabRef.current) joinCollab(roomId, false);
+    if (!collabRef.current) void joinCollab(roomId, false);
     const base = isDesktop ? PUBLIC_BASE_URL : location.origin + location.pathname;
     const url = `${base}${ROOM_HASH_PREFIX}${roomId}`;
     try {
@@ -296,7 +315,7 @@ export default function App() {
         return;
       }
       if (!confirmDiscard('保存されていない変更があります。共同編集ルームに参加しますか?')) return;
-      joinCollab(roomId, true);
+      void joinCollab(roomId, true);
       dispatch({ type: 'MSG', msg: `joining collab room ${roomId}…` });
     };
     tryJoinFromHash();

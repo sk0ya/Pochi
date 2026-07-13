@@ -61,13 +61,17 @@ export class CollabSession {
     initialDoc: Doc,
     joinedViaUrl: boolean,
     private readonly handlers: CollabHandlers,
+    // STUN+TURN servers for the WebRTC mesh (see collab/ice.ts). Undefined = trystero's
+    // built-in STUN defaults, which can't traverse a commercial VPN's symmetric NAT; a
+    // config carrying a TURN relay is what makes VPN-to-non-VPN collaboration connect.
+    rtcConfig?: RTCConfiguration,
   ) {
     this.engine = new SyncEngine(selfId, initialDoc);
     this.latestDoc = initialDoc;
     this.holding = joinedViaUrl;
     // The room id doubles as the shared secret (that's the "know the URL, get in"
     // model); using it as the password also encrypts signaling over the public relays.
-    this.room = joinRoom({ appId: APP_ID, password: `pochi-${roomId}` }, roomId);
+    this.room = joinRoom({ appId: APP_ID, password: `pochi-${roomId}`, rtcConfig }, roomId);
     this.ops = this.room.makeAction('ops') as unknown as Action<SyncOps>;
     this.snap = this.room.makeAction('snapshot') as unknown as Action<CollabSnapshot>;
     this.cursor = this.room.makeAction('cursor') as unknown as Action<Pt>;
