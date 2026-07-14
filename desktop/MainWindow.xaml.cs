@@ -28,6 +28,11 @@ public partial class MainWindow : Window
 
         Web.CoreWebView2.WebMessageReceived += OnWebMessage;
 
+        // Runs before any page script on every navigation, so the frontend can tell it's
+        // running in the desktop shell synchronously — even when loading the remote published
+        // build, where `chrome.webview` itself may attach a beat later (see main.tsx boot()).
+        await Web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__pochiDesktop = true;");
+
         // Frontend source, in priority order:
         //   POCHI_DEV_URL   → local Vite dev server (HMR) — for working on the frontend
         //   POCHI_LOCAL=1   → the bundled local build (offline / testing unpushed changes;
