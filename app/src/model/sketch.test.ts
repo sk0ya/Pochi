@@ -65,6 +65,59 @@ describe('classifyStroke', () => {
     pushLine(pts, 0, 60, 50, 0, 10);
     expect(classifyStroke(pts)).toEqual({ kind: 'triangle', x: 0, y: 0, w: 100, h: 60, direction: 'up' });
   });
+
+  it('snaps a triangle traced as 3 sides even when the last corner is left open', () => {
+    // Apex-up triangle for bbox (0,0,100,60), but the base is only traced back to
+    // (60,60) — the stroke never returns to its (0,60) start, so endDist ~60. That
+    // exceeds the old closure tolerance (~0.3*len) yet stays under the looser 0.5*len,
+    // so loose Auto still recognizes the three drawn sides as a triangle.
+    const pts: Pt[] = [];
+    pushLine(pts, 0, 60, 50, 0, 10);
+    pushLine(pts, 50, 0, 100, 60, 10);
+    pushLine(pts, 100, 60, 60, 60, 4);
+    expect(classifyStroke(pts)).toEqual({ kind: 'triangle', x: 0, y: 0, w: 100, h: 60, direction: 'up' });
+  });
+
+  it('keeps a circle a circle despite a straight lead-in at the start of the stroke', () => {
+    // The pen "gets going" with a short straight run along the top before curving.
+    // That flat lead-in sits on the bbox top edge and used to read as a rectangle
+    // side, flipping the circle to a rect; the lead-in trim ignores it.
+    const pts: Pt[] = [];
+    pushLine(pts, 18, 0, 50, 0, 8); // straight lead-in along the top edge
+    const cx = 50, cy = 50, r = 50;
+    for (let i = 0; i <= 40; i++) {
+      const a = -Math.PI / 2 + (i / 40) * Math.PI * 2;
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    expect(classifyStroke(pts)?.kind).toBe('ellipse');
+  });
+
+  it('keeps a rounded-corner rectangle a rect rather than snapping it to an ellipse', () => {
+    // bbox (0,0,120,80) with ~16px corner cuts, like a hand-drawn box. The corners
+    // are gone, which shrinks the ellipse-fit error, but the four straight edges must
+    // still win as a rect.
+    const pts: Pt[] = [];
+    pushLine(pts, 16, 0, 104, 0, 12);
+    pushLine(pts, 104, 0, 120, 16, 3);
+    pushLine(pts, 120, 16, 120, 64, 8);
+    pushLine(pts, 120, 64, 104, 80, 3);
+    pushLine(pts, 104, 80, 16, 80, 12);
+    pushLine(pts, 16, 80, 0, 64, 3);
+    pushLine(pts, 0, 64, 0, 16, 8);
+    pushLine(pts, 0, 16, 16, 0, 3);
+    expect(classifyStroke(pts)).toEqual({ kind: 'rect', x: 0, y: 0, w: 120, h: 80 });
+  });
+
+  it('classifies a traced diamond outline as a diamond with the traced bbox', () => {
+    const pts: Pt[] = [];
+    // Traces the four edge-midpoint vertices of bbox (0,0,100,60): top (50,0),
+    // right (100,30), bottom (50,60), left (0,30).
+    pushLine(pts, 50, 0, 100, 30, 10);
+    pushLine(pts, 100, 30, 50, 60, 10);
+    pushLine(pts, 50, 60, 0, 30, 10);
+    pushLine(pts, 0, 30, 50, 0, 10);
+    expect(classifyStroke(pts)).toEqual({ kind: 'diamond', x: 0, y: 0, w: 100, h: 60 });
+  });
 });
 
 describe('simplifyStroke', () => {
