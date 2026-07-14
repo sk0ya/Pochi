@@ -77,6 +77,32 @@ public partial class MainWindow : Window
         _ => "application/octet-stream",
     };
 
+    // Extensions the file-manager panel lists and treats as diagrams (see listFiles below).
+    private static readonly string[] DiagramExtensions = { ".pochi.json", ".json", ".excalidraw" };
+
+    /** Splits a filename into (stem, extension), recognizing the compound ".pochi.json"
+     *  suffix so uniquifying "foo.pochi.json" yields "foo (2).pochi.json", not "foo.pochi (2).json". */
+    private static (string Stem, string Ext) SplitName(string fileName)
+    {
+        if (fileName.EndsWith(".pochi.json", StringComparison.OrdinalIgnoreCase))
+            return (fileName[..^".pochi.json".Length], ".pochi.json");
+        var ext = Path.GetExtension(fileName);
+        return (fileName[..^ext.Length], ext);
+    }
+
+    /** Returns a path in `dir` for `fileName` that doesn't collide, appending " (2)", " (3)", … */
+    private static string UniquePath(string dir, string fileName)
+    {
+        var path = Path.Combine(dir, fileName);
+        if (!File.Exists(path)) return path;
+        var (stem, ext) = SplitName(fileName);
+        for (var i = 2; ; i++)
+        {
+            var cand = Path.Combine(dir, $"{stem} ({i}){ext}");
+            if (!File.Exists(cand)) return cand;
+        }
+    }
+
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         int id = 0;
@@ -146,6 +172,92 @@ public partial class MainWindow : Window
                         var bytes = File.ReadAllBytes(dlg.FileName);
                         var dataUrl = $"data:{MimeFor(dlg.FileName)};base64,{Convert.ToBase64String(bytes)}";
                         result = new { name = dlg.FileName, dataUrl };
+                    }
+                    break;
+                }
+                case "pickFolder":
+                {
+                    var dlg = new OpenFolderDialog();
+                    var initial = root.TryGetProperty("dir", out var d) ? d.GetString() : null;
+                    if (!string.IsNullOrEmpty(initial) && Directory.Exists(initial))
+                        dlg.InitialDirectory = initial;
+                    if (dlg.ShowDialog(this) == true) result = dlg.FolderName;
+                    break;
+                }
+                case "listFiles":
+                {
+                    // Enumerate the folder's diagram files (name + full path), newest first.
+                    // Returns null if the folder is gone so the panel can self-heal (drop it).
+                    var dir = root.GetProperty("dir").GetString();
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        var files = new DirectoryInfo(dir)
+                            .EnumerateFiles()
+                            .Where(f => DiagramExtensions.Any(
+                                ext => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                            .OrderByDescending(f => f.LastWriteTimeUtc)
+                            .Select(f => new { name = f.Name, path = f.FullName })
+                            .ToArray();
+                        result = new { dir, files };
+                    }
+                    break;
+                }
+                case "newFile":
+                {
+                    // Create a fresh file in `dir`, uniquifying the name so an existing file is
+                    // never clobbered. Returns the created path (its name may differ from asked).
+                    var dir = root.GetProperty("dir").GetString();
+                    var name = root.GetProperty("name").GetString();
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir) && !string.IsNullOrEmpty(name))
+                    {
+                        var path = UniquePath(dir, name);
+                        File.WriteAllText(path, root.GetProperty("content").GetString() ?? "");
+                        result = path;
+                    }
+                    break;
+                }
+                case "renameFile":
+                {
+                    // Rename within the same folder. Fails (null) if the target name is already
+                    // taken, so the panel can report it instead of silently overwriting.
+                    var path = root.GetProperty("path").GetString();
+                    var name = root.GetProperty("name").GetString();
+                    if (!string.IsNullOrEmpty(path) && File.Exists(path) && !string.IsNullOrEmpty(name))
+                    {
+                        var dest = Path.Combine(Path.GetDirectoryName(path)!, name);
+                        if (!string.Equals(dest, path, StringComparison.OrdinalIgnoreCase) && File.Exists(dest))
+                        {
+                            result = new { error = "exists" };
+                        }
+                        else
+                        {
+                            File.Move(path, dest, overwrite: false);
+                            result = dest;
+                        }
+                    }
+                    break;
+                }
+                case "duplicateFile":
+                {
+                    var path = root.GetProperty("path").GetString();
+                    if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    {
+                        var dir = Path.GetDirectoryName(path)!;
+                        var (stem, ext) = SplitName(Path.GetFileName(path));
+                        var dest = UniquePath(dir, $"{stem} copy{ext}");
+                        File.Copy(path, dest);
+                        result = dest;
+                    }
+                    break;
+                }
+                case "deleteFile":
+                {
+                    // Plain delete; the panel confirms with the user before calling this.
+                    var path = root.GetProperty("path").GetString();
+                    if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    {
+                        File.Delete(path);
+                        result = true;
                     }
                     break;
                 }

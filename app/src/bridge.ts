@@ -71,6 +71,49 @@ export function openImageDialog(): Promise<{ name: string; dataUrl: string } | n
   return call('openImageDialog', {});
 }
 
+/* ---- file manager (desktop only) ---- */
+
+/** One diagram file in a managed folder. */
+export interface FolderFile {
+  name: string;
+  path: string;
+}
+
+/** Show a native folder picker (optionally seeded with `dir`). Returns the chosen folder, or null. */
+export function pickFolder(dir?: string): Promise<string | null> {
+  return call('pickFolder', { dir });
+}
+
+/** List the diagram files in `dir`, newest first. Returns null if the folder no longer exists. */
+export function listFiles(dir: string): Promise<{ dir: string; files: FolderFile[] } | null> {
+  return call('listFiles', { dir });
+}
+
+/** Create a new file in `dir`; the host uniquifies `name` on collision and returns the
+ * actual path written (whose basename may differ from `name`), or null on failure. */
+export function newFile(dir: string, name: string, content: string): Promise<string | null> {
+  return call('newFile', { dir, name, content });
+}
+
+/** Rename `path` to `name` within its folder. Returns the new path, `{error:'exists'}` if
+ * the target name is taken, or null on failure. */
+export function renameFile(
+  path: string,
+  name: string,
+): Promise<string | { error: string } | null> {
+  return call('renameFile', { path, name });
+}
+
+/** Copy `path` to a "… copy" sibling. Returns the new path, or null on failure. */
+export function duplicateFile(path: string): Promise<string | null> {
+  return call('duplicateFile', { path });
+}
+
+/** Delete `path` from disk (callers confirm first). Returns true on success. */
+export function deleteFile(path: string): Promise<boolean> {
+  return call('deleteFile', { path });
+}
+
 /* ---- web fallbacks ---- */
 
 export function downloadFile(name: string, content: string, mime: string): void {

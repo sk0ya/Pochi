@@ -414,6 +414,163 @@ body {
   border-color: var(--accent);
 }
 
+/* File-manager panel (desktop only — see FilesSidebar.tsx): a folder header on top, a
+ * scrolling file list, and a "new file" button pinned at the bottom. */
+.files-sidebar {
+  width: 208px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.files-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-folder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.files-icon-btn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.files-icon-btn:hover {
+  background: var(--hover);
+}
+
+.files-empty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.files-empty p {
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.files-pick,
+.files-new {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files-pick:hover,
+.files-new:hover {
+  background: var(--hover);
+}
+
+.files-new {
+  flex: none;
+  margin: 8px;
+}
+
+.files-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.files-error {
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.files-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.files-item:hover {
+  background: var(--hover);
+}
+
+.files-item.active {
+  background: var(--active-bg);
+}
+
+.files-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Row action buttons stay hidden until the row is hovered, to keep the list uncluttered. */
+.files-actions {
+  display: flex;
+  gap: 1px;
+  flex: none;
+  opacity: 0;
+}
+
+.files-item:hover .files-actions,
+.files-item.active .files-actions {
+  opacity: 1;
+}
+
+.files-actions button {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.files-actions button:hover {
+  background: var(--active-bg);
+}
+
 /* canvas */
 .canvas-wrap {
   position: relative;

@@ -238,6 +238,7 @@ export type Action =
   | { type: 'COLLAB_DOC'; doc: Doc; msg: string }
   | { type: 'MSG'; msg: string }
   | { type: 'SAVED'; fileName: string }
+  | { type: 'SET_FILENAME'; fileName: string | null }
   | { type: 'SET_VIM'; on: boolean }
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
@@ -1799,6 +1800,12 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'SAVED':
       return { ...state, savedDoc: state.doc, fileName: action.fileName, msg: `saved ${action.fileName}` };
+
+    // Repoint the current file's path without touching the doc/dirty state — used when the
+    // file-manager panel renames the file that's currently open, so the next Save writes to
+    // the new path rather than recreating the old one.
+    case 'SET_FILENAME':
+      return { ...state, fileName: action.fileName };
 
     case 'SET_VIM':
       return { ...state, vim: action.on, msg: `vim mode ${action.on ? 'on' : 'off'}` };

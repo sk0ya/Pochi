@@ -15,6 +15,7 @@ import { fetchIceServers } from './collab/ice';
 import { ActivityBar } from './components/ActivityBar';
 import type { PanelId } from './components/ActivityBar';
 import { Canvas } from './components/Canvas';
+import { FilesSidebar } from './components/FilesSidebar';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
 import { PropertiesSidebar } from './components/PropertiesSidebar';
@@ -39,6 +40,8 @@ const VIM_KEY = 'pochi.vim';
 const THEME_KEY = 'pochi.theme';
 const RECENT_KEY = 'pochi.recentFiles';
 const RECENT_MAX = 8;
+/** Desktop-only: the working folder shown in the file-manager panel (see FilesSidebar). */
+const FILES_FOLDER_KEY = 'pochi.filesFolder';
 const SHARE_HASH_PREFIX = '#d=';
 const ROOM_HASH_PREFIX = '#room=';
 /** Room ids we mint are 10 base36 chars; accept a superset so hand-shared ids stay lenient. */
@@ -218,6 +221,24 @@ export default function App() {
       /* storage unavailable */
     }
   }, [recentFiles]);
+
+  /* Working folder for the file-manager panel (desktop only - see FilesSidebar). Persisted
+   * so the same folder reopens next launch. */
+  const [filesFolder, setFilesFolder] = useState<string | null>(() => {
+    try {
+      return isDesktop ? localStorage.getItem(FILES_FOLDER_KEY) : null;
+    } catch {
+      return null;
+    }
+  });
+  const pickFilesFolder = useCallback((dir: string) => {
+    setFilesFolder(dir);
+    try {
+      localStorage.setItem(FILES_FOLDER_KEY, dir);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
 
   /** New/Open/joining a collab room all replace the current doc wholesale - confirm first if
    * there are changes since the last load/save, so a stray click/`:new`/`:o`/room link doesn't
@@ -474,6 +495,20 @@ export default function App() {
   }, [confirmDiscard]);
 
   const removeRecentFile = useCallback((path: string) => {
+    setRecentFiles((r) => removeRecent(r, path));
+  }, []);
+
+  /** The file-manager panel renamed the file that's currently open: repoint state.fileName
+   * (so the next Save writes the new path, not the old) and fix up the recent-files list. */
+  const onFileRenamed = useCallback((oldPath: string, newPath: string) => {
+    dispatch({ type: 'SET_FILENAME', fileName: newPath });
+    setRecentFiles((r) => addRecent(removeRecent(r, oldPath), newPath));
+  }, []);
+
+  /** The currently-open file was deleted from disk: keep the doc in the editor but drop its
+   * path so the next Save prompts for a new location, and forget it in recents. */
+  const onFileDeleted = useCallback((path: string) => {
+    dispatch({ type: 'SET_FILENAME', fileName: null });
     setRecentFiles((r) => removeRecent(r, path));
   }, []);
 
@@ -852,7 +887,18 @@ export default function App() {
         <ActivityBar
           active={activePanel}
           onSelect={(panel) => setActivePanel((p) => (p === panel ? null : panel))}
+          showFiles={isDesktop}
         />
+        {activePanel === 'files' && (
+          <FilesSidebar
+            folder={filesFolder}
+            onPickFolder={pickFilesFolder}
+            activePath={state.fileName}
+            onOpenFile={(path) => void openRecent(path)}
+            onFileRenamed={onFileRenamed}
+            onFileDeleted={onFileDeleted}
+          />
+        )}
         {activePanel === 'templates' && <TemplateSidebar theme={theme} dispatch={dispatch} />}
         {activePanel === 'properties' && <PropertiesSidebar state={state} dispatch={dispatch} />}
         <div className="canvas-wrap">
