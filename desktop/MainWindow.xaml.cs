@@ -8,6 +8,11 @@ namespace Pochi.Desktop;
 
 public partial class MainWindow : Window
 {
+    // The published GitHub Pages build (see .github/workflows/deploy-pages.yml). Loaded by
+    // default so the desktop shell needs no local frontend build — the WebView2 bridge is
+    // injected regardless of origin, so the file dialogs etc. work the same from here.
+    private const string PublishedUrl = "https://sk0ya.github.io/Pochi/";
+
     public MainWindow()
     {
         InitializeComponent();
@@ -23,7 +28,11 @@ public partial class MainWindow : Window
 
         Web.CoreWebView2.WebMessageReceived += OnWebMessage;
 
-        // Dev server override: set POCHI_DEV_URL=http://localhost:5173 for HMR.
+        // Frontend source, in priority order:
+        //   POCHI_DEV_URL   → local Vite dev server (HMR) — for working on the frontend
+        //   POCHI_LOCAL=1   → the bundled local build (offline / testing unpushed changes;
+        //                     needs a prior `npm run build` — see BundleFrontend in the csproj)
+        //   default         → the published GitHub Pages build, so no local build is required
         var devUrl = Environment.GetEnvironmentVariable("POCHI_DEV_URL");
         if (!string.IsNullOrEmpty(devUrl))
         {
@@ -31,12 +40,32 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Environment.GetEnvironmentVariable("POCHI_LOCAL") == "1")
+        {
+            NavigateLocalOrError();
+            return;
+        }
+
+        // Fall back to a bundled build if the published site can't be reached (offline).
+        void OnNav(object? _, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            Web.CoreWebView2.NavigationCompleted -= OnNav; // only the initial load matters
+            if (!e.IsSuccess) NavigateLocalOrError();
+        }
+        Web.CoreWebView2.NavigationCompleted += OnNav;
+        Web.CoreWebView2.Navigate(PublishedUrl);
+    }
+
+    /// Navigate to the locally bundled/built frontend, or show a help page if none is present.
+    private void NavigateLocalOrError()
+    {
         var dist = FindDist();
         if (dist is null)
         {
             Web.CoreWebView2.NavigateToString(
                 "<html><body style='background:#12151a;color:#dbe2ee;font-family:sans-serif'>" +
-                "<h2>app/dist not found</h2><p>Run <code>npm run build</code> in the app folder first.</p></body></html>");
+                "<h2>No local build found</h2><p>Connect to the internet to load the published build, " +
+                "or run <code>npm run build</code> in the app folder for an offline copy.</p></body></html>");
             return;
         }
 

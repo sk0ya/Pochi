@@ -17,6 +17,11 @@
   <PropertyGroup>
     <!-- Normalized (no "..") so %(RecursiveDir) resolves correctly below. -->
     <FrontendDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\app'))\</FrontendDir>
+    <!-- The shell loads the published GitHub Pages build by default (see MainWindow's
+         PublishedUrl), so a normal `dotnet build`/`run` no longer builds the frontend.
+         Pass -p:BundleFrontend=true to build & bundle a local copy for offline use
+         (POCHI_LOCAL=1). -->
+    <BundleFrontend Condition="'$(BundleFrontend)' == ''">false</BundleFrontend>
   </PropertyGroup>
 
   <!-- Items (not a raw wildcard string) so Target Inputs actually expands "**". -->
@@ -25,8 +30,9 @@
   </ItemGroup>
 
   <!-- Rebuild the React frontend (npm run build) whenever app/src or its config
-       is newer than app/dist, so the bundled UI never goes stale. -->
+       is newer than app/dist, so the bundled UI never goes stale. Opt-in via BundleFrontend. -->
   <Target Name="BuildFrontend" BeforeTargets="BeforeBuild"
+          Condition="'$(BundleFrontend)' == 'true'"
           Inputs="@(FrontendSrcFiles)"
           Outputs="$(FrontendDir)dist\index.html">
     <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
@@ -35,7 +41,8 @@
   <!-- Bundle the built React app into wwwroot (publish/run from any location).
        Uses a target-scoped item so a dist created just now by BuildFrontend is
        picked up on this same build, not just the next one. -->
-  <Target Name="CopyFrontendDist" AfterTargets="BuildFrontend" BeforeTargets="BeforeBuild">
+  <Target Name="CopyFrontendDist" AfterTargets="BuildFrontend" BeforeTargets="BeforeBuild"
+          Condition="'$(BundleFrontend)' == 'true'">
     <ItemGroup>
       <FrontendDist Include="$(FrontendDir)dist\**" Condition="Exists('$(FrontendDir)dist\index.html')" />
     </ItemGroup>
