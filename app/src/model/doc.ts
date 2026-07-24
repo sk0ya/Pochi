@@ -343,72 +343,156 @@ function selfLoopAnchor(s: Shape, e: Endpoint): Pt {
   return { x: s.x + e.x * s.w, y: s.y + e.y * s.h };
 }
 
+/** Outward axis-aligned normal for a foot: a self-loop foot's normalized anchor sits on
+ * a border (one coord at ~0 or ~1), so pick the edge it's nearest to. Used to leave/re-enter
+ * the shape perpendicular to its border and to project the foot out onto the padded box. */
+function footNormal(e: Endpoint): Pt {
+  const dl = e.x;
+  const dr = 1 - e.x;
+  const dt = e.y;
+  const db = 1 - e.y;
+  const m = Math.min(dl, dr, dt, db);
+  if (m === dt) return { x: 0, y: -1 };
+  if (m === db) return { x: 0, y: 1 };
+  if (m === dl) return { x: -1, y: 0 };
+  return { x: 1, y: 0 };
+}
+
+/** One Catmull-Rom span (p1→p2), with p0/p3 the neighbours that set the tangents. */
+function catmullRom(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    x: 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+    y: 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+  };
+}
+
 /** Point list for a self-loop, sampled into a polyline so it shares the connector
  * rendering/hit-test/label/export path. The loop leaves the shape at `from`'s anchor
  * (tail) and re-enters at `to`'s anchor (arrow head), each anchor resolved from its
- * bbox-normalized coords so the whole loop follows the shape on move and resize:
- *  - same anchor → a near-full circle sitting just outside that point;
- *  - two anchors → a cubic that bulges outward (radially from the shape centre) at
- *    each foot, wrapping the corner between them; near-opposite anchors get a lateral
- *    bias so the loop wraps around one flank instead of collapsing through the shape. */
+ * bbox-normalized coords so the whole loop follows the shape on move and resize.
+ *
+ * Two shapes, chosen so the loop never cuts through the body on any aspect ratio:
+ *  - both feet on the *same* edge (the common case, incl. identical feet) → a clean
+ *    circle bulging straight out from that edge; since the edge is flat the whole ring
+ *    stays outside, and the arrowhead re-enters through the gap between the two feet;
+ *  - feet on *different* edges → a circle would have to cross a neighbouring edge, so
+ *    the loop instead routes strictly *outside* a padded bounding box: each foot is
+ *    pushed out along its border normal, the two points are joined by walking the
+ *    shorter way around the box (through 0/1/2 outer corners), and that polyline is
+ *    smoothed with a Catmull-Rom spline whose endpoint tangents point outward at the
+ *    tail and inward at the head. */
 export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
-  const center = { x: s.x + s.w / 2, y: s.y + s.h / 2 };
   const a = selfLoopAnchor(s, from);
   const b = selfLoopAnchor(s, to);
-  // Outward unit direction at a foot: radially away from the shape centre.
-  const outward = (p: Pt): Pt => {
-    const dx = p.x - center.x;
-    const dy = p.y - center.y;
-    const len = Math.hypot(dx, dy);
-    return len < 1e-6 ? { x: 0, y: -1 } : { x: dx / len, y: dy / len };
-  };
+  const na = footNormal(from);
+  const nb = footNormal(to);
   const dim = Math.min(s.w, s.h);
-  const pts: Pt[] = [];
+  const chord = Math.hypot(a.x - b.x, a.y - b.y);
+  const sameEdge = Math.abs(na.x - nb.x) < 1e-9 && Math.abs(na.y - nb.y) < 1e-9;
 
-  if (Math.hypot(a.x - b.x, a.y - b.y) < 1e-6) {
-    const n = outward(a);
-    // Circle radius, bounded so it stays a readable ring on any shape size.
-    const r = Math.max(16, Math.min(dim * 0.55, 46));
-    // Circle centered one radius out along the normal, so it kisses the edge.
-    const c = { x: a.x + n.x * r, y: a.y + n.y * r };
-    // `base` points from the circle center back toward the shape; leave a small gap
-    // centered on it and sweep the rest, so both feet land next to the anchor and the
-    // opening (with the arrowhead) faces the shape.
-    const base = Math.atan2(a.y - c.y, a.x - c.x);
-    const gap = 0.42;
-    const start = base + gap;
-    const end = base + Math.PI * 2 - gap;
+  if (chord < 1e-6 || sameEdge) {
+    // Clean circle bulging out from the shared edge. Centre sits `h` out from the feet's
+    // midpoint along the outward normal, so the *outward* (major) arc from a to b is a
+    // near-full circle and its two ends land back on the edge at the feet.
+    const half = chord / 2;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    // Radius scales with the shape but is kept a readable ring, and always clears the feet.
+    const r = Math.max(half + 12, Math.min(Math.max(dim * 0.42, 18), 46));
+    const h = Math.sqrt(Math.max(0, r * r - half * half));
+    const c = { x: mid.x + na.x * h, y: mid.y + na.y * h };
+    const pts: Pt[] = [];
+
+    if (chord < 1e-6) {
+      // Identical feet → a full ring with a small gap (holding the arrowhead) facing the shape.
+      const base = Math.atan2(a.y - c.y, a.x - c.x);
+      const gap = 0.42;
+      const start = base + gap;
+      const end = base + Math.PI * 2 - gap;
+      for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
+        const ang = start + ((end - start) * i) / SELF_LOOP_SAMPLES;
+        pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
+      }
+      return pts;
+    }
+
+    // Major arc from a to b, passing over the outward apex (mid + normal * (h + r)).
+    const angA = Math.atan2(a.y - c.y, a.x - c.x);
+    const angB = Math.atan2(b.y - c.y, b.x - c.x);
+    const apex = Math.atan2(mid.y + na.y * (h + r) - c.y, mid.x + na.x * (h + r) - c.x);
+    const norm = (x: number): number => {
+      let v = x;
+      while (v <= -Math.PI) v += Math.PI * 2;
+      while (v > Math.PI) v -= Math.PI * 2;
+      return v;
+    };
+    let ccw = norm(angB - angA);
+    if (ccw < 0) ccw += Math.PI * 2;
+    let apexRel = norm(apex - angA);
+    if (apexRel < 0) apexRel += Math.PI * 2;
+    // Sweep the direction (from a) that passes the outward apex before reaching b.
+    const sweep = apexRel <= ccw ? ccw : -(Math.PI * 2 - ccw);
     for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
-      const ang = start + ((end - start) * i) / SELF_LOOP_SAMPLES;
+      const ang = angA + (sweep * i) / SELF_LOOP_SAMPLES;
       pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
     }
     return pts;
   }
 
-  const outA = outward(a);
-  const outB = outward(b);
-  const bulge = Math.max(46, Math.min(dim * 1.1, 96));
-  // Near-opposite feet would send a normal-only cubic straight through the shape
-  // centre; push both controls to one flank so the loop wraps around that side.
-  let bias: Pt = { x: 0, y: 0 };
-  if (outA.x * outB.x + outA.y * outB.y < -0.7) {
-    const perp = { x: -outA.y, y: outA.x };
-    const mag = (Math.abs(perp.x) >= Math.abs(perp.y) ? s.w / 2 : s.h / 2) + bulge * 0.9;
-    bias = { x: perp.x * mag, y: perp.y * mag };
+  // Padded box the loop wraps around; pad scales with the shape but stays in a sane range.
+  const pad = Math.max(22, Math.min(dim * 0.6, 52));
+  const L = s.x - pad;
+  const T = s.y - pad;
+  const R = s.x + s.w + pad;
+  const B = s.y + s.h + pad;
+  const W = R - L;
+  const H = B - T;
+  const P = 2 * (W + H);
+  // Project each foot out onto the padded box along its border normal.
+  const wa = { x: a.x + na.x * pad, y: a.y + na.y * pad };
+  const wb = { x: b.x + nb.x * pad, y: b.y + nb.y * pad };
+  // Perimeter coordinate of a point on the padded box, measured clockwise from top-left.
+  const param = (p: Pt): number => {
+    if (Math.abs(p.y - T) < 1e-6) return p.x - L; // top edge
+    if (Math.abs(p.x - R) < 1e-6) return W + (p.y - T); // right edge
+    if (Math.abs(p.y - B) < 1e-6) return W + H + (R - p.x); // bottom edge
+    return 2 * W + H + (B - p.y); // left edge
+  };
+  const corners: { t: number; p: Pt }[] = [
+    { t: 0, p: { x: L, y: T } },
+    { t: W, p: { x: R, y: T } },
+    { t: W + H, p: { x: R, y: B } },
+    { t: 2 * W + H, p: { x: L, y: B } },
+  ];
+  const ta = param(wa);
+  const tb = param(wb);
+  const cwDist = (((tb - ta) % P) + P) % P;
+  const cw = cwDist <= P - cwDist; // walk the shorter way around
+  const dist = cw ? cwDist : P - cwDist;
+  const between: { d: number; p: Pt }[] = [];
+  for (const cn of corners) {
+    const relCw = (((cn.t - ta) % P) + P) % P;
+    const d = cw ? relCw : P - relCw;
+    if (d > 1e-6 && d < dist - 1e-6) between.push({ d, p: cn.p });
   }
-  const c1 = { x: a.x + outA.x * bulge + bias.x, y: a.y + outA.y * bulge + bias.y };
-  const c2 = { x: b.x + outB.x * bulge + bias.x, y: b.y + outB.y * bulge + bias.y };
-  for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
-    const t = i / SELF_LOOP_SAMPLES;
-    const mt = 1 - t;
-    const k0 = mt * mt * mt;
-    const k1 = 3 * mt * mt * t;
-    const k2 = 3 * mt * t * t;
-    const k3 = t * t * t;
-    pts.push({
-      x: k0 * a.x + k1 * c1.x + k2 * c2.x + k3 * b.x,
-      y: k0 * a.y + k1 * c1.y + k2 * c2.y + k3 * b.y,
-    });
+  between.sort((x, y) => x.d - y.d);
+
+  // Waypoints, plus phantom neighbours so the spline leaves the tail outward and drives
+  // the head inward (arrowhead re-enters). Feet a/b sit on the border; the rest are outside.
+  const main: Pt[] = [a, wa, ...between.map((c) => c.p), wb, b];
+  const pa = { x: a.x - na.x * pad, y: a.y - na.y * pad };
+  const pb = { x: b.x - nb.x * pad, y: b.y - nb.y * pad };
+  const ctrl = [pa, ...main, pb];
+  const segs = main.length - 1;
+  const steps = Math.max(2, Math.round(SELF_LOOP_SAMPLES / segs));
+  const pts: Pt[] = [];
+  for (let sgi = 0; sgi < segs; sgi++) {
+    const p0 = ctrl[sgi];
+    const p1 = ctrl[sgi + 1];
+    const p2 = ctrl[sgi + 2];
+    const p3 = ctrl[sgi + 3];
+    for (let i = sgi === 0 ? 0 : 1; i <= steps; i++) pts.push(catmullRom(p0, p1, p2, p3, i / steps));
   }
   return pts;
 }

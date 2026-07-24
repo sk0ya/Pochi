@@ -26,7 +26,7 @@ import {
   translateItems,
   triangleVertices,
 } from './doc';
-import type { Connector, Doc, Shape } from './types';
+import type { Connector, Doc, LoopSide, Shape } from './types';
 
 // This suite runs under vitest's `node` environment (no DOM). `measureLabel` falls back to a
 // character-count width estimate when it can't get a canvas 2D context, so a minimal `document`
@@ -270,6 +270,66 @@ describe('self-loop connectors', () => {
     // Head still lands exactly on the (now wider) right edge, and tail on the top edge.
     expect(path[0].y).toBeCloseTo(shape.y, 5);
     expect(path[path.length - 1].x).toBeCloseTo(shape.x + shape.w * 2, 5);
+  });
+
+  it('draws two feet on the same edge as a clean circle (constant radius)', () => {
+    const c: Connector = {
+      id: 'c',
+      from: { shapeId: 's1', x: 0.35, y: 0 },
+      to: { shapeId: 's1', x: 0.65, y: 0 },
+      label: '',
+    };
+    const path = connectorPath(doc, c);
+    // Recover the circle centre from three well-separated samples and check every point
+    // sits at (nearly) the same radius — i.e. the loop really is a circular arc.
+    const p0 = path[0];
+    const p1 = path[Math.floor(path.length / 2)];
+    const p2 = path[path.length - 1];
+    const ax = p1.x - p0.x, ay = p1.y - p0.y, bx = p2.x - p0.x, by = p2.y - p0.y;
+    const d = 2 * (ax * by - ay * bx);
+    const a2 = ax * ax + ay * ay, b2 = bx * bx + by * by;
+    const cx = p0.x + (by * a2 - ay * b2) / d;
+    const cy = p0.y + (ax * b2 - bx * a2) / d;
+    const radii = path.map((p) => Math.hypot(p.x - cx, p.y - cy));
+    const r0 = radii[0];
+    for (const r of radii) expect(Math.abs(r - r0)).toBeLessThan(0.5);
+    // ...and it bulges above the (top) edge while both feet stay on it.
+    expect(Math.min(...path.map((p) => p.y))).toBeLessThan(shape.y);
+    expect(path[0].y).toBeCloseTo(shape.y, 5);
+    expect(path[path.length - 1].y).toBeCloseTo(shape.y, 5);
+  });
+
+  it('never routes through the shape for any pair of feet on any aspect ratio', () => {
+    // Opposite/crossed feet on wide, tall, square and small shapes used to send the
+    // loop straight through the body; the loop must stay outside the shape in every case.
+    const shapes: Shape[] = [
+      { id: 'a', kind: 'rect', x: 0, y: 0, w: 100, h: 100, label: '' },
+      { id: 'a', kind: 'rect', x: 0, y: 0, w: 220, h: 60, label: '' },
+      { id: 'a', kind: 'rect', x: 0, y: 0, w: 60, h: 220, label: '' },
+      { id: 'a', kind: 'rect', x: 0, y: 0, w: 40, h: 40, label: '' },
+    ];
+    const footOn = (side: LoopSide, t: number) =>
+      side === 'top'
+        ? { x: t, y: 0 }
+        : side === 'bottom'
+          ? { x: t, y: 1 }
+          : side === 'left'
+            ? { x: 0, y: t }
+            : { x: 1, y: t };
+    const sides: LoopSide[] = ['top', 'right', 'bottom', 'left'];
+    for (const shp of shapes) {
+      const d: Doc = { shapes: [shp], connectors: [] };
+      for (const sa of sides)
+        for (const sb of sides)
+          for (const ta of [0, 0.25, 0.5, 0.75, 1])
+            for (const tb of [0, 0.25, 0.5, 0.75, 1]) {
+              const c: Connector = { id: 'c', from: { shapeId: 'a', ...footOn(sa, ta) }, to: { shapeId: 'a', ...footOn(sb, tb) }, label: '' };
+              for (const p of connectorPath(d, c)) {
+                const inside = p.x > shp.x + 1 && p.x < shp.x + shp.w - 1 && p.y > shp.y + 1 && p.y < shp.y + shp.h - 1;
+                expect(inside).toBe(false);
+              }
+            }
+    }
   });
 
   it('nearestSide picks the side a point sits toward from the shape center', () => {
