@@ -1,5 +1,5 @@
 import { FONT_LINE_H, FONT_SIZE_PX, FREEDRAW_RES, GRID } from './types';
-import type { Connector, Doc, Endpoint, FontSize, Pt, Shape, TriangleDirection } from './types';
+import type { Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, TriangleDirection } from './types';
 
 /** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
  * directions put the apex at an edge midpoint (isosceles); diagonal directions
@@ -288,8 +288,126 @@ export function connectorEnds(doc: Doc, c: Connector): [Pt, Pt] {
   return [a, b];
 }
 
-/** Full ordered point list for drawing/hit-testing: straight, orthogonal-routed, or manual waypoints. */
+/** A connector is a self-loop when both ends bind the same shape. */
+export function isSelfLoop(c: Connector): boolean {
+  return !!c.from.shapeId && c.from.shapeId === c.to.shapeId;
+}
+
+/** Which side of a shape `p` sits toward, seen from the shape center. Offsets are
+ * normalized by the half-extents so a wide/tall shape doesn't bias the choice —
+ * used to place a self-loop on the side the user dragged toward. */
+export function nearestSide(s: { x: number; y: number; w: number; h: number }, p: Pt): LoopSide {
+  const dx = (p.x - (s.x + s.w / 2)) / (s.w / 2 || 1);
+  const dy = (p.y - (s.y + s.h / 2)) / (s.h / 2 || 1);
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 'top';
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+/** Samples along a self-loop curve — enough that the polyline reads as a smooth
+ * loop and hit-testing/label placement behave like any other connector path. */
+const SELF_LOOP_SAMPLES = 30;
+
+/** Bbox-normalized anchor (0..1) for each side's edge midpoint — how the self-loop
+ * UI maps a chosen side to an endpoint's stored `x`/`y` (see Endpoint). */
+export const SIDE_NORM: Record<LoopSide, Pt> = {
+  top: { x: 0.5, y: 0 },
+  right: { x: 1, y: 0.5 },
+  bottom: { x: 0.5, y: 1 },
+  left: { x: 0, y: 0.5 },
+};
+
+/** The side an endpoint's normalized anchor sits toward, for showing the active
+ * side in the self-loop UI. Ties/centre fall to 'top'. */
+export function loopSideOf(e: Endpoint): LoopSide {
+  const dx = e.x - 0.5;
+  const dy = e.y - 0.5;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 'top';
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+/** World point of a self-loop endpoint's bbox-normalized anchor (see Endpoint). */
+function selfLoopAnchor(s: Shape, e: Endpoint): Pt {
+  return { x: s.x + e.x * s.w, y: s.y + e.y * s.h };
+}
+
+/** Point list for a self-loop, sampled into a polyline so it shares the connector
+ * rendering/hit-test/label/export path. The loop leaves the shape at `from`'s anchor
+ * (tail) and re-enters at `to`'s anchor (arrow head), each anchor resolved from its
+ * bbox-normalized coords so the whole loop follows the shape on move and resize:
+ *  - same anchor → a near-full circle sitting just outside that point;
+ *  - two anchors → a cubic that bulges outward (radially from the shape centre) at
+ *    each foot, wrapping the corner between them; near-opposite anchors get a lateral
+ *    bias so the loop wraps around one flank instead of collapsing through the shape. */
+export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
+  const center = { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+  const a = selfLoopAnchor(s, from);
+  const b = selfLoopAnchor(s, to);
+  // Outward unit direction at a foot: radially away from the shape centre.
+  const outward = (p: Pt): Pt => {
+    const dx = p.x - center.x;
+    const dy = p.y - center.y;
+    const len = Math.hypot(dx, dy);
+    return len < 1e-6 ? { x: 0, y: -1 } : { x: dx / len, y: dy / len };
+  };
+  const dim = Math.min(s.w, s.h);
+  const pts: Pt[] = [];
+
+  if (Math.hypot(a.x - b.x, a.y - b.y) < 1e-6) {
+    const n = outward(a);
+    // Circle radius, bounded so it stays a readable ring on any shape size.
+    const r = Math.max(16, Math.min(dim * 0.55, 46));
+    // Circle centered one radius out along the normal, so it kisses the edge.
+    const c = { x: a.x + n.x * r, y: a.y + n.y * r };
+    // `base` points from the circle center back toward the shape; leave a small gap
+    // centered on it and sweep the rest, so both feet land next to the anchor and the
+    // opening (with the arrowhead) faces the shape.
+    const base = Math.atan2(a.y - c.y, a.x - c.x);
+    const gap = 0.42;
+    const start = base + gap;
+    const end = base + Math.PI * 2 - gap;
+    for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
+      const ang = start + ((end - start) * i) / SELF_LOOP_SAMPLES;
+      pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
+    }
+    return pts;
+  }
+
+  const outA = outward(a);
+  const outB = outward(b);
+  const bulge = Math.max(46, Math.min(dim * 1.1, 96));
+  // Near-opposite feet would send a normal-only cubic straight through the shape
+  // centre; push both controls to one flank so the loop wraps around that side.
+  let bias: Pt = { x: 0, y: 0 };
+  if (outA.x * outB.x + outA.y * outB.y < -0.7) {
+    const perp = { x: -outA.y, y: outA.x };
+    const mag = (Math.abs(perp.x) >= Math.abs(perp.y) ? s.w / 2 : s.h / 2) + bulge * 0.9;
+    bias = { x: perp.x * mag, y: perp.y * mag };
+  }
+  const c1 = { x: a.x + outA.x * bulge + bias.x, y: a.y + outA.y * bulge + bias.y };
+  const c2 = { x: b.x + outB.x * bulge + bias.x, y: b.y + outB.y * bulge + bias.y };
+  for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
+    const t = i / SELF_LOOP_SAMPLES;
+    const mt = 1 - t;
+    const k0 = mt * mt * mt;
+    const k1 = 3 * mt * mt * t;
+    const k2 = 3 * mt * t * t;
+    const k3 = t * t * t;
+    pts.push({
+      x: k0 * a.x + k1 * c1.x + k2 * c2.x + k3 * b.x,
+      y: k0 * a.y + k1 * c1.y + k2 * c2.y + k3 * b.y,
+    });
+  }
+  return pts;
+}
+
+/** Full ordered point list for drawing/hit-testing: self-loop, straight, orthogonal-routed, or manual waypoints. */
 export function connectorPath(doc: Doc, c: Connector): Pt[] {
+  if (isSelfLoop(c)) {
+    const s = c.from.shapeId ? findShape(doc, c.from.shapeId) : undefined;
+    if (s) return selfLoopPath(s, c.from, c.to);
+  }
   const from = resolveEndpoint(doc, c.from);
   const to = resolveEndpoint(doc, c.to);
   if (c.waypoints && c.waypoints.length) {

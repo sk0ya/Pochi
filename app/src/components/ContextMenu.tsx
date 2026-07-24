@@ -3,7 +3,7 @@ import type { Dispatch } from 'react';
 import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { ArrowDirection, FontSize, ShapeKind, TriangleDirection } from '../model/types';
+import type { ArrowDirection, FontSize, LoopSide, ShapeKind, TriangleDirection } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
 export const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
@@ -27,6 +27,13 @@ export const ARROW_DIRECTIONS: Array<[ArrowDirection, string, string]> = [
   ['end', '─▶', '終点のみ'],
   ['start', '◀─', '始点のみ'],
   ['both', '◀▶', '両方向'],
+];
+
+export const LOOP_SIDES: Array<[LoopSide, string, string]> = [
+  ['top', '↑', '上'],
+  ['right', '→', '右'],
+  ['bottom', '↓', '下'],
+  ['left', '←', '左'],
 ];
 
 export const LINE_STYLES: Array<[boolean, string, string]> = [

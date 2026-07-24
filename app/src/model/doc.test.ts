@@ -11,7 +11,9 @@ import {
   frameContainedIds,
   frameHitZone,
   inscribedBox,
+  isSelfLoop,
   labelCenter,
+  nearestSide,
   measureLabel,
   reorderItems,
   resizeAnchor,
@@ -202,6 +204,79 @@ describe('connectorPath', () => {
       { x: 25, y: 40 },
       { x: 100, y: 40 },
     ]);
+  });
+});
+
+describe('self-loop connectors', () => {
+  const shape: Shape = { id: 's1', kind: 'rect', x: 0, y: 0, w: 100, h: 60, label: '' };
+  const doc: Doc = { shapes: [shape], connectors: [] };
+
+  it('isSelfLoop is true only when both ends bind the same shape', () => {
+    expect(isSelfLoop({ id: 'c', from: { shapeId: 's1', x: 0, y: 0 }, to: { shapeId: 's1', x: 0, y: 0 }, label: '' })).toBe(true);
+    expect(isSelfLoop({ id: 'c', from: { shapeId: 's1', x: 0, y: 0 }, to: { shapeId: 's2', x: 0, y: 0 }, label: '' })).toBe(false);
+    expect(isSelfLoop({ id: 'c', from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, label: '' })).toBe(false);
+  });
+
+  it('draws a same-anchor self-loop as a ring around that point, not a degenerate line', () => {
+    // Both feet at the top-edge midpoint (normalized 0.5, 0).
+    const c: Connector = {
+      id: 'c1',
+      from: { shapeId: 's1', x: 0.5, y: 0 },
+      to: { shapeId: 's1', x: 0.5, y: 0 },
+      label: '',
+    };
+    const path = connectorPath(doc, c);
+    expect(path.length).toBeGreaterThan(2);
+    // The loop bulges above the shape's top edge and stays centered over it.
+    const minY = Math.min(...path.map((p) => p.y));
+    expect(minY).toBeLessThan(shape.y);
+    const cx = shape.x + shape.w / 2;
+    for (const p of path) expect(Math.abs(p.x - cx)).toBeLessThan(shape.w);
+    // Both feet land back near the top edge, so the loop opens at the shape.
+    expect(path[0].y).toBeLessThanOrEqual(shape.y + 8);
+    expect(path[path.length - 1].y).toBeLessThanOrEqual(shape.y + 8);
+  });
+
+  it('draws a two-anchor self-loop that leaves one side and enters the other without cutting through the shape', () => {
+    // Tail at top-mid (0.5, 0), head at right-mid (1, 0.5).
+    const c: Connector = {
+      id: 'c2',
+      from: { shapeId: 's1', x: 0.5, y: 0 },
+      to: { shapeId: 's1', x: 1, y: 0.5 },
+      label: '',
+    };
+    const path = connectorPath(doc, c);
+    expect(path.length).toBeGreaterThan(2);
+    // Tail starts on the top edge, head arrives on the right edge.
+    expect(path[0].y).toBeCloseTo(shape.y, 5);
+    expect(path[path.length - 1].x).toBeCloseTo(shape.x + shape.w, 5);
+    // No interior point falls strictly inside the shape (the loop stays outside).
+    for (const p of path) {
+      const inside = p.x > shape.x + 1 && p.x < shape.x + shape.w - 1 && p.y > shape.y + 1 && p.y < shape.y + shape.h - 1;
+      expect(inside).toBe(false);
+    }
+  });
+
+  it('follows the shape on resize because anchors are bbox-normalized', () => {
+    const c: Connector = {
+      id: 'c3',
+      from: { shapeId: 's1', x: 0.5, y: 0 },
+      to: { shapeId: 's1', x: 1, y: 0.5 },
+      label: '',
+    };
+    const grown: Doc = { shapes: [{ ...shape, w: shape.w * 2, h: shape.h * 2 }], connectors: [] };
+    const path = connectorPath(grown, c);
+    // Head still lands exactly on the (now wider) right edge, and tail on the top edge.
+    expect(path[0].y).toBeCloseTo(shape.y, 5);
+    expect(path[path.length - 1].x).toBeCloseTo(shape.x + shape.w * 2, 5);
+  });
+
+  it('nearestSide picks the side a point sits toward from the shape center', () => {
+    expect(nearestSide(shape, { x: 50, y: -20 })).toBe('top');
+    expect(nearestSide(shape, { x: 50, y: 80 })).toBe('bottom');
+    expect(nearestSide(shape, { x: 120, y: 30 })).toBe('right');
+    expect(nearestSide(shape, { x: -20, y: 30 })).toBe('left');
+    expect(nearestSide(shape, { x: 50, y: 30 })).toBe('top');
   });
 });
 

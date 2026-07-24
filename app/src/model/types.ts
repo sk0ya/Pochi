@@ -73,7 +73,15 @@ export interface Shape {
   groupId?: string;
 }
 
-/** Arrow endpoint: bound to a shape (follows it) or a fixed point. */
+/** Arrow endpoint: bound to a shape (follows it) or a fixed point.
+ *
+ * For a normal connector, `x`/`y` are world coordinates (used as-is for a free
+ * endpoint, or as the fallback if a bound shape is deleted). For a self-loop
+ * endpoint (both ends bound to the same shape — see `isSelfLoop`), `x`/`y` instead
+ * hold the anchor as **bbox-normalized** coordinates in 0..1: the loop's foot sits
+ * at (shape.x + x*shape.w, shape.y + y*shape.h), so it follows the shape on both
+ * move and resize. Edge midpoints are top (0.5,0), right (1,0.5), bottom (0.5,1),
+ * left (0,0.5). */
 export interface Endpoint {
   shapeId?: string;
   x: number;
@@ -82,6 +90,10 @@ export interface Endpoint {
 
 /** Arrowhead placement along a connector; undefined = 'end' (the original default). */
 export type ArrowDirection = 'none' | 'start' | 'end' | 'both';
+
+/** A side of a shape, used by the self-loop UI to place an endpoint's anchor at
+ * that edge's midpoint. */
+export type LoopSide = 'top' | 'right' | 'bottom' | 'left';
 
 export interface Connector {
   id: string;

@@ -1153,3 +1153,55 @@ describe('INSERT_TEMPLATE', () => {
     expect(next).toBe(state);
   });
 });
+
+describe('self-loop arrows', () => {
+  const twoShapes: Doc = {
+    shapes: [
+      { id: 's1', kind: 'rect', x: 100, y: 100, w: 120, h: 80, label: '' },
+      { id: 's2', kind: 'rect', x: 400, y: 100, w: 120, h: 80, label: '' },
+    ],
+    connectors: [],
+  };
+  const norm = (v: number | undefined) => v !== undefined && v >= 0 && v <= 1;
+
+  it('creates a self-loop when an arrow starts and ends on the same shape, with normalized anchors', () => {
+    let st = initialState(twoShapes, true);
+    st = reduce(st, { type: 'START_ARROW_AT', p: { x: 160, y: 90 }, shapeId: 's1' }); // start near top
+    st = reduce(st, { type: 'CLICK', p: { x: 215, y: 140 }, id: 's1' }); // release near right edge
+    const c = st.doc.connectors[0];
+    expect(c.from.shapeId).toBe('s1');
+    expect(c.to.shapeId).toBe('s1');
+    // Both feet are stored as bbox-normalized anchors (0..1), not absolute centres.
+    expect(norm(c.from.x) && norm(c.from.y) && norm(c.to.x) && norm(c.to.y)).toBe(true);
+  });
+
+  it('slides a self-loop foot along the border when its endpoint handle is dragged, staying a self-loop', () => {
+    const doc: Doc = {
+      ...twoShapes,
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 0.5, y: 0 }, to: { shapeId: 's1', x: 1, y: 0.5 }, label: '' }],
+    };
+    let st = initialState(doc, true);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 160, y: 175 } }); // toward bottom
+    const c = st.doc.connectors[0];
+    expect(c.from.shapeId).toBe('s1');
+    expect(c.to.shapeId).toBe('s1');
+    expect(c.to.y).toBeCloseTo(1, 5); // snapped to the bottom edge
+    expect(norm(c.to.x) && norm(c.to.y)).toBe(true);
+  });
+
+  it('turns a normal arrow into a self-loop when an end is dragged onto the other end\'s shape', () => {
+    const doc: Doc = {
+      ...twoShapes,
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 160, y: 140 }, to: { shapeId: 's2', x: 460, y: 140 }, label: '' }],
+    };
+    let st = initialState(doc, true);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 210, y: 140 } }); // onto s1
+    const c = st.doc.connectors[0];
+    expect(c.from.shapeId).toBe('s1');
+    expect(c.to.shapeId).toBe('s1');
+    // The previously centre-bound `from` end is re-normalized so both ends agree.
+    expect(norm(c.from.x) && norm(c.from.y) && norm(c.to.x) && norm(c.to.y)).toBe(true);
+  });
+});

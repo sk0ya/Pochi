@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { findConnector, findShape, groupIdOf } from '../model/doc';
+import { findConnector, findShape, groupIdOf, isSelfLoop, loopSideOf } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { Connector, Shape, StrokeWidthLevel } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
@@ -12,6 +12,7 @@ import {
   FONT_SIZES,
   FRAME_FILL_STYLES,
   LINE_STYLES,
+  LOOP_SIDES,
   SHAPE_KINDS,
   TRIANGLE_DIRECTIONS,
 } from './ContextMenu';
@@ -365,6 +366,38 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
               </button>
             ))}
           </div>
+          {isSelfLoop(singleConnector) && (
+            <>
+              <div className="context-label">ループ: 出る辺</div>
+              <div className="direction-row">
+                {LOOP_SIDES.map(([sideVal, icon, title]) => (
+                  <button
+                    key={sideVal}
+                    className={`direction-swatch${loopSideOf(singleConnector.from) === sideVal ? ' active' : ''}`}
+                    style={{ fontSize: 18 }}
+                    title={title}
+                    onClick={() => run({ type: 'SET_CONNECTOR_LOOP_SIDE', id: singleConnector.id, end: 'from', loopSide: sideVal })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="context-label">ループ: 入る辺</div>
+              <div className="direction-row">
+                {LOOP_SIDES.map(([sideVal, icon, title]) => (
+                  <button
+                    key={sideVal}
+                    className={`direction-swatch${loopSideOf(singleConnector.to) === sideVal ? ' active' : ''}`}
+                    style={{ fontSize: 18 }}
+                    title={title}
+                    onClick={() => run({ type: 'SET_CONNECTOR_LOOP_SIDE', id: singleConnector.id, end: 'to', loopSide: sideVal })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 

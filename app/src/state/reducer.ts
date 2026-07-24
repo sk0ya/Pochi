@@ -3,6 +3,7 @@ import {
   addShape,
   alignShapes,
   bboxOf,
+  borderPoint,
   canReorderStep,
   clearConnectorWaypoints,
   connectorAt,
@@ -19,6 +20,8 @@ import {
   itemsInRect,
   labelCenter,
   measureLabel,
+  nearestSide,
+  SIDE_NORM,
   type ReorderDir,
   reorderItems,
   scaleShapes,
@@ -36,7 +39,7 @@ import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
-import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
@@ -129,6 +132,9 @@ export interface EditorState {
   mode: Mode;
   draw: { kind: DrawKind; anchor: Pt } | null;
   arrowFrom: Endpoint | null;
+  /** While an arrow is being drawn from a shape, which side of that shape it started on —
+   * used to pick the exit side if the arrow is closed back onto the same shape (a self-loop). */
+  arrowFromSide: LoopSide | null;
   /** Target size of the selection's bounding box while in transient `resize` mode. */
   resizeBox: { w: number; h: number } | null;
   /** Rubber-band selection rectangle being dragged (Shift+drag). */
@@ -196,6 +202,7 @@ export type Action =
   | { type: 'SET_CONNECTOR_ROUTING'; id: string; routing: 'straight' | 'orthogonal' }
   | { type: 'SET_CONNECTOR_DASHED'; id: string; dashed: boolean }
   | { type: 'SET_CONNECTOR_ARROW_DIRECTION'; id: string; arrowDirection: ArrowDirection }
+  | { type: 'SET_CONNECTOR_LOOP_SIDE'; id: string; end: 'from' | 'to'; loopSide: LoopSide }
   | { type: 'START_INSERT'; id: string }
   | { type: 'INSERT_COMMIT'; label: string }
   | { type: 'SET_LABEL'; id: string; label: string }
@@ -292,6 +299,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    arrowFromSide: null,
     marquee: null,
     editingId: null,
     editingIsNew: false,
@@ -380,6 +388,7 @@ function endTransient(state: EditorState, extra?: Partial<EditorState>): EditorS
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    arrowFromSide: null,
     resizeBox: null,
     count: '',
     ...extra,
@@ -395,6 +404,7 @@ function cancelTransient(state: EditorState, extra?: Partial<EditorState>): Edit
     mode: 'normal',
     draw: null,
     arrowFrom: null,
+    arrowFromSide: null,
     resizeBox: null,
     editingId: null,
     editingIsNew: false,
@@ -500,6 +510,8 @@ function startArrow(state: EditorState): EditorState {
     ...state,
     mode: 'arrow',
     arrowFrom: from,
+    // Remember the side the arrow starts on, so a self-loop exits where it began.
+    arrowFromSide: shape ? nearestSide(shape, state.cursor) : null,
     selectedIds: [],
     count: '',
     msg: 'ARROW: move to target, Enter/click to connect, Esc to cancel',
@@ -509,14 +521,25 @@ function startArrow(state: EditorState): EditorState {
 function confirmArrow(state: EditorState): EditorState {
   if (!state.arrowFrom) return state;
   const target = shapeAt(state.doc, state.cursor);
-  const to: Endpoint =
-    target && target.id !== state.arrowFrom.shapeId
+  const selfLoop = !!target && target.id === state.arrowFrom.shapeId;
+  let from = state.arrowFrom;
+  let to: Endpoint;
+  if (selfLoop) {
+    // Same shape at both ends → a self-loop: store each end's foot as a bbox-normalized
+    // anchor (see Endpoint) — exit on the side the arrow started from, re-enter on the
+    // side the cursor dragged toward — so the loop follows the shape on move and resize.
+    from = { shapeId: target!.id, ...SIDE_NORM[state.arrowFromSide ?? 'top'] };
+    to = { shapeId: target!.id, ...SIDE_NORM[nearestSide(target!, state.cursor)] };
+  } else {
+    to = target
       ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2 }
       : { ...snapPt(state.cursor) };
-  const c: Connector = { id: newId(), from: state.arrowFrom, to, label: '' };
+  }
+  const c: Connector = { id: newId(), from, to, label: '' };
   return commit(state, addConnector(state.doc, c), {
     mode: 'normal',
     arrowFrom: null,
+    arrowFromSide: null,
     selectedIds: [c.id],
     count: '',
     msg: 'connected',
@@ -1445,10 +1468,26 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       if (!conn) return state;
       const other = action.end === 'from' ? conn.to : conn.from;
       const target = shapeAt(state.doc, action.p);
-      const endpoint: Endpoint =
-        target && target.id !== other.shapeId
-          ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2 }
-          : snapPt(action.p);
+      if (target && target.id === other.shapeId) {
+        // Dragged onto the shape the other end is already bound to → a self-loop:
+        // store this foot as a bbox-normalized anchor on the border toward the cursor
+        // (see Endpoint), so the foot slides around the shape and the loop follows
+        // move/resize. Drag onto a *different* shape (below) to break the loop.
+        const bp = borderPoint(target, action.p);
+        const anchor = { x: (bp.x - target.x) / target.w, y: (bp.y - target.y) / target.h };
+        let doc = setConnectorEndpoint(state.doc, action.id, action.end, { shapeId: target.id, ...anchor });
+        // If the connector wasn't a self-loop yet, its other end is still stored as an
+        // absolute centre point; give it a normalized anchor too so both ends agree.
+        const otherNormalized = other.x >= 0 && other.x <= 1 && other.y >= 0 && other.y <= 1;
+        if (!otherNormalized) {
+          const otherEnd = action.end === 'from' ? 'to' : 'from';
+          doc = setConnectorEndpoint(doc, action.id, otherEnd, { shapeId: target.id, ...SIDE_NORM.top });
+        }
+        return { ...state, doc };
+      }
+      const endpoint: Endpoint = target
+        ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2 }
+        : snapPt(action.p);
       return {
         ...state,
         doc: setConnectorEndpoint(state.doc, action.id, action.end, endpoint),
@@ -1583,6 +1622,9 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state,
         mode: 'arrow',
         arrowFrom: from,
+        // The pointer starts at/near a connect dot, so its side of the shape is the
+        // side a self-loop should exit from if the drag closes back onto this shape.
+        arrowFromSide: s ? nearestSide(s, action.p) : null,
         cursor: snapPt(action.p),
         selectedIds: [],
         count: '',
@@ -2088,6 +2130,21 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ),
       };
       return commit(state, doc, { msg: `arrow: ${action.arrowDirection}` });
+    }
+
+    case 'SET_CONNECTOR_LOOP_SIDE': {
+      // Move one end's foot to the chosen side's edge midpoint, keeping its shape
+      // binding; anchors are bbox-normalized (see Endpoint) so this follows resize.
+      const anchor = SIDE_NORM[action.loopSide];
+      const doc: Doc = {
+        ...state.doc,
+        connectors: state.doc.connectors.map((c) =>
+          c.id === action.id
+            ? { ...c, [action.end]: { ...c[action.end], x: anchor.x, y: anchor.y } }
+            : c,
+        ),
+      };
+      return commit(state, doc, { msg: `loop ${action.end}: ${action.loopSide}` });
     }
 
     case 'ADD_IMAGE': {
