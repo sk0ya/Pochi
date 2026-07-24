@@ -368,79 +368,87 @@ function catmullRom(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
   };
 }
 
-/** Point list for a self-loop, sampled into a polyline so it shares the connector
- * rendering/hit-test/label/export path. The loop leaves the shape at `from`'s anchor
- * (tail) and re-enters at `to`'s anchor (arrow head), each anchor resolved from its
- * bbox-normalized coords so the whole loop follows the shape on move and resize.
- *
- * Two shapes, chosen so the loop never cuts through the body on any aspect ratio:
- *  - both feet on the *same* edge (the common case, incl. identical feet) → a clean
- *    circle bulging straight out from that edge; since the edge is flat the whole ring
- *    stays outside, and the arrowhead re-enters through the gap between the two feet;
- *  - feet on *different* edges → a circle would have to cross a neighbouring edge, so
- *    the loop instead routes strictly *outside* a padded bounding box: each foot is
- *    pushed out along its border normal, the two points are joined by walking the
- *    shorter way around the box (through 0/1/2 outer corners), and that polyline is
- *    smoothed with a Catmull-Rom spline whose endpoint tangents point outward at the
- *    tail and inward at the head. */
-export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
-  const a = selfLoopAnchor(s, from);
-  const b = selfLoopAnchor(s, to);
-  const na = footNormal(from);
-  const nb = footNormal(to);
+/** How far a point may sit inside the shape before a candidate loop is rejected. A clean
+ * circle only ever grazes the body by a hair at its feet (sub-stroke); anything deeper
+ * means the circle would visibly cut through, so we fall back to the safe routed loop. */
+const SELF_LOOP_INSIDE_TOL = 2.5;
+
+/** Deepest a point pokes inside the shape (0 if on/outside the border). */
+function insideDepth(s: Shape, p: Pt): number {
+  if (p.x <= s.x || p.x >= s.x + s.w || p.y <= s.y || p.y >= s.y + s.h) return 0;
+  return Math.min(p.x - s.x, s.x + s.w - p.x, p.y - s.y, s.y + s.h - p.y);
+}
+
+/** A clean circular loop through the two feet, bulging outward along their averaged border
+ * normal — the *outward* (major) arc from a to b, a near-full circle whose ends land back on
+ * the shape and whose gap (holding the arrowhead) faces the body. Returns null when the feet
+ * are on opposite edges (their normals cancel), where no through-feet circle can stay outside. */
+function selfLoopCircle(s: Shape, a: Pt, b: Pt, na: Pt, nb: Pt): Pt[] | null {
   const dim = Math.min(s.w, s.h);
   const chord = Math.hypot(a.x - b.x, a.y - b.y);
-  const sameEdge = Math.abs(na.x - nb.x) < 1e-9 && Math.abs(na.y - nb.y) < 1e-9;
+  const avg = { x: na.x + nb.x, y: na.y + nb.y };
+  const avgLen = Math.hypot(avg.x, avg.y);
+  if (avgLen < 1e-6) return null; // opposite edges → no clean circle
+  const half = chord / 2;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // Radius scales with the shape but stays a readable ring, and always clears the feet.
+  const r = Math.max(half + 12, Math.min(Math.max(dim * 0.42, 18), 46));
+  const h = Math.sqrt(Math.max(0, r * r - half * half));
+  // Bulge along the chord's perpendicular bisector so the circle passes through *both* feet
+  // exactly (centre stays equidistant from a and b); orient it outward via the averaged normal.
+  // For identical feet there's no chord, so bulge straight out along that averaged normal.
+  let u: Pt;
+  if (chord < 1e-6) {
+    u = { x: avg.x / avgLen, y: avg.y / avgLen };
+  } else {
+    const perp = { x: -(b.y - a.y), y: b.x - a.x };
+    const pl = Math.hypot(perp.x, perp.y);
+    const sign = (perp.x * avg.x + perp.y * avg.y) >= 0 ? 1 : -1;
+    u = { x: (perp.x / pl) * sign, y: (perp.y / pl) * sign };
+  }
+  const c = { x: mid.x + u.x * h, y: mid.y + u.y * h };
+  const pts: Pt[] = [];
 
-  if (chord < 1e-6 || sameEdge) {
-    // Clean circle bulging out from the shared edge. Centre sits `h` out from the feet's
-    // midpoint along the outward normal, so the *outward* (major) arc from a to b is a
-    // near-full circle and its two ends land back on the edge at the feet.
-    const half = chord / 2;
-    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    // Radius scales with the shape but is kept a readable ring, and always clears the feet.
-    const r = Math.max(half + 12, Math.min(Math.max(dim * 0.42, 18), 46));
-    const h = Math.sqrt(Math.max(0, r * r - half * half));
-    const c = { x: mid.x + na.x * h, y: mid.y + na.y * h };
-    const pts: Pt[] = [];
-
-    if (chord < 1e-6) {
-      // Identical feet → a full ring with a small gap (holding the arrowhead) facing the shape.
-      const base = Math.atan2(a.y - c.y, a.x - c.x);
-      const gap = 0.42;
-      const start = base + gap;
-      const end = base + Math.PI * 2 - gap;
-      for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
-        const ang = start + ((end - start) * i) / SELF_LOOP_SAMPLES;
-        pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
-      }
-      return pts;
-    }
-
-    // Major arc from a to b, passing over the outward apex (mid + normal * (h + r)).
-    const angA = Math.atan2(a.y - c.y, a.x - c.x);
-    const angB = Math.atan2(b.y - c.y, b.x - c.x);
-    const apex = Math.atan2(mid.y + na.y * (h + r) - c.y, mid.x + na.x * (h + r) - c.x);
-    const norm = (x: number): number => {
-      let v = x;
-      while (v <= -Math.PI) v += Math.PI * 2;
-      while (v > Math.PI) v -= Math.PI * 2;
-      return v;
-    };
-    let ccw = norm(angB - angA);
-    if (ccw < 0) ccw += Math.PI * 2;
-    let apexRel = norm(apex - angA);
-    if (apexRel < 0) apexRel += Math.PI * 2;
-    // Sweep the direction (from a) that passes the outward apex before reaching b.
-    const sweep = apexRel <= ccw ? ccw : -(Math.PI * 2 - ccw);
+  if (chord < 1e-6) {
+    // Identical feet → a full ring with a small gap (holding the arrowhead) facing the shape.
+    const base = Math.atan2(a.y - c.y, a.x - c.x);
+    const gap = 0.42;
     for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
-      const ang = angA + (sweep * i) / SELF_LOOP_SAMPLES;
+      const ang = base + gap + ((Math.PI * 2 - 2 * gap) * i) / SELF_LOOP_SAMPLES;
       pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
     }
     return pts;
   }
 
-  // Padded box the loop wraps around; pad scales with the shape but stays in a sane range.
+  // Major arc from a to b, sweeping the direction that passes the outward apex (mid + u*(h+r)).
+  const angA = Math.atan2(a.y - c.y, a.x - c.x);
+  const angB = Math.atan2(b.y - c.y, b.x - c.x);
+  const apex = Math.atan2(mid.y + u.y * (h + r) - c.y, mid.x + u.x * (h + r) - c.x);
+  const norm = (x: number): number => {
+    let v = x;
+    while (v <= -Math.PI) v += Math.PI * 2;
+    while (v > Math.PI) v -= Math.PI * 2;
+    return v;
+  };
+  let ccw = norm(angB - angA);
+  if (ccw < 0) ccw += Math.PI * 2;
+  let apexRel = norm(apex - angA);
+  if (apexRel < 0) apexRel += Math.PI * 2;
+  const sweep = apexRel <= ccw ? ccw : -(Math.PI * 2 - ccw);
+  for (let i = 0; i <= SELF_LOOP_SAMPLES; i++) {
+    const ang = angA + (sweep * i) / SELF_LOOP_SAMPLES;
+    pts.push({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r });
+  }
+  return pts;
+}
+
+/** A loop that routes strictly *outside* a padded bounding box, so it never cuts the body for
+ * any pair of feet on any aspect ratio. Each foot is pushed out along its border normal, the
+ * two points are joined by walking the shorter way around the box (through 0/1/2 outer corners),
+ * and that polyline is smoothed with a Catmull-Rom spline whose endpoint tangents leave the tail
+ * outward and drive the head inward (arrowhead re-enters). Used when a clean circle would overlap. */
+function selfLoopRoute(s: Shape, a: Pt, b: Pt, na: Pt, nb: Pt): Pt[] {
+  const dim = Math.min(s.w, s.h);
   const pad = Math.max(22, Math.min(dim * 0.6, 52));
   const L = s.x - pad;
   const T = s.y - pad;
@@ -449,7 +457,6 @@ export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
   const W = R - L;
   const H = B - T;
   const P = 2 * (W + H);
-  // Project each foot out onto the padded box along its border normal.
   const wa = { x: a.x + na.x * pad, y: a.y + na.y * pad };
   const wb = { x: b.x + nb.x * pad, y: b.y + nb.y * pad };
   // Perimeter coordinate of a point on the padded box, measured clockwise from top-left.
@@ -478,8 +485,6 @@ export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
   }
   between.sort((x, y) => x.d - y.d);
 
-  // Waypoints, plus phantom neighbours so the spline leaves the tail outward and drives
-  // the head inward (arrowhead re-enters). Feet a/b sit on the border; the rest are outside.
   const main: Pt[] = [a, wa, ...between.map((c) => c.p), wb, b];
   const pa = { x: a.x - na.x * pad, y: a.y - na.y * pad };
   const pb = { x: b.x - nb.x * pad, y: b.y - nb.y * pad };
@@ -495,6 +500,25 @@ export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
     for (let i = sgi === 0 ? 0 : 1; i <= steps; i++) pts.push(catmullRom(p0, p1, p2, p3, i / steps));
   }
   return pts;
+}
+
+/** Point list for a self-loop, sampled into a polyline so it shares the connector
+ * rendering/hit-test/label/export path. The loop leaves the shape at `from`'s anchor
+ * (tail) and re-enters at `to`'s anchor (arrow head), each anchor resolved from its
+ * bbox-normalized coords so the whole loop follows the shape on move and resize.
+ *
+ * Prefers a clean circle (selfLoopCircle) and keeps it whenever it stays outside the body
+ * within a sub-stroke tolerance — true for same-edge, adjacent-edge, and most feet. When a
+ * circle would cut through (opposite edges, or awkward corner feet on a lopsided shape) it
+ * falls back to the guaranteed-outside routed loop (selfLoopRoute). */
+export function selfLoopPath(s: Shape, from: Endpoint, to: Endpoint): Pt[] {
+  const a = selfLoopAnchor(s, from);
+  const b = selfLoopAnchor(s, to);
+  const na = footNormal(from);
+  const nb = footNormal(to);
+  const circle = selfLoopCircle(s, a, b, na, nb);
+  if (circle && circle.every((p) => insideDepth(s, p) <= SELF_LOOP_INSIDE_TOL)) return circle;
+  return selfLoopRoute(s, a, b, na, nb);
 }
 
 /** Full ordered point list for drawing/hit-testing: self-loop, straight, orthogonal-routed, or manual waypoints. */

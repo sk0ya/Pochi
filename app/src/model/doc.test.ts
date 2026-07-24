@@ -299,9 +299,11 @@ describe('self-loop connectors', () => {
     expect(path[path.length - 1].y).toBeCloseTo(shape.y, 5);
   });
 
-  it('never routes through the shape for any pair of feet on any aspect ratio', () => {
-    // Opposite/crossed feet on wide, tall, square and small shapes used to send the
-    // loop straight through the body; the loop must stay outside the shape in every case.
+  it('never cuts through the shape for any pair of feet on any aspect ratio', () => {
+    // Opposite/crossed feet on wide, tall, square and small shapes used to send the loop
+    // straight through the body. A circular loop is only kept when it grazes the border by
+    // at most ~2.5px (sub-stroke) at its feet; anything deeper falls back to the routed loop,
+    // so no sample point should sit more than that far inside the shape in any configuration.
     const shapes: Shape[] = [
       { id: 'a', kind: 'rect', x: 0, y: 0, w: 100, h: 100, label: '' },
       { id: 'a', kind: 'rect', x: 0, y: 0, w: 220, h: 60, label: '' },
@@ -316,6 +318,10 @@ describe('self-loop connectors', () => {
           : side === 'left'
             ? { x: 0, y: t }
             : { x: 1, y: t };
+    const insideDepth = (shp: Shape, p: { x: number; y: number }) =>
+      p.x <= shp.x || p.x >= shp.x + shp.w || p.y <= shp.y || p.y >= shp.y + shp.h
+        ? 0
+        : Math.min(p.x - shp.x, shp.x + shp.w - p.x, p.y - shp.y, shp.y + shp.h - p.y);
     const sides: LoopSide[] = ['top', 'right', 'bottom', 'left'];
     for (const shp of shapes) {
       const d: Doc = { shapes: [shp], connectors: [] };
@@ -324,10 +330,7 @@ describe('self-loop connectors', () => {
           for (const ta of [0, 0.25, 0.5, 0.75, 1])
             for (const tb of [0, 0.25, 0.5, 0.75, 1]) {
               const c: Connector = { id: 'c', from: { shapeId: 'a', ...footOn(sa, ta) }, to: { shapeId: 'a', ...footOn(sb, tb) }, label: '' };
-              for (const p of connectorPath(d, c)) {
-                const inside = p.x > shp.x + 1 && p.x < shp.x + shp.w - 1 && p.y > shp.y + 1 && p.y < shp.y + shp.h - 1;
-                expect(inside).toBe(false);
-              }
+              for (const p of connectorPath(d, c)) expect(insideDepth(shp, p)).toBeLessThanOrEqual(1);
             }
     }
   });
