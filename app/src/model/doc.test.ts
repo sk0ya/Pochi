@@ -8,6 +8,7 @@ import {
   distributeShapes,
   distToSegment,
   FRAME_BORDER_BAND,
+  frameBorderOrLabel,
   frameContainedIds,
   frameHitZone,
   inscribedBox,
@@ -433,6 +434,27 @@ describe('frameHitZone', () => {
 
   it('hits the top-left label zone', () => {
     expect(frameHitZone(f, { x: 50, y: 20 })).toBe(true);
+  });
+});
+
+describe('frameBorderOrLabel: uncapped outer reach for hover', () => {
+  const f = { x: 0, y: 0, w: 200, h: 200 };
+
+  it('stays true well outside the border band, where frameHitZone caps out', () => {
+    // A connect dot floats CONNECT_DOT_OFFSET (18) outside the edge — past the 10px band, so
+    // frameHitZone gives up there, but hover must still reach it.
+    const dotX = -18;
+    expect(frameHitZone(f, { x: dotX, y: 100 })).toBe(false);
+    expect(frameBorderOrLabel(f, { x: dotX, y: 100 })).toBe(true);
+  });
+
+  it('still excludes the deep interior, so a contained shape keeps the hover', () => {
+    expect(frameBorderOrLabel(f, { x: 100, y: 150 })).toBe(false);
+  });
+
+  it('hits the inside half of the border band and the label zone', () => {
+    expect(frameBorderOrLabel(f, { x: FRAME_BORDER_BAND / 2, y: 100 })).toBe(true);
+    expect(frameBorderOrLabel(f, { x: 50, y: 20 })).toBe(true);
   });
 });
 

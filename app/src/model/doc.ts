@@ -130,8 +130,19 @@ export function frameHitZone(f: { x: number; y: number; w: number; h: number }, 
   if (p.x < f.x - band || p.x > f.x + f.w + band || p.y < f.y - band || p.y > f.y + f.h + band) {
     return false;
   }
-  // Within the outer bounds but not fully inside the band's inner edge = on the border ring
-  // (this covers both the outside half and the inside half of the band).
+  return frameBorderOrLabel(f, p);
+}
+
+/**
+ * Like `frameHitZone` but WITHOUT the outer-band cap: true for the border ring's inside half and
+ * the label, and for everything OUTSIDE the rect — leaving the caller's own outer bound to decide
+ * how far outside still counts. Only the deep interior (inset by FRAME_BORDER_BAND, minus the
+ * label zone) is excluded, so a shape a frame contains keeps the hover instead of the frame
+ * stealing it. Used for hover, where a frame's connect dots float CONNECT_DOT_OFFSET outside the
+ * edge — farther than the border band — so hover must reach them (see shapeNear in Canvas.tsx).
+ */
+export function frameBorderOrLabel(f: { x: number; y: number; w: number; h: number }, p: Pt): boolean {
+  const band = FRAME_BORDER_BAND;
   const inInner =
     p.x >= f.x + band && p.x <= f.x + f.w - band && p.y >= f.y + band && p.y <= f.y + f.h - band;
   if (!inInner) return true;

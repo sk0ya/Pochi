@@ -14,7 +14,7 @@ import {
   FRAME_LABEL_PAD_Y,
   FRAME_LABEL_ZONE_H,
   FRAME_LABEL_ZONE_W,
-  frameHitZone,
+  frameBorderOrLabel,
   freedrawPathD,
   labelCenter,
   resizeAnchor,
@@ -350,12 +350,15 @@ const HOVER_MARGIN = 26;
 
 /** Topmost shape whose bounds, expanded by `margin`, contain `p`. A frame's open interior
  * doesn't count (same reasoning as frameHitZone) — hovering a shape a frame contains must
- * not have the frame steal the hover state (and its connect dots) instead. */
+ * not have the frame steal the hover state (and its connect dots) instead. Unlike frameHitZone,
+ * which caps the outside reach at the border band, a frame stays hovered anywhere within `margin`
+ * of its border (frameBorderOrLabel has no outer cap) so the pointer can reach the frame's own
+ * connect dots, which float CONNECT_DOT_OFFSET (> band) outside the edge. */
 function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
     const s = doc.shapes[i];
     if (p.x >= s.x - margin && p.x <= s.x + s.w + margin && p.y >= s.y - margin && p.y <= s.y + s.h + margin) {
-      if (s.kind === 'frame' && !frameHitZone(s, p)) continue;
+      if (s.kind === 'frame' && !frameBorderOrLabel(s, p)) continue;
       return s;
     }
   }
