@@ -640,12 +640,15 @@ export function translateItems(doc: Doc, ids: string[], dx: number, dy: number):
 }
 
 /**
- * Ids of `ids` plus every shape "contained" by a frame among them: a shape whose center
- * currently lies inside the frame's rect. Composes for nested frames — a frame found this way
- * is itself queued, so its own contents (and any frame nested inside *that*) get pulled in too.
+ * Ids of `ids` plus every shape "contained" by a frame among them. A plain shape counts as
+ * contained when its center lies inside the frame's rect; a nested *frame* must sit ENTIRELY
+ * inside (all four corners within), so a frame that merely overlaps the edge of the one being
+ * moved is left behind instead of dragged along. Composes for nested frames — a frame found
+ * this way is itself queued, so its own contents (and any frame nested inside *that*) get
+ * pulled in too.
  *
- * There's no persistent parent/child bookkeeping: membership is just "center inside the rect,"
- * recomputed fresh from `doc` every time this is called. Callers pass the doc snapshot from the
+ * There's no persistent parent/child bookkeeping: membership is recomputed fresh from `doc`
+ * every time this is called. Callers pass the doc snapshot from the
  * *start* of a move gesture (mouse drag's frozen `base`, or the current doc for an atomic
  * keyboard nudge) so a single continuous move only decides membership once, instead of shapes
  * potentially entering/leaving the (moving) frame's rect mid-gesture.
@@ -658,9 +661,22 @@ export function frameContainedIds(doc: Doc, ids: string[]): string[] {
     if (!frame) continue;
     for (const s of doc.shapes) {
       if (result.has(s.id)) continue;
-      const cx = s.x + s.w / 2;
-      const cy = s.y + s.h / 2;
-      if (cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h) {
+      const contained =
+        s.kind === 'frame'
+          ? // A nested frame is pulled along only when it sits entirely inside.
+            s.x >= frame.x &&
+            s.y >= frame.y &&
+            s.x + s.w <= frame.x + frame.w &&
+            s.y + s.h <= frame.y + frame.h
+          : // A plain shape counts as inside when its center is within the rect.
+            (() => {
+              const cx = s.x + s.w / 2;
+              const cy = s.y + s.h / 2;
+              return (
+                cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h
+              );
+            })();
+      if (contained) {
         result.add(s.id);
         if (s.kind === 'frame') queue.push(s.id);
       }

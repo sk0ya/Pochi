@@ -430,6 +430,22 @@ describe('frameContainedIds', () => {
     expect(frameContainedIds(doc, ['outer']).sort()).toEqual(['inner', 'leaf', 'outer']);
   });
 
+  it('does NOT pull in a nested frame that only partially overlaps (not fully inside)', () => {
+    const outer = frame('outer', 0, 0, 200, 200);
+    // center (170,170) is inside outer, but it pokes out past the right/bottom edge
+    const overlapping = frame('over', 120, 120, 100, 100);
+    const doc: Doc = { shapes: [outer, overlapping], connectors: [] };
+    expect(frameContainedIds(doc, ['outer'])).toEqual(['outer']);
+  });
+
+  it('pulls in a nested frame that sits entirely inside, and its contents', () => {
+    const outer = frame('outer', 0, 0, 200, 200);
+    const inner = frame('inner', 20, 20, 80, 80); // fully within outer
+    const leaf = rect('leaf', 40, 40, 10, 10);
+    const doc: Doc = { shapes: [outer, inner, leaf], connectors: [] };
+    expect(frameContainedIds(doc, ['outer']).sort()).toEqual(['inner', 'leaf', 'outer']);
+  });
+
   it('a frame with nothing inside it resolves to just itself', () => {
     const f = frame('f1', 0, 0, 50, 50);
     const doc: Doc = { shapes: [f], connectors: [] };
