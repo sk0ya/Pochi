@@ -9,6 +9,10 @@
   --muted: #8794a8;
   --accent: #4da3ff;
   --accent-dim: #3272b8;
+  /* Connector affordances (connect dots, the drag preview, a selected connector's
+   * endpoints) are green so they never read as the blue --accent resize handles,
+   * which sit only a few pixels away on the same shape. */
+  --connect: #35d08a;
   --cursor: #ffb454;
   --grid-dot: #262c37;
   --shape-fill: #202839;
@@ -31,6 +35,7 @@
   --muted: #8794a8;
   --accent: #2f80d6;
   --accent-dim: #8fbceb;
+  --connect: #0f9d63;
   --cursor: #c47b00;
   --grid-dot: #dfe4ec;
   --shape-fill: #ffffff;

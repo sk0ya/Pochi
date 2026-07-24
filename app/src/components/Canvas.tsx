@@ -398,7 +398,12 @@ function connectPoints(s: Shape, offset: number): Pt[] {
 /** Small round handles shown at a hovered shape's cardinal connect points;
  * dragging one draws a new connector from that shape. Each dot is a bigger
  * invisible hit circle (the actual drag target) under a small visible one,
- * so it stays easy to grab without looking oversized. */
+ * so it stays easy to grab without looking oversized.
+ *
+ * They deliberately look nothing like the resize handles they sit next to:
+ * green (--connect, not the blue --accent) and drawn as a ring rather than a
+ * filled square, so "drag to connect" and "drag to resize" stay tellable apart
+ * by both color and shape. */
 function connectDots(s: Shape) {
   return (
     <>
@@ -418,12 +423,13 @@ function connectDots(s: Shape) {
           <circle
             cx={p.x}
             cy={p.y}
-            r={5}
-            fill="var(--accent-dim)"
+            r={5.5}
+            fill="var(--connect)"
             stroke="var(--bg)"
             strokeWidth={1.5}
             style={{ pointerEvents: 'none' }}
           />
+          <circle cx={p.x} cy={p.y} r={2} fill="var(--bg)" style={{ pointerEvents: 'none' }} />
         </g>
       ))}
     </>
@@ -1011,10 +1017,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           y1={a.y}
           x2={cursor.x}
           y2={cursor.y}
-          stroke="var(--accent)"
+          stroke="var(--connect)"
           strokeDasharray="6 4"
           strokeWidth={1.5}
-          markerEnd="url(#arrow-accent)"
+          markerEnd="url(#arrow-connect)"
         />
       );
     }
@@ -1180,7 +1186,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--shape-stroke)" />
         </marker>
         <marker
-          id="arrow-accent"
+          id="arrow-connect"
           viewBox="0 0 10 10"
           refX="9"
           refY="5"
@@ -1188,7 +1194,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           markerHeight="8"
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--connect)" />
         </marker>
         {connectorColors.map((hex) => (
           <marker
@@ -1267,12 +1273,14 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           const b = path[path.length - 1];
           return (
             <>
+              {/* Green like the connect dots: these re-attach a connector's ends,
+                * so they belong to the "connect" family, not the blue resize one. */}
               <circle
                 data-handle="endpoint-from"
                 cx={a.x}
                 cy={a.y}
                 r={6}
-                fill="var(--accent)"
+                fill="var(--connect)"
                 stroke="var(--bg)"
                 strokeWidth={1.5}
                 style={{ cursor: 'crosshair' }}
@@ -1282,7 +1290,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
                 cx={b.x}
                 cy={b.y}
                 r={6}
-                fill="var(--accent)"
+                fill="var(--connect)"
                 stroke="var(--bg)"
                 strokeWidth={1.5}
                 style={{ cursor: 'crosshair' }}
