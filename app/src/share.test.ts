@@ -59,6 +59,26 @@ describe('encodeShareDoc / decodeShareDoc', () => {
     expect(d.connectors[0].to.shapeId).toBe(d.shapes[1].id);
   });
 
+  it('round-trips fixed endpoint anchors, and reads links written before they existed', async () => {
+    const pinned: Doc = {
+      ...doc,
+      connectors: [
+        {
+          id: 'c1',
+          from: { shapeId: 's1', x: 80, y: 48, anchor: { x: 1, y: 0.25 } },
+          to: { shapeId: 's2', x: 280, y: 48 },
+          label: '',
+        },
+      ],
+    };
+    const d = (await decodeShareDoc(await encodeShareDoc(pinned)))!;
+    expect(d.connectors[0].from.anchor).toEqual({ x: 1, y: 0.25 });
+    // An end left floating stays floating rather than picking up a stray anchor — which is
+    // also what a link shared before fixed attachments existed decodes to.
+    expect(d.connectors[0].to.anchor).toBeUndefined();
+    expect((await decodeShareDoc(await encodeShareDoc(doc)))!.connectors[0].from.anchor).toBeUndefined();
+  });
+
   it('round-trips an empty doc', async () => {
     const empty: Doc = { shapes: [], connectors: [] };
     const payload = await encodeShareDoc(empty);

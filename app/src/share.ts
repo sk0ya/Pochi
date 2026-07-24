@@ -185,7 +185,10 @@ function tupleToShape(t: unknown[]): Shape {
 }
 
 /** Positional tuple for a Connector, with `from`/`to` flattened to their shapeId/x/y and
- * `waypoints` (if any) as `[x, y]` tuples rather than `{x, y}` objects. */
+ * `waypoints` (if any) as `[x, y]` tuples rather than `{x, y}` objects. The two endpoint
+ * anchors sit at the end rather than beside the x/y they belong to, so links shared before
+ * fixed attachments existed still decode — they simply stop short and leave both undefined,
+ * which is exactly "floating", the behaviour those links were made with. */
 type ConnectorTuple = [
   string,
   string | undefined,
@@ -203,6 +206,8 @@ type ConnectorTuple = [
   number?,
   PtTuple[]?,
   string?,
+  PtTuple?,
+  PtTuple?,
 ];
 
 function connectorToTuple(c: Connector): ConnectorTuple {
@@ -223,6 +228,8 @@ function connectorToTuple(c: Connector): ConnectorTuple {
     c.elbowRatio,
     c.waypoints?.map(ptToTuple),
     c.groupId,
+    c.from.anchor && ptToTuple(c.from.anchor),
+    c.to.anchor && ptToTuple(c.to.anchor),
   ]) as ConnectorTuple;
 }
 
@@ -244,12 +251,14 @@ function tupleToConnector(t: unknown[]): Connector {
     elbowRatio,
     waypoints,
     groupId,
+    fromAnchor,
+    toAnchor,
   ] = t as ConnectorTuple;
   // Same null normalization as tupleToShape (see there).
   return {
     id,
-    from: { shapeId: fromShapeId ?? undefined, x: fromX, y: fromY },
-    to: { shapeId: toShapeId ?? undefined, x: toX, y: toY },
+    from: { shapeId: fromShapeId ?? undefined, x: fromX, y: fromY, anchor: fromAnchor ? tupleToPt(fromAnchor) : undefined },
+    to: { shapeId: toShapeId ?? undefined, x: toX, y: toY, anchor: toAnchor ? tupleToPt(toAnchor) : undefined },
     label,
     color: color ?? undefined,
     dashed: dashed ?? undefined,

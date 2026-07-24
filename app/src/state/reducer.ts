@@ -2,6 +2,7 @@ import {
   addConnector,
   addShape,
   alignShapes,
+  anchorPoint,
   bboxOf,
   borderPoint,
   canReorderStep,
@@ -17,6 +18,8 @@ import {
   groupIdOf,
   groupMembers,
   insertConnectorWaypoint,
+  insideDepth,
+  isSelfLoop,
   itemsInRect,
   labelCenter,
   measureLabel,
@@ -28,10 +31,13 @@ import {
   setConnectorEndpoint,
   setConnectorWaypoint,
   setConnectorElbowRatio,
+  nearestBorderPoint,
+  toAnchor,
   resizeAnchor,
   shapeAt,
   translateItems,
   updateShape,
+  withinBBox,
 } from '../model/doc';
 import { applyOps } from '../collab/sync';
 import type { AppliedOps } from '../collab/sync';
@@ -352,6 +358,35 @@ function commitBase(state: EditorState, extra?: Partial<EditorState>): EditorSta
 }
 
 const SELECTION_HISTORY_LIMIT = 50;
+
+/** How far outside a shape a dragged connector endpoint still counts as dropped "on" it.
+ * The endpoint handle is drawn on the shape's border, i.e. right on the boundary of a strict
+ * inside-the-bbox test, so aiming at the outline — the obvious target — needs a little slack
+ * in both directions: to attach without pushing the cursor into the interior, and to not
+ * detach from a hair of jitter. */
+const ENDPOINT_ATTACH_MARGIN = 8;
+
+/** The wider band within which an existing self-loop keeps its shape while a foot is dragged
+ * (see ENDPOINT_DRAG_MOVE): a loop is reshaped by pulling its feet outward, which has to stay
+ * possible well beyond the attach margin before the loop is torn off the shape. */
+const SELF_LOOP_KEEP_MARGIN = 40;
+
+/** How deep inside a shape an endpoint may be dropped and still read as aimed at the border.
+ * Capped at a quarter of the shape's shorter side so a small shape keeps a floating core
+ * rather than being edge all the way through. */
+const EDGE_PIN_BAND = 12;
+
+/** The fixed attachment for an endpoint dropped at `p` on `s`, or undefined to leave it
+ * floating. Dropping on or just outside the outline — where the endpoint handle is drawn, and
+ * where someone aiming at a particular edge puts the cursor — pins to the nearest point on the
+ * border, so the connector keeps touching exactly there through moves and resizes. Dropping
+ * into the interior keeps the original behaviour, where the end aims at the centre and slides
+ * around the border to face whatever it connects to. */
+function dropAnchor(s: Shape, p: Pt): Pt | undefined {
+  const band = Math.min(EDGE_PIN_BAND, Math.min(s.w, s.h) / 4);
+  if (insideDepth(s, p) > band) return undefined;
+  return toAnchor(s, nearestBorderPoint(s, p));
+}
 
 /** Record `ids` as a selection the user is navigating away from, so it can be restored later. */
 function pushSelectionHistory(history: string[][], ids: string[]): string[][] {
@@ -1571,34 +1606,65 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
 
     case 'ENDPOINT_DRAG_MOVE': {
-      const conn = findConnector(state.doc, action.id);
+      // Resolved against the pre-drag doc (`base`, snapshotted on ENDPOINT_DRAG_START) rather
+      // than the running one, so every move is idempotent with respect to the gesture so far:
+      // sweeping the cursor over the other end's shape and off again leaves that other end
+      // exactly as it started, instead of stranding it with whatever anchor the momentary
+      // self-loop rewrote it to.
+      const origDoc = state.base ?? state.doc;
+      const conn = findConnector(origDoc, action.id);
       if (!conn) return state;
       const other = action.end === 'from' ? conn.to : conn.from;
-      const target = shapeAt(state.doc, action.p);
+      const otherEnd = action.end === 'from' ? 'to' : 'from';
+      const wasLoop = isSelfLoop(conn);
+      const near = shapeAt(origDoc, action.p, ENDPOINT_ATTACH_MARGIN);
+      // A self-loop's feet sit ON the shape's border, so dragging one outward — the natural
+      // way to reshape the loop — would detach it on the very first pixel under a plain
+      // inside-the-bbox test, collapsing the loop into a stub arrow. While the connector is
+      // already a loop, its shape stays the target across a wider band; the loop only breaks
+      // by dragging onto another shape or clear of that band.
+      const loopShape =
+        wasLoop && other.shapeId && (!near || near.id === other.shapeId)
+          ? findShape(origDoc, other.shapeId)
+          : undefined;
+      const target =
+        loopShape && withinBBox(loopShape, action.p, SELF_LOOP_KEEP_MARGIN) ? loopShape : near;
       if (target && target.id === other.shapeId) {
         // Dragged onto the shape the other end is already bound to → a self-loop:
         // store this foot as a bbox-normalized anchor on the border toward the cursor
         // (see Endpoint), so the foot slides around the shape and the loop follows
         // move/resize. Drag onto a *different* shape (below) to break the loop.
         const bp = borderPoint(target, action.p);
-        const anchor = { x: (bp.x - target.x) / target.w, y: (bp.y - target.y) / target.h };
+        const anchor = toAnchor(target, bp);
         let doc = setConnectorEndpoint(state.doc, action.id, action.end, { shapeId: target.id, ...anchor });
-        // If the connector wasn't a self-loop yet, its other end is still stored as an
-        // absolute centre point; give it a normalized anchor too so both ends agree.
-        const otherNormalized = other.x >= 0 && other.x <= 1 && other.y >= 0 && other.y <= 1;
-        if (!otherNormalized) {
-          const otherEnd = action.end === 'from' ? 'to' : 'from';
-          doc = setConnectorEndpoint(doc, action.id, otherEnd, { shapeId: target.id, ...SIDE_NORM.top });
-        }
+        // If the connector wasn't a self-loop before this drag, its other end is still stored
+        // as an absolute centre point; give it a normalized anchor too so both ends agree —
+        // keeping where it was already pinned, if the user had fixed it to an edge.
+        const otherFoot = other.anchor ?? SIDE_NORM.top;
+        doc = setConnectorEndpoint(doc, action.id, otherEnd, wasLoop ? other : { shapeId: target.id, ...otherFoot });
         return { ...state, doc };
       }
+      // Deliberately unsnapped: the endpoint handle is 6px and the user is dragging it
+      // directly, so quantizing to the grid would leave it visibly lagging the cursor
+      // (up to a grid half-step away) instead of tracking the pointer.
       const endpoint: Endpoint = target
-        ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2 }
-        : snapPt(action.p);
-      return {
-        ...state,
-        doc: setConnectorEndpoint(state.doc, action.id, action.end, endpoint),
-      };
+        ? { shapeId: target.id, x: target.x + target.w / 2, y: target.y + target.h / 2, anchor: dropAnchor(target, action.p) }
+        : { ...action.p };
+      // Breaking a self-loop leaves the other end still holding its foot as normalized x/y
+      // (the loop representation). Promote that to a proper fixed attachment so the arrow
+      // goes on touching where the foot was, instead of snapping back to a centre-aimed
+      // guess the moment the loop opens up.
+      const loopFootShape = wasLoop && other.shapeId ? findShape(origDoc, other.shapeId) : undefined;
+      const otherKept: Endpoint = loopFootShape
+        ? {
+            shapeId: loopFootShape.id,
+            ...anchorPoint(loopFootShape, { x: other.x, y: other.y }),
+            anchor: { x: other.x, y: other.y },
+          }
+        : other;
+      let doc = setConnectorEndpoint(state.doc, action.id, action.end, endpoint);
+      doc = setConnectorEndpoint(doc, action.id, otherEnd, otherKept);
+      return { ...state, doc };
     }
 
     case 'START_INSERT':
@@ -2207,7 +2273,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       return { ...state, base: state.doc, selectedIds: [action.id] };
 
     case 'WAYPOINT_DRAG_MOVE':
-      return { ...state, doc: setConnectorWaypoint(state.doc, action.id, action.index, snapPt(action.p)) };
+      // Unsnapped for the same reason as a dragged endpoint: the bend handle is small and
+      // held directly under the pointer, so quantizing it to the grid would leave it
+      // trailing the cursor. ADD_WAYPOINT still snaps — that one places a point by click,
+      // where grid alignment costs nothing to aim for.
+      return { ...state, doc: setConnectorWaypoint(state.doc, action.id, action.index, { ...action.p }) };
 
     case 'ELBOW_DRAG_START':
       return { ...state, base: state.doc, selectedIds: [action.id] };

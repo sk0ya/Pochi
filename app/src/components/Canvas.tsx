@@ -16,6 +16,7 @@ import {
   FRAME_LABEL_ZONE_W,
   frameBorderOrLabel,
   freedrawPathD,
+  isSelfLoop,
   labelCenter,
   resizeAnchor,
   resizeHandlePoint,
@@ -436,6 +437,35 @@ function connectDots(s: Shape) {
   );
 }
 
+const ENDPOINT_FIXED_TITLE = '辺に固定 — 図形の内側までドラッグすると自動に戻る';
+const ENDPOINT_FLOATING_TITLE = '自動接続 — 辺までドラッグするとその位置に固定';
+
+/** Handle for re-attaching one end of the selected connector. Green like the connect dots:
+ * these belong to the "connect" family, not the blue resize one.
+ *
+ * A *fixed* end (pinned to a point on the shape's border) is a solid disc; a *floating* one —
+ * which only aims at the shape and slides around its border — is a ring, the same hollow
+ * shape the connect dots use, since both mean "not committed to a spot yet". */
+function endpointHandle(handle: string, p: Pt, fixed: boolean) {
+  return (
+    <g>
+      <circle
+        data-handle={handle}
+        cx={p.x}
+        cy={p.y}
+        r={6}
+        fill="var(--connect)"
+        stroke="var(--bg)"
+        strokeWidth={1.5}
+        style={{ cursor: 'crosshair' }}
+      >
+        <title>{fixed ? ENDPOINT_FIXED_TITLE : ENDPOINT_FLOATING_TITLE}</title>
+      </circle>
+      {!fixed && <circle cx={p.x} cy={p.y} r={2} fill="var(--bg)" style={{ pointerEvents: 'none' }} />}
+    </g>
+  );
+}
+
 /** `f` hint-jump badge background/text: reuses the vim-cursor amber so a hint label reads as
  * "a keyboard-reachable cursor target," with a contrasting text color computed the same way
  * flat-filled shape labels are. */
@@ -829,26 +859,27 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       dispatch({ type: 'MARQUEE_MOVE', p: toWorld(e) });
       return;
     }
-    if (d.kind === 'endpoint') {
-      d.moved = true;
-      dispatch({ type: 'ENDPOINT_DRAG_MOVE', id: d.id, end: d.end as 'from' | 'to', p: toWorld(e) });
-      return;
-    }
-    if (d.kind === 'waypoint') {
-      d.moved = true;
-      dispatch({ type: 'WAYPOINT_DRAG_MOVE', id: d.id, index: d.index as number, p: toWorld(e) });
-      return;
-    }
-    if (d.kind === 'elbow') {
-      d.moved = true;
-      dispatch({ type: 'ELBOW_DRAG_MOVE', id: d.id, p: toWorld(e) });
-      return;
-    }
     const world = toWorld(e);
     const dx = world.x - d.startWorld.x;
     const dy = world.y - d.startWorld.y;
+    // The same 4px dead zone guards every handle drag, not just move/resize: a connector's
+    // endpoint handle sits exactly on its shape's border, so without it a single pixel of
+    // jitter while clicking the handle would detach the connector and push that onto the
+    // undo stack.
     if (!d.moved && Math.hypot(dx * view.scale, dy * view.scale) < 4) return;
     d.moved = true;
+    if (d.kind === 'endpoint') {
+      dispatch({ type: 'ENDPOINT_DRAG_MOVE', id: d.id, end: d.end as 'from' | 'to', p: world });
+      return;
+    }
+    if (d.kind === 'waypoint') {
+      dispatch({ type: 'WAYPOINT_DRAG_MOVE', id: d.id, index: d.index as number, p: world });
+      return;
+    }
+    if (d.kind === 'elbow') {
+      dispatch({ type: 'ELBOW_DRAG_MOVE', id: d.id, p: world });
+      return;
+    }
     if (d.kind === 'move') {
       const rect = { x: d.orig.x + dx, y: d.orig.y + dy, w: d.orig.w, h: d.orig.h };
       const excludeIds = new Set(state.selectedIds.length ? state.selectedIds : [d.id]);
@@ -1271,30 +1302,13 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           const path = connectorPath(doc, selectedConnector);
           const a = path[0];
           const b = path[path.length - 1];
+          // A self-loop's feet are stored as anchors of their own (see Endpoint), so they
+          // read as fixed even though they carry no explicit `anchor`.
+          const loop = isSelfLoop(selectedConnector);
           return (
             <>
-              {/* Green like the connect dots: these re-attach a connector's ends,
-                * so they belong to the "connect" family, not the blue resize one. */}
-              <circle
-                data-handle="endpoint-from"
-                cx={a.x}
-                cy={a.y}
-                r={6}
-                fill="var(--connect)"
-                stroke="var(--bg)"
-                strokeWidth={1.5}
-                style={{ cursor: 'crosshair' }}
-              />
-              <circle
-                data-handle="endpoint-to"
-                cx={b.x}
-                cy={b.y}
-                r={6}
-                fill="var(--connect)"
-                stroke="var(--bg)"
-                strokeWidth={1.5}
-                style={{ cursor: 'crosshair' }}
-              />
+              {endpointHandle('endpoint-from', a, loop || !!selectedConnector.from.anchor)}
+              {endpointHandle('endpoint-to', b, loop || !!selectedConnector.to.anchor)}
             </>
           );
         })()}

@@ -86,6 +86,16 @@ export interface Endpoint {
   shapeId?: string;
   x: number;
   y: number;
+  /** Where on the bound shape the connector attaches, as **bbox-normalized** coordinates
+   * in 0..1 — same scheme as a self-loop foot's `x`/`y` above, and takes precedence over
+   * them wherever both could apply.
+   *
+   * Undefined = a *floating* attachment: the connector aims at the shape's centre and the
+   * visible end slides around the border to face whatever it is connected to (the original,
+   * and still the default when an endpoint is dropped into a shape's interior). Set = a
+   * *fixed* attachment: the connector touches exactly this point on the shape and stays
+   * there through moves and resizes. Only meaningful together with `shapeId`. */
+  anchor?: Pt;
 }
 
 /** Arrowhead placement along a connector; undefined = 'end' (the original default). */

@@ -247,7 +247,12 @@ function rayPolygonBorder(o: Pt, d: Pt, verts: Pt[]): Pt | null {
   return best?.p ?? null;
 }
 
-export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
+/** Whether `p` lies inside a shape's bounding box, grown by `margin` on every side. */
+export function withinBBox(s: { x: number; y: number; w: number; h: number }, p: Pt, margin = 0): boolean {
+  return p.x >= s.x - margin && p.x <= s.x + s.w + margin && p.y >= s.y - margin && p.y <= s.y + s.h + margin;
+}
+
+function topmostShape(doc: Doc, p: Pt, margin: number): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
     const s = doc.shapes[i];
     // A frame hit-tests purely by frameHitZone: its interior is transparent (so it never
@@ -258,9 +263,19 @@ export function shapeAt(doc: Doc, p: Pt): Shape | undefined {
       if (frameHitZone(s, p)) return s;
       continue;
     }
-    if (p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) return s;
+    if (withinBBox(s, p, margin)) return s;
   }
   return undefined;
+}
+
+/** Topmost shape at `p`. With a `margin`, a shape whose border `p` merely came close to also
+ * counts — for grabbing/dropping gestures that aim at an outline rather than an interior.
+ * Exact hits are resolved first, so a shape `p` is genuinely inside never loses to a
+ * neighbour that happens to sit higher in z-order and pass within `margin`. */
+export function shapeAt(doc: Doc, p: Pt, margin = 0): Shape | undefined {
+  const exact = topmostShape(doc, p, 0);
+  if (exact || margin <= 0) return exact;
+  return topmostShape(doc, p, margin);
 }
 
 export function connectorAt(doc: Doc, p: Pt): Connector | undefined {
@@ -282,21 +297,58 @@ export function findConnector(doc: Doc, id: string): Connector | undefined {
   return doc.connectors.find((c) => c.id === id);
 }
 
+/** World point of a bbox-normalized anchor (see Endpoint). */
+export function anchorPoint(s: { x: number; y: number; w: number; h: number }, a: Pt): Pt {
+  return { x: s.x + a.x * s.w, y: s.y + a.y * s.h };
+}
+
+/** `p` expressed as a bbox-normalized anchor on `s` (see Endpoint). */
+export function toAnchor(s: { x: number; y: number; w: number; h: number }, p: Pt): Pt {
+  return { x: (p.x - s.x) / (s.w || 1), y: (p.y - s.y) / (s.h || 1) };
+}
+
+/** The point on a shape's outline closest to `p` — where an endpoint dropped at `p` should
+ * pin. Box-ish kinds project onto the nearest edge, so aiming at a rectangle's right edge
+ * pins at the cursor's own height rather than wherever a ray from the centre happens to
+ * leave. The curved/pointed kinds have no such straightforward projection and use the
+ * centre ray (`borderPoint`), which for a point at or just outside the outline — the case
+ * that matters here — lands within a hair of the true nearest point anyway. */
+export function nearestBorderPoint(s: Shape, p: Pt): Pt {
+  if (s.kind === 'ellipse' || s.kind === 'diamond' || s.kind === 'triangle') return borderPoint(s, p);
+  const cx = Math.min(Math.max(p.x, s.x), s.x + s.w);
+  const cy = Math.min(Math.max(p.y, s.y), s.y + s.h);
+  const dl = cx - s.x;
+  const dr = s.x + s.w - cx;
+  const dt = cy - s.y;
+  const db = s.y + s.h - cy;
+  const m = Math.min(dl, dr, dt, db);
+  if (m === dt) return { x: cx, y: s.y };
+  if (m === db) return { x: cx, y: s.y + s.h };
+  if (m === dl) return { x: s.x, y: cy };
+  return { x: s.x + s.w, y: cy };
+}
+
 export function resolveEndpoint(doc: Doc, e: Endpoint): { p: Pt; shape?: Shape } {
   const s = e.shapeId ? findShape(doc, e.shapeId) : undefined;
-  if (s) return { p: { x: s.x + s.w / 2, y: s.y + s.h / 2 }, shape: s };
+  // A fixed attachment resolves to its anchor; a floating one to the shape's centre, which
+  // is only ever an aiming point — the visible end is trimmed to the border by endpointFoot.
+  if (s) return { p: e.anchor ? anchorPoint(s, e.anchor) : { x: s.x + s.w / 2, y: s.y + s.h / 2 }, shape: s };
   return { p: { x: e.x, y: e.y } };
+}
+
+/** Where a connector actually meets an endpoint, given the point it heads toward next: a
+ * fixed attachment stays on its anchor, a floating one slides around the border to face
+ * `toward`, and a free endpoint is simply itself. */
+function endpointFoot(e: Endpoint, resolved: { p: Pt; shape?: Shape }, toward: Pt): Pt {
+  if (!resolved.shape || e.anchor) return resolved.p;
+  return borderPoint(resolved.shape, toward);
 }
 
 /** Visible segment of a connector, trimmed at shape borders (endpoints only; ignores routing/waypoints). */
 export function connectorEnds(doc: Doc, c: Connector): [Pt, Pt] {
   const from = resolveEndpoint(doc, c.from);
   const to = resolveEndpoint(doc, c.to);
-  let a = from.p;
-  let b = to.p;
-  if (from.shape) a = borderPoint(from.shape, to.p);
-  if (to.shape) b = borderPoint(to.shape, from.p);
-  return [a, b];
+  return [endpointFoot(c.from, from, to.p), endpointFoot(c.to, to, from.p)];
 }
 
 /** A connector is a self-loop when both ends bind the same shape. */
@@ -328,11 +380,18 @@ export const SIDE_NORM: Record<LoopSide, Pt> = {
   left: { x: 0, y: 0.5 },
 };
 
+/** An endpoint's normalized anchor: the explicit fixed-attachment `anchor` when it has one,
+ * else its `x`/`y`, which for a self-loop foot are themselves normalized (see Endpoint). */
+function normAnchorOf(e: Endpoint): Pt {
+  return e.anchor ?? { x: e.x, y: e.y };
+}
+
 /** The side an endpoint's normalized anchor sits toward, for showing the active
  * side in the self-loop UI. Ties/centre fall to 'top'. */
 export function loopSideOf(e: Endpoint): LoopSide {
-  const dx = e.x - 0.5;
-  const dy = e.y - 0.5;
+  const a = normAnchorOf(e);
+  const dx = a.x - 0.5;
+  const dy = a.y - 0.5;
   if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 'top';
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
   return dy >= 0 ? 'bottom' : 'top';
@@ -340,17 +399,18 @@ export function loopSideOf(e: Endpoint): LoopSide {
 
 /** World point of a self-loop endpoint's bbox-normalized anchor (see Endpoint). */
 function selfLoopAnchor(s: Shape, e: Endpoint): Pt {
-  return { x: s.x + e.x * s.w, y: s.y + e.y * s.h };
+  return anchorPoint(s, normAnchorOf(e));
 }
 
 /** Outward axis-aligned normal for a foot: a self-loop foot's normalized anchor sits on
  * a border (one coord at ~0 or ~1), so pick the edge it's nearest to. Used to leave/re-enter
  * the shape perpendicular to its border and to project the foot out onto the padded box. */
 function footNormal(e: Endpoint): Pt {
-  const dl = e.x;
-  const dr = 1 - e.x;
-  const dt = e.y;
-  const db = 1 - e.y;
+  const a = normAnchorOf(e);
+  const dl = a.x;
+  const dr = 1 - a.x;
+  const dt = a.y;
+  const db = 1 - a.y;
   const m = Math.min(dl, dr, dt, db);
   if (m === dt) return { x: 0, y: -1 };
   if (m === db) return { x: 0, y: 1 };
@@ -374,7 +434,7 @@ function catmullRom(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
 const SELF_LOOP_INSIDE_TOL = 2.5;
 
 /** Deepest a point pokes inside the shape (0 if on/outside the border). */
-function insideDepth(s: Shape, p: Pt): number {
+export function insideDepth(s: Shape, p: Pt): number {
   if (p.x <= s.x || p.x >= s.x + s.w || p.y <= s.y || p.y >= s.y + s.h) return 0;
   return Math.min(p.x - s.x, s.x + s.w - p.x, p.y - s.y, s.y + s.h - p.y);
 }
@@ -532,9 +592,7 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
   if (c.waypoints && c.waypoints.length) {
     const first = c.waypoints[0];
     const last = c.waypoints[c.waypoints.length - 1];
-    const a = from.shape ? borderPoint(from.shape, first) : from.p;
-    const b = to.shape ? borderPoint(to.shape, last) : to.p;
-    return [a, ...c.waypoints, b];
+    return [endpointFoot(c.from, from, first), ...c.waypoints, endpointFoot(c.to, to, last)];
   }
   if (c.routing === 'orthogonal') {
     const dx = to.p.x - from.p.x;
@@ -548,15 +606,9 @@ export function connectorPath(doc: Doc, c: Connector): Pt[] {
       const midY = from.p.y + dy * ratio;
       bend = [{ x: from.p.x, y: midY }, { x: to.p.x, y: midY }];
     }
-    const a = from.shape ? borderPoint(from.shape, bend[0]) : from.p;
-    const b = to.shape ? borderPoint(to.shape, bend[1]) : to.p;
-    return [a, ...bend, b];
+    return [endpointFoot(c.from, from, bend[0]), ...bend, endpointFoot(c.to, to, bend[1])];
   }
-  let a = from.p;
-  let b = to.p;
-  if (from.shape) a = borderPoint(from.shape, to.p);
-  if (to.shape) b = borderPoint(to.shape, from.p);
-  return [a, b];
+  return [endpointFoot(c.from, from, to.p), endpointFoot(c.to, to, from.p)];
 }
 
 /** Point to anchor a connector's label at, and which side of it the text should grow

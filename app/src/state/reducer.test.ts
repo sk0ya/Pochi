@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, reduce } from './reducer';
 import type { EditorState } from './reducer';
-import { labelCenter } from '../model/doc';
-import type { Connector, Doc, Shape } from '../model/types';
+import { connectorPath, labelCenter } from '../model/doc';
+import type { Connector, Doc, Pt, Shape } from '../model/types';
 import { GRID } from '../model/types';
 
 // This suite runs under vitest's `node` environment (no DOM). `measureLabel` — used when
@@ -1344,5 +1344,139 @@ describe('self-loop arrows', () => {
     expect(c.to.shapeId).toBe('s1');
     // The previously centre-bound `from` end is re-normalized so both ends agree.
     expect(norm(c.from.x) && norm(c.from.y) && norm(c.to.x) && norm(c.to.y)).toBe(true);
+  });
+
+  it('keeps sliding a self-loop foot when it is dragged outside the shape', () => {
+    const doc: Doc = {
+      ...twoShapes,
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 0.5, y: 0 }, to: { shapeId: 's1', x: 1, y: 0.5 }, label: '' }],
+    };
+    let st = initialState(doc, true);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    // 30px clear of s1's right edge — pulling a foot outward is how a loop is reshaped.
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 250, y: 110 } });
+    const c = st.doc.connectors[0];
+    expect(c.to.shapeId).toBe('s1');
+    expect(norm(c.to.x) && norm(c.to.y)).toBe(true);
+  });
+
+  it('breaks a self-loop once a foot is dragged well clear of the shape', () => {
+    const doc: Doc = {
+      ...twoShapes,
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 0.5, y: 0 }, to: { shapeId: 's1', x: 1, y: 0.5 }, label: '' }],
+    };
+    let st = initialState(doc, true);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 320, y: 140 } });
+    const c = st.doc.connectors[0];
+    expect(c.to.shapeId).toBeUndefined();
+    expect(c.to).toEqual({ x: 320, y: 140 });
+  });
+});
+
+describe('connector endpoint drag', () => {
+  const doc = (): Doc => ({
+    shapes: [
+      { id: 's1', kind: 'rect', x: 100, y: 100, w: 120, h: 80, label: '' },
+      { id: 's2', kind: 'rect', x: 400, y: 100, w: 120, h: 80, label: '' },
+      { id: 's3', kind: 'rect', x: 250, y: 300, w: 120, h: 80, label: '' },
+    ],
+    connectors: [
+      { id: 'c1', from: { shapeId: 's1', x: 160, y: 140 }, to: { shapeId: 's2', x: 460, y: 140 }, label: '' },
+    ],
+  });
+
+  const drag = (points: Pt[], end: 'from' | 'to' = 'to') => {
+    let st = initialState(doc(), true);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end });
+    for (const p of points) st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end, p });
+    return st.doc.connectors[0];
+  };
+
+  it('drops a detached endpoint exactly on the cursor, not on the grid', () => {
+    // Grid-snapping a handle the user is dragging directly would leave it visibly
+    // lagging the pointer by up to half a grid step.
+    expect(drag([{ x: 331, y: 247 }]).to).toEqual({ x: 331, y: 247 });
+  });
+
+  it('attaches to a shape whose outline the cursor only came close to', () => {
+    // 5px left of s3's left edge: the endpoint handle is aimed at the outline, so a
+    // strict inside-the-bbox test would leave the arrow floating unattached.
+    expect(drag([{ x: 245, y: 340 }]).to.shapeId).toBe('s3');
+  });
+
+  it('does not detach from its shape on a hair of movement across the border', () => {
+    expect(drag([{ x: 398, y: 140 }]).to.shapeId).toBe('s2');
+  });
+
+  it('restores the other end after the cursor sweeps over its shape and off again', () => {
+    // Passing over s1 makes the connector a momentary self-loop, which re-anchors `from`;
+    // carrying on past s1 has to put `from` back exactly as it was.
+    const c = drag([{ x: 300, y: 140 }, { x: 160, y: 140 }, { x: 40, y: 140 }]);
+    expect(c.from).toEqual({ shapeId: 's1', x: 160, y: 140 });
+    expect(c.to).toEqual({ x: 40, y: 140 });
+  });
+
+  it('pins to the edge when dropped on it, and stays floating when dropped inside', () => {
+    // s2 spans x 400..520, y 100..180. Dropping on its left edge a third of the way down
+    // fixes the attachment exactly there; dropping into the middle leaves it floating.
+    const pinned = drag([{ x: 402, y: 115 }]);
+    expect(pinned.to.anchor).toEqual({ x: 0, y: 0.1875 });
+    expect(drag([{ x: 460, y: 140 }]).to.anchor).toBeUndefined();
+  });
+
+  it('touches a pinned edge point exactly, and aims the other end at it', () => {
+    const st = initialState(doc(), true);
+    let s = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    s = reduce(s, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 402, y: 115 } });
+    const path = connectorPath(s.doc, s.doc.connectors[0]);
+    expect(path[path.length - 1]).toEqual({ x: 400, y: 115 });
+    // The still-floating `from` end slides up its border to face the pin rather than
+    // staying on the old centre-to-centre line (which left it at y = 140).
+    expect(path[0].y).toBeLessThan(140);
+  });
+
+  it('carries a pinned edge point through moves and resizes of its shape', () => {
+    let s = reduce(initialState(doc(), true), { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    s = reduce(s, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 402, y: 115 } });
+    s = reduce(s, { type: 'DRAG_END' });
+    s = reduce(s, { type: 'DRAG_START', id: 's2' });
+    s = reduce(s, { type: 'DRAG_MOVE', id: 's2', to: { x: 400, y: 300 } });
+    s = reduce(s, { type: 'DRAG_END' });
+    const moved = connectorPath(s.doc, s.doc.connectors[0]);
+    expect(moved[moved.length - 1]).toEqual({ x: 400, y: 315 }); // 300 + 0.1875 * 80
+    s = reduce(s, { type: 'DRAG_START', id: 's2' });
+    s = reduce(s, { type: 'DRAG_RESIZE', w: 240, h: 160, anchor: { x: 400, y: 300 } });
+    s = reduce(s, { type: 'DRAG_END' });
+    const resized = connectorPath(s.doc, s.doc.connectors[0]);
+    expect(resized[resized.length - 1]).toEqual({ x: 400, y: 330 }); // 300 + 0.1875 * 160
+  });
+
+  it('keeps a broken self-loop attached where its foot was', () => {
+    const looped: Doc = {
+      ...doc(),
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 0.5, y: 1 }, to: { shapeId: 's1', x: 1, y: 0.5 }, label: '' }],
+    };
+    let s = reduce(initialState(looped, true), { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    s = reduce(s, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 460, y: 140 } }); // onto s2
+    const c = s.doc.connectors[0];
+    expect(c.to.shapeId).toBe('s2');
+    // `from` was the loop's bottom foot; it stays pinned to the bottom edge rather than
+    // reverting to a centre-aimed attachment.
+    expect(c.from.anchor).toEqual({ x: 0.5, y: 1 });
+    expect(connectorPath(s.doc, c)[0]).toEqual({ x: 160, y: 180 });
+  });
+
+  it('drags a bend point to the cursor, but still snaps one added by click', () => {
+    const doc: Doc = {
+      shapes: [{ id: 's1', kind: 'rect', x: 100, y: 100, w: 120, h: 80, label: '' }],
+      connectors: [{ id: 'c1', from: { x: 100, y: 100 }, to: { x: 400, y: 400 }, label: '' }],
+    };
+    let st = initialState(doc, true);
+    st = reduce(st, { type: 'ADD_WAYPOINT', id: 'c1', p: { x: 251, y: 249 } });
+    expect(st.doc.connectors[0].waypoints).toEqual([{ x: 256, y: 256 }]); // snapped to GRID
+    st = reduce(st, { type: 'WAYPOINT_DRAG_START', id: 'c1', index: 0 });
+    st = reduce(st, { type: 'WAYPOINT_DRAG_MOVE', id: 'c1', index: 0, p: { x: 331, y: 247 } });
+    expect(st.doc.connectors[0].waypoints).toEqual([{ x: 331, y: 247 }]);
   });
 });
