@@ -236,7 +236,7 @@ export type Action =
   | { type: 'ZOOM'; factor: number; center: Pt }
   | { type: 'RESET_ZOOM'; center: Pt }
   | { type: 'FIT'; screenW: number; screenH: number }
-  | { type: 'CENTER'; screenW: number; screenH: number }
+  | { type: 'CENTER'; screenW: number; screenH: number; onlyIfOffscreen?: boolean }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'NEW' }
@@ -435,6 +435,109 @@ function moveDelta(key: string, step: number): Pt | null {
     case 'j': case 'ArrowDown': return { x: 0, y: step };
     default: return null;
   }
+}
+
+/** Row height for the `w`/`b` reading-order jump: shapes whose centers sit within `SHAPE_ROW_H`
+ * of the top of their row count as one "row" and are traversed left-to-right before dropping
+ * to the next row (about half a default shape height). */
+const SHAPE_ROW_H = GRID * 3;
+
+/** Shapes in reading order (top-to-bottom, then left-to-right within a row), plus the
+ * comparator that produced it so an arbitrary point — the cursor — can be placed in the same
+ * order.
+ *
+ * Rows are derived from the shapes themselves (sweep top-to-bottom, start a new row when a
+ * center drops more than `SHAPE_ROW_H` below the row's first member) rather than quantizing y
+ * against fixed global bands: fixed bands split two shapes that sit visually side by side
+ * (centers at y=71 and y=73 land in different `round(y / 48)` buckets) and then visit the
+ * right-hand one first — the exact inversion the row grouping exists to prevent. Each shape's
+ * row is computed once up front, so the comparison is still a proper *total* order —
+ * transitive, so a diagonal/staircase layout can't produce an A<B<C<A cycle that makes `sort`
+ * return garbage and breaks `b` as the inverse of `w`. A point in the gap between two rows
+ * gets a fractional row key, so it sorts strictly between them. */
+function readingOrder(shapes: Shape[]): { sorted: Shape[]; cmp: (a: Pt, b: Pt) => number } {
+  const rows: { top: number; bot: number }[] = [];
+  for (const y of shapes.map((s) => labelCenter(s).y).sort((p, q) => p - q)) {
+    const row = rows[rows.length - 1];
+    if (row && y - row.top <= SHAPE_ROW_H) row.bot = y;
+    else rows.push({ top: y, bot: y });
+  }
+  const rowOf = (y: number): number => {
+    for (let i = 0; i < rows.length; i++) {
+      if (y < rows[i].top) return i - 0.5;
+      if (y <= rows[i].bot) return i;
+    }
+    return rows.length - 0.5;
+  };
+  const cmp = (a: Pt, b: Pt): number => {
+    const ra = rowOf(a.y);
+    const rb = rowOf(b.y);
+    if (ra !== rb) return ra - rb;
+    if (a.x !== b.x) return a.x - b.x;
+    return a.y - b.y;
+  };
+  return { sorted: [...shapes].sort((s1, s2) => cmp(labelCenter(s1), labelCenter(s2))), cmp };
+}
+
+/** Vim-style `w`/`b` over shapes: jump the cursor to the next (`dir: 1`) or previous
+ * (`dir: -1`) shape in reading order (top-to-bottom, then left-to-right within a row) and
+ * select it, expanding to the whole group like a hint jump does. A non-empty selection reads
+ * as VISUAL in the status bar — that's intended here, same as `f`. Honors a numeric count
+ * (`3w`), clamping an overshoot to the last/first shape. Connectors aren't traversed, matching
+ * HINT mode. The view-follow for a jump that lands off-screen is in `App.tsx`'s key handler. */
+function stepShape(state: EditorState, dir: 1 | -1): EditorState {
+  const shapes = state.doc.shapes;
+  if (!shapes.length) return { ...state, msg: 'no shapes', count: '' };
+  const { sorted, cmp } = readingOrder(shapes);
+  const n = getCount(state);
+  const stuck = { ...state, count: '', msg: dir === 1 ? 'no next shape' : 'no previous shape' };
+
+  // Where we're standing. The shape we last landed on is the one sitting at the cursor's exact
+  // resting point — *not* `shapeAt(cursor)`, which asks a different question and stalls the jump
+  // twice over: it returns the topmost shape at that point (a label stamped over a box hands back
+  // the box, so `w` walks into it and bounces off forever), and it returns nothing at all inside
+  // a frame (frames hit-test by their border band only), which dropped `b` into the gap branch
+  // below and stepped it back onto the frame it was already on. Selection first, since that's
+  // what a landing sets; then any shape centered here, so the jump still works after an Esc.
+  const at = (s: Shape) => {
+    const c = snapPt(labelCenter(s));
+    return c.x === state.cursor.x && c.y === state.cursor.y;
+  };
+  let cur = sorted.findIndex((s) => state.selectedIds.includes(s.id) && at(s));
+  if (cur === -1) cur = sorted.findIndex(at);
+  if (cur === -1) {
+    const under = shapeAt(state.doc, state.cursor);
+    if (under) cur = sorted.findIndex((s) => s.id === under.id);
+  }
+
+  let idx: number;
+  if (cur !== -1) {
+    // An overshooting count clamps to the far end, the way vim clamps `9w` to the last word
+    // instead of refusing to move; only a step with nowhere left to go reports the boundary.
+    idx = Math.max(0, Math.min(cur + dir * n, sorted.length - 1));
+    if (idx === cur) return stuck;
+  } else if (dir === 1) {
+    // Cursor sits between shapes: step from the first shape strictly past it in reading order.
+    const after = sorted.findIndex((s) => cmp(state.cursor, labelCenter(s)) < 0);
+    if (after === -1) return stuck;
+    idx = Math.min(after + (n - 1), sorted.length - 1);
+  } else {
+    let before = -1;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (cmp(labelCenter(sorted[i]), state.cursor) < 0) { before = i; break; }
+    }
+    if (before === -1) return stuck;
+    idx = Math.max(before - (n - 1), 0);
+  }
+  const target = sorted[idx];
+  const gid = groupIdOf(state.doc, target.id);
+  return {
+    ...state,
+    cursor: snapPt(labelCenter(target)),
+    selectedIds: gid ? groupMembers(state.doc, gid) : [target.id],
+    count: '',
+    msg: '',
+  };
 }
 
 function normRect(a: Pt, b: Pt): { x: number; y: number; w: number; h: number } {
@@ -1055,6 +1158,10 @@ function handleNormalKey(state: EditorState, key: string, ctrl: boolean, shift: 
       return startArrow(state);
     case 'f':
       return startHint(state);
+    case 'w':
+      return stepShape(state, 1);
+    case 'b':
+      return stepShape(state, -1);
     case 'm':
       return { ...state, pending: 'mark-set', count: '', msg: '' };
     case "'":
@@ -1761,7 +1868,16 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       };
     }
 
-    case 'CENTER':
+    case 'CENTER': {
+      // `onlyIfOffscreen` is the view-follow for a `w`/`b` jump: it re-centers only when the
+      // cursor would otherwise land outside the viewport. Centering on every hop would make the
+      // canvas lurch under the user each time they step between two neighbouring shapes.
+      if (action.onlyIfOffscreen) {
+        const m = GRID * 4; // breathing room, so a landing right at the edge still re-centers
+        const x = state.cursor.x * state.view.scale + state.view.x;
+        const y = state.cursor.y * state.view.scale + state.view.y;
+        if (x >= m && x <= action.screenW - m && y >= m && y <= action.screenH - m) return state;
+      }
       return {
         ...state,
         view: {
@@ -1770,6 +1886,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
           y: action.screenH / 2 - state.cursor.y * state.view.scale,
         },
       };
+    }
 
     case 'UNDO': {
       const prev = state.undo[state.undo.length - 1];

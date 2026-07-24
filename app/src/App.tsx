@@ -159,7 +159,7 @@ function parseExportTheme(arg: string | undefined): ExportTheme | undefined | nu
 
 /** Keys the vim layer owns in normal/transient modes (prevent browser defaults). */
 const HANDLED = new Set([
-  'h', 'j', 'k', 'l', 'r', 'e', 'q', 'g', 'w', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u', 'o',
+  'h', 'j', 'k', 'l', 'r', 'e', 'q', 'g', 'w', 'b', 'a', 'f', 't', 'i', 'v', 's', 'd', 'x', 'y', 'p', 'u', 'o',
   'n', 'N', '.', 'm', "'",
   'Enter', 'Escape', '?',
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Delete', 'Backspace',
@@ -816,6 +816,21 @@ export default function App() {
         return;
       }
       if (e.ctrlKey || e.altKey || e.metaKey) return;
+      // `w`/`b` is a long-range jump by design — it can walk the cursor to a shape well outside
+      // the viewport, and plain cursor movement doesn't pan the view (see the `z` handler above),
+      // so follow it the way `'{mark}` does. Only when the landing spot is actually off-screen,
+      // though: stepping between two shapes sitting side by side must not yank the canvas.
+      if (s.vim && s.mode === 'normal' && (e.key === 'w' || e.key === 'b')) {
+        e.preventDefault();
+        dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
+        dispatch({
+          type: 'CENTER',
+          screenW: window.innerWidth,
+          screenH: window.innerHeight,
+          onlyIfOffscreen: true,
+        });
+        return;
+      }
       if (HANDLED.has(e.key)) {
         e.preventDefault();
         dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });

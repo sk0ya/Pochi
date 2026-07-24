@@ -25,6 +25,16 @@ const rect = (id: string, x: number, y: number, w = GRID * 4, h = GRID * 4): Sha
   label: '',
 });
 
+const frame = (id: string, x: number, y: number, w = GRID * 8, h = GRID * 8): Shape => ({
+  id,
+  kind: 'frame',
+  x,
+  y,
+  w,
+  h,
+  label: '',
+});
+
 const labelCenterOf = labelCenter;
 
 /** Fresh vim-mode state (HINT is a vim-only feature) with `doc` loaded and the
@@ -163,6 +173,137 @@ describe('HINT mode: narrowing and jump', () => {
     expect(jumped.selectedIds).toEqual(['a', 'b']);
     // Cursor still lands on the hit shape's own center, not the group's.
     expect(jumped.cursor).toEqual({ x: GRID * 12, y: GRID * 2 });
+  });
+});
+
+describe('w / b: jump between shapes in reading order', () => {
+  // Three shapes below/right of the default cursor ({GRID*10, GRID*10}): s1 and s2 share a
+  // row (top→bottom, left→right reading order gives s1, s2, s3).
+  const s1 = rect('s1', GRID * 20, GRID * 20);
+  const s2 = rect('s2', GRID * 40, GRID * 20);
+  const s3 = rect('s3', GRID * 20, GRID * 40);
+  const doc: Doc = { shapes: [s3, s1, s2], connectors: [] }; // unsorted on purpose
+
+  it('w from an empty spot jumps to the first shape in reading order and selects it', () => {
+    const state = key(vimState(doc), 'w');
+    expect(state.selectedIds).toEqual(['s1']);
+    expect(state.cursor).toEqual(labelCenterOf(s1));
+  });
+
+  it('w walks s1 → s2 → s3, then stops at the last shape', () => {
+    let state = key(vimState(doc), 'w');
+    expect(state.selectedIds).toEqual(['s1']);
+    state = key(state, 'w');
+    expect(state.selectedIds).toEqual(['s2']);
+    state = key(state, 'w');
+    expect(state.selectedIds).toEqual(['s3']);
+    const atEnd = key(state, 'w');
+    expect(atEnd.selectedIds).toEqual(['s3']); // unchanged
+    expect(atEnd.cursor).toEqual(state.cursor);
+    expect(atEnd.msg).toBe('no next shape');
+  });
+
+  it('b walks back s3 → s2 → s1, then stops at the first shape', () => {
+    let state = type(vimState(doc), 'www'); // on s3
+    expect(state.selectedIds).toEqual(['s3']);
+    state = key(state, 'b');
+    expect(state.selectedIds).toEqual(['s2']);
+    state = key(state, 'b');
+    expect(state.selectedIds).toEqual(['s1']);
+    const atStart = key(state, 'b');
+    expect(atStart.selectedIds).toEqual(['s1']); // unchanged
+    expect(atStart.msg).toBe('no previous shape');
+  });
+
+  it('honors a count: 3w lands three shapes forward', () => {
+    const state = type(vimState(doc), '3w');
+    expect(state.selectedIds).toEqual(['s3']);
+    expect(state.cursor).toEqual(labelCenterOf(s3));
+  });
+
+  it('does nothing when there are no shapes', () => {
+    const state = key(vimState({ shapes: [], connectors: [] }), 'w');
+    expect(state.selectedIds).toEqual([]);
+    expect(state.msg).toBe('no shapes');
+  });
+
+  it('b reverses w even on a diagonal/staircase layout (reading order is a total order)', () => {
+    // Three shapes marching down-and-left, each on its own row band (GRID*3 tall). A naive
+    // "same row within tolerance" comparator would form an A<B<C<A cycle here and break `b`.
+    const top = rect('top', GRID * 60, GRID * 10); // highest, rightmost
+    const mid = rect('mid', GRID * 30, GRID * 30);
+    const bot = rect('bot', GRID * 0, GRID * 50); // lowest, leftmost
+    const d: Doc = { shapes: [mid, bot, top], connectors: [] };
+    // Forward: top → mid → bot (top-to-bottom).
+    let s = key(vimState(d), 'w');
+    expect(s.selectedIds).toEqual(['top']);
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['mid']);
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['bot']);
+    // Backward must retrace exactly: bot → mid → top.
+    s = key(s, 'b');
+    expect(s.selectedIds).toEqual(['mid']);
+    s = key(s, 'b');
+    expect(s.selectedIds).toEqual(['top']);
+  });
+
+  it('expands the selection to the whole group, like a hint jump would', () => {
+    const a = { ...rect('a', GRID * 20, GRID * 20), groupId: 'g1' };
+    const b = { ...rect('b', GRID * 30, GRID * 20), groupId: 'g1' };
+    const state = key(vimState({ shapes: [a, b], connectors: [] }), 'w');
+    expect(state.selectedIds).toEqual(['a', 'b']);
+    expect(state.cursor).toEqual(labelCenterOf(a));
+  });
+
+  it('keeps walking when the shape it landed on is covered by one above it in z-order', () => {
+    // `over` sits on top of `big` and contains its center, so "what is under the cursor?" answers
+    // `over`, not the shape `w` just jumped to — stepping from that answer walked straight back
+    // into `big` and stalled there.
+    const big = rect('big', GRID * 20, GRID * 20, GRID * 8, GRID * 8); // center (24, 24)
+    const over = rect('over', GRID * 20, GRID * 23, GRID * 6, GRID * 2); // center (23, 24), on top
+    const last = rect('last', GRID * 20, GRID * 40);
+    const d: Doc = { shapes: [big, over, last], connectors: [] };
+    let s = key(vimState(d), 'w');
+    expect(s.selectedIds).toEqual(['over']);
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['big']);
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['last']);
+  });
+
+  it('steps off a frame in both directions (a frame has no hit-testable interior)', () => {
+    const a = rect('a', GRID * 20, GRID * 20);
+    const f = frame('f1', GRID * 20, GRID * 40);
+    const c = rect('c', GRID * 20, GRID * 60);
+    let s = type(vimState({ shapes: [a, f, c], connectors: [] }), 'ww');
+    expect(s.selectedIds).toEqual(['f1']);
+    // `shapeAt` returns nothing inside a frame, so `b` used to step back onto the frame itself.
+    const back = key(s, 'b');
+    expect(back.selectedIds).toEqual(['a']);
+    expect(back.cursor).toEqual(labelCenterOf(a));
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['c']);
+  });
+
+  it('clamps an overshooting count to the last/first shape instead of refusing to move', () => {
+    const fwd = type(vimState(doc), '9w');
+    expect(fwd.selectedIds).toEqual(['s3']);
+    expect(fwd.msg).toBe('');
+    const back = type(fwd, '9b');
+    expect(back.selectedIds).toEqual(['s1']);
+    expect(back.msg).toBe('');
+  });
+
+  it('keeps two side-by-side shapes in one row wherever they sit on the canvas', () => {
+    // Rows are derived from the shapes, not from fixed `round(y / SHAPE_ROW_H)` bands: these two
+    // centers are 2px apart but straddle a band boundary, which used to visit `right` first.
+    const left = rect('left', GRID * 20, GRID * 20 + 23);
+    const right = rect('right', GRID * 40, GRID * 20 + 21);
+    let s = key(vimState({ shapes: [right, left], connectors: [] }), 'w');
+    expect(s.selectedIds).toEqual(['left']);
+    s = key(s, 'w');
+    expect(s.selectedIds).toEqual(['right']);
   });
 });
 
