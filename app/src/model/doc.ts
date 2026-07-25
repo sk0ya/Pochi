@@ -411,20 +411,26 @@ function selfLoopAnchor(s: Shape, e: Endpoint): Pt {
   return anchorPoint(s, normAnchorOf(e));
 }
 
-/** Outward axis-aligned normal for a foot: a self-loop foot's normalized anchor sits on
- * a border (one coord at ~0 or ~1), so pick the edge it's nearest to. Used to leave/re-enter
- * the shape perpendicular to its border and to project the foot out onto the padded box. */
+/** Outward axis-aligned normal for a foot: the side the foot sits toward as seen from the
+ * shape's centre, which is `loopSideOf`'s rule. Used to leave/re-enter the shape
+ * perpendicular to its border and to project the foot out onto the padded box.
+ *
+ * Deliberately not "nearest bbox edge": a foot dropped by dragging is stored as the
+ * *outline* point under the cursor, and on an ellipse/diamond/triangle that sits well
+ * inside the bounding box, where distance-to-each-edge says nothing useful. For a foot
+ * that is on the bbox border the two rules agree (except at an exact corner, where either
+ * answer is as good). */
 function footNormal(e: Endpoint): Pt {
-  const a = normAnchorOf(e);
-  const dl = a.x;
-  const dr = 1 - a.x;
-  const dt = a.y;
-  const db = 1 - a.y;
-  const m = Math.min(dl, dr, dt, db);
-  if (m === dt) return { x: 0, y: -1 };
-  if (m === db) return { x: 0, y: 1 };
-  if (m === dl) return { x: -1, y: 0 };
-  return { x: 1, y: 0 };
+  switch (loopSideOf(e)) {
+    case 'top':
+      return { x: 0, y: -1 };
+    case 'bottom':
+      return { x: 0, y: 1 };
+    case 'left':
+      return { x: -1, y: 0 };
+    default:
+      return { x: 1, y: 0 };
+  }
 }
 
 /** One Catmull-Rom span (p1→p2), with p0/p3 the neighbours that set the tangents. */
@@ -526,8 +532,17 @@ function selfLoopRoute(s: Shape, a: Pt, b: Pt, na: Pt, nb: Pt): Pt[] {
   const W = R - L;
   const H = B - T;
   const P = 2 * (W + H);
-  const wa = { x: a.x + na.x * pad, y: a.y + na.y * pad };
-  const wb = { x: b.x + nb.x * pad, y: b.y + nb.y * pad };
+  // Push each foot straight out onto the padded box, by *projecting* onto the edge its
+  // normal faces rather than stepping a fixed `pad` along that normal. For a foot on the
+  // bbox border the two are identical; for one on the real outline of an ellipse/diamond/
+  // triangle — where a dragged foot lives, inside the bbox — only the projection actually
+  // lands on the box, which `param` below depends on to place the point at all.
+  const onBox = (p: Pt, n: Pt): Pt =>
+    n.x !== 0
+      ? { x: n.x < 0 ? L : R, y: Math.min(Math.max(p.y, T), B) }
+      : { x: Math.min(Math.max(p.x, L), R), y: n.y < 0 ? T : B };
+  const wa = onBox(a, na);
+  const wb = onBox(b, nb);
   // Perimeter coordinate of a point on the padded box, measured clockwise from top-left.
   const param = (p: Pt): number => {
     if (Math.abs(p.y - T) < 1e-6) return p.x - L; // top edge

@@ -22,11 +22,13 @@ import {
   scaleShapes,
   setConnectorElbowRatio,
   shapeAt,
+  SIDE_NORM,
   subsetDoc,
+  toAnchor,
   translateItems,
   triangleVertices,
 } from './doc';
-import type { Connector, Doc, LoopSide, Shape } from './types';
+import type { Connector, Doc, LoopSide, Pt, Shape } from './types';
 
 // This suite runs under vitest's `node` environment (no DOM). `measureLabel` falls back to a
 // character-count width estimate when it can't get a canvas 2D context, so a minimal `document`
@@ -333,6 +335,54 @@ describe('self-loop connectors', () => {
               for (const p of connectorPath(d, c)) expect(insideDepth(shp, p)).toBeLessThanOrEqual(1);
             }
     }
+  });
+
+  it('never cuts through a curved/pointed shape for a foot dragged anywhere on its outline', () => {
+    // Dragging a self-loop's foot stores it as `toAnchor(shape, borderPoint(shape, cursor))`
+    // (see ENDPOINT_DRAG in the reducer). On ellipse/diamond/triangle `borderPoint` follows the
+    // real outline, so the resulting anchor is *inside* the bounding box rather than on its
+    // border — which the routed loop used to assume, mis-placing the foot on the padded box and
+    // then walking the wrong way around it, straight through the body.
+    const originOf = (s: Shape): Pt => {
+      if (s.kind !== 'triangle') return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+      const v = triangleVertices(s);
+      return { x: (v[0].x + v[1].x + v[2].x) / 3, y: (v[0].y + v[1].y + v[2].y) / 3 };
+    };
+    // How far `p` sits inside the true outline, measured along the ray `borderPoint` uses:
+    // the outline is convex for all three kinds, so comparing distances from that ray's
+    // origin is exact. Negative outside.
+    const outlineDepth = (s: Shape, p: Pt): number => {
+      const o = originOf(s);
+      const bp = borderPoint(s, p);
+      return Math.hypot(bp.x - o.x, bp.y - o.y) - Math.hypot(p.x - o.x, p.y - o.y);
+    };
+    const boxes = [
+      { w: 100, h: 60 },
+      { w: 60, h: 140 },
+      { w: 90, h: 90 },
+    ];
+    for (const kind of ['ellipse', 'diamond', 'triangle'] as const)
+      for (const box of boxes) {
+        const shp: Shape = { id: 'a', kind, x: 0, y: 0, ...box, label: '' };
+        const d: Doc = { shapes: [shp], connectors: [] };
+        // Drag targets all around the shape, well outside it so each maps to a distinct
+        // outline point (this is what the user's cursor does while reshaping a loop).
+        for (let i = 0; i < 16; i++) {
+          const ang = (i / 16) * Math.PI * 2;
+          const cursor = { x: box.w / 2 + Math.cos(ang) * box.w, y: box.h / 2 + Math.sin(ang) * box.h };
+          const dragged = toAnchor(shp, borderPoint(shp, cursor));
+          for (const other of [SIDE_NORM.top, SIDE_NORM.right, SIDE_NORM.bottom, dragged]) {
+            const c: Connector = {
+              id: 'c',
+              from: { shapeId: 'a', ...other },
+              to: { shapeId: 'a', ...dragged },
+              label: '',
+            };
+            // Same sub-stroke grazing allowance as SELF_LOOP_INSIDE_TOL in doc.ts.
+            for (const p of connectorPath(d, c)) expect(outlineDepth(shp, p)).toBeLessThanOrEqual(2.5);
+          }
+        }
+      }
   });
 
   it('nearestSide picks the side a point sits toward from the shape center', () => {
