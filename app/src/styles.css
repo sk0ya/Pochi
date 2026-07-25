@@ -892,3 +892,128 @@ body {
   color: var(--muted);
   font-size: 12px;
 }
+
+/* collab room dialog (password choice on start, password entry on join) */
+.collab-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11;
+}
+
+.collab-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* The panel takes focus on mount only to capture keys — that shouldn't look like a
+ * focused control (its own inputs still get the usual focus styling). */
+.collab-panel:focus {
+  outline: none;
+}
+
+.collab-panel h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--accent);
+}
+
+.collab-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collab-choices label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.collab-choices label:hover {
+  background: var(--hover);
+}
+
+.collab-choices input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.collab-choices small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.collab-password {
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.collab-password:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.collab-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.collab-note code {
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--cursor);
+}
+
+.collab-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.collab-actions button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.collab-actions button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.collab-actions button.primary {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.collab-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -33,6 +33,10 @@ export interface CollabHandlers {
   onPeersChange(peerIds: string[]): void;
   /** A peer's cursor moved (world coords); null = the peer left. */
   onCursor(peerId: string, p: Pt | null): void;
+  /** A peer was reached but couldn't be connected to — most often a password mismatch,
+   * which is otherwise indistinguishable from "nobody else is here". Reported once per
+   * session, since every peer in the room fails the same way. */
+  onJoinError(error: string): void;
 }
 
 /**
@@ -55,9 +59,13 @@ export class CollabSession {
   private holding: boolean;
   private snapshotApplied = false;
   private left = false;
+  private joinErrorReported = false;
 
   constructor(
     readonly roomId: string,
+    /** The room's password, or null for an open room. Chosen when the room is started;
+     * joiners must supply the same string or they never reach the mesh. */
+    readonly password: string | null,
     initialDoc: Doc,
     joinedViaUrl: boolean,
     private readonly handlers: CollabHandlers,
@@ -69,9 +77,19 @@ export class CollabSession {
     this.engine = new SyncEngine(selfId, initialDoc);
     this.latestDoc = initialDoc;
     this.holding = joinedViaUrl;
-    // The room id doubles as the shared secret (that's the "know the URL, get in"
-    // model); using it as the password also encrypts signaling over the public relays.
-    this.room = joinRoom({ appId: APP_ID, password: `pochi-${roomId}`, rtcConfig }, roomId);
+    // Trystero's room password encrypts the signaling exchanged over the public relays,
+    // so it doubles as the room's access control: a peer whose key doesn't match can't
+    // decrypt an offer and never joins the mesh. Without a user password the room id is
+    // the only secret (the "know the URL, get in" model); with one, the URL alone is
+    // useless — the password is never part of the link.
+    const roomKey = password === null ? `pochi-${roomId}` : `pochi-${roomId}:${password}`;
+    this.room = joinRoom({ appId: APP_ID, password: roomKey, rtcConfig }, roomId, {
+      onJoinError: ({ error }) => {
+        if (this.left || this.joinErrorReported) return;
+        this.joinErrorReported = true;
+        this.handlers.onJoinError(error);
+      },
+    });
     this.ops = this.room.makeAction('ops') as unknown as Action<SyncOps>;
     this.snap = this.room.makeAction('snapshot') as unknown as Action<CollabSnapshot>;
     this.cursor = this.room.makeAction('cursor') as unknown as Action<Pt>;

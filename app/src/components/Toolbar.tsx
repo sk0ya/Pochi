@@ -145,8 +145,9 @@ export function Toolbar({
   recentFiles: RecentFile[];
   onOpenRecent: (path: string) => void;
   onRemoveRecent: (path: string) => void;
-  /** Active collab room, if any; `peers` counts the *other* participants. */
-  collab: { roomId: string; peers: number } | null;
+  /** Active collab room, if any; `peers` counts the *other* participants, and `locked`
+   * says the room was started with a password. */
+  collab: { roomId: string; locked: boolean; peers: number } | null;
   onToggleCollab: () => void;
 }) {
   const setVim = (on: boolean) => dispatch({ type: 'SET_VIM', on });
@@ -219,11 +220,13 @@ export function Toolbar({
         onClick={onToggleCollab}
         title={
           collab
-            ? `共同編集中 (room: ${collab.roomId}, 他${collab.peers}人) — クリックで終了 (:collab off)`
-            : '共同編集を開始 — P2PルームのURLをコピーし、URLを知っている人が参加できる (:collab)'
+            ? `共同編集中 (room: ${collab.roomId}, 他${collab.peers}人, ${
+                collab.locked ? 'パスワードあり' : 'パスワードなし'
+              }) — クリックで終了 (:collab off)`
+            : '共同編集を開始 — パスワードあり/なしを選んでP2Pルームを作り、URLをコピーする (:collab)'
         }
       >
-        {collab ? `👥 ${collab.peers + 1}` : '👥'}
+        {collab ? `👥${collab.locked ? '🔒' : ''} ${collab.peers + 1}` : '👥'}
       </button>
       <button className="icon-btn" onClick={onToggleTheme} title="画面と書き出しのテーマを切替 (:theme)。書き出しのみ変えるなら :svg dark / :png light">
         {theme === 'dark' ? '🌙' : '☀'}

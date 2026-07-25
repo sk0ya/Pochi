@@ -16,6 +16,8 @@ import { ActivityBar } from './components/ActivityBar';
 import type { PanelId } from './components/ActivityBar';
 import { Canvas } from './components/Canvas';
 import { FilesSidebar } from './components/FilesSidebar';
+import { CollabDialog } from './components/CollabDialog';
+import type { CollabPrompt } from './components/CollabDialog';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
 import { PropertiesSidebar } from './components/PropertiesSidebar';
@@ -44,12 +46,29 @@ const RECENT_MAX = 8;
 const FILES_FOLDER_KEY = 'pochi.filesFolder';
 const SHARE_HASH_PREFIX = '#d=';
 const ROOM_HASH_PREFIX = '#room=';
+/** Appended to the room id in a room URL when the room was started with a password. The
+ * password itself never travels in the link — the marker only tells a joiner to ask for
+ * one, instead of joining with the wrong key and silently finding an empty room. */
+const ROOM_LOCK_SUFFIX = '~pw';
 /** Room ids we mint are 10 base36 chars; accept a superset so hand-shared ids stay lenient. */
 const ROOM_ID_RE = /^[a-zA-Z0-9-]{4,64}$/;
 
 function newRoomId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(10));
   return Array.from(bytes, (b) => (b % 36).toString(36)).join('');
+}
+
+/** Splits a `#room=<id>` / `#room=<id>~pw` hash into the room id and whether the room
+ * wants a password. Null = the id is malformed (the caller checks the prefix first). */
+function parseRoomHash(hash: string): { roomId: string; locked: boolean } | null {
+  const rest = hash.slice(ROOM_HASH_PREFIX.length);
+  const locked = rest.endsWith(ROOM_LOCK_SUFFIX);
+  const roomId = locked ? rest.slice(0, -ROOM_LOCK_SUFFIX.length) : rest;
+  return ROOM_ID_RE.test(roomId) ? { roomId, locked } : null;
+}
+
+function roomHash(roomId: string, locked: boolean): string {
+  return ROOM_HASH_PREFIX + roomId + (locked ? ROOM_LOCK_SUFFIX : '');
 }
 // The desktop shell hosts app/dist at a local virtual origin (see bridge.ts's `isDesktop`
 // detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
@@ -273,11 +292,14 @@ export default function App() {
   // Guards the async gap in joinCollab (fetching TURN credentials) so a second join
   // can't slip in before collabRef is set — collabRef alone only becomes truthy after.
   const joiningRef = useRef(false);
-  const [collabRoom, setCollabRoom] = useState<string | null>(null);
+  const [collabRoom, setCollabRoom] = useState<{ roomId: string; locked: boolean } | null>(null);
   const [collabPeers, setCollabPeers] = useState<string[]>([]);
   const [peerCursors, setPeerCursors] = useState<Record<string, Pt>>({});
+  /** Open when the user is choosing a password for a new room, or entering one for a
+   * locked room's URL. Non-null means no session exists yet — the join happens on submit. */
+  const [collabPrompt, setCollabPrompt] = useState<CollabPrompt | null>(null);
 
-  const joinCollab = useCallback(async (roomId: string, viaUrl: boolean) => {
+  const joinCollab = useCallback(async (roomId: string, viaUrl: boolean, password: string | null) => {
     if (collabRef.current || joiningRef.current) return;
     joiningRef.current = true;
     try {
@@ -287,6 +309,7 @@ export default function App() {
       if (collabRef.current) return; // left/rejoined during the fetch — abandon this join
       collabRef.current = new CollabSession(
         roomId,
+        password,
         stateRef.current.doc,
         viaUrl,
         {
@@ -301,12 +324,21 @@ export default function App() {
               }
               return { ...prev, [peerId]: p };
             }),
+          // A password mismatch reads as an empty room otherwise: trystero can't decrypt
+          // the other side's offer, so nobody ever shows up and nothing looks wrong.
+          onJoinError: (error) =>
+            dispatch({
+              type: 'MSG',
+              msg: /password/i.test(error)
+                ? 'collab: wrong room password — could not connect to the room'
+                : `collab: ${error}`,
+            }),
         },
         { iceServers },
       );
-      setCollabRoom(roomId);
+      setCollabRoom({ roomId, locked: password !== null });
       setCollabPeers([]);
-      history.replaceState(null, '', location.pathname + location.search + ROOM_HASH_PREFIX + roomId);
+      history.replaceState(null, '', location.pathname + location.search + roomHash(roomId, password !== null));
     } finally {
       joiningRef.current = false;
     }
@@ -323,22 +355,40 @@ export default function App() {
     dispatch({ type: 'MSG', msg: 'left collab room' });
   }, []);
 
-  /** Starts a room (or re-shares the current one) and puts its URL on the clipboard.
-   * Anyone opening that URL joins the room — the room id in the hash is the only key. */
-  const startCollab = useCallback(async () => {
-    const roomId = collabRef.current?.roomId ?? newRoomId();
-    if (!collabRef.current) void joinCollab(roomId, false);
+  /** Puts a room's URL on the clipboard. For an open room that URL is the whole key; for a
+   * password-protected one it only identifies the room, and the password has to be passed
+   * along by some other channel. */
+  const copyRoomUrl = useCallback(async (roomId: string, locked: boolean) => {
     const base = isDesktop ? PUBLIC_BASE_URL : location.origin + location.pathname;
-    const url = `${base}${ROOM_HASH_PREFIX}${roomId}`;
+    const url = `${base}${roomHash(roomId, locked)}`;
+    const who = locked ? 'the URL and the password are both needed to join' : 'anyone with the URL can join';
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard API unavailable');
       await navigator.clipboard.writeText(url);
-      dispatch({ type: 'MSG', msg: 'collab room URL copied — anyone with the URL can join' });
+      dispatch({ type: 'MSG', msg: `collab room URL copied — ${who}` });
     } catch {
       window.prompt('collab room URL (copy manually):', url);
       dispatch({ type: 'MSG', msg: 'collab room ready — clipboard unavailable, copy from the dialog' });
     }
-  }, [joinCollab]);
+  }, []);
+
+  /** Creates the room the start dialog was configured for and shares its URL. */
+  const beginCollab = useCallback(
+    async (password: string | null) => {
+      const roomId = newRoomId();
+      void joinCollab(roomId, false, password);
+      await copyRoomUrl(roomId, password !== null);
+    },
+    [joinCollab, copyRoomUrl],
+  );
+
+  /** Toolbar/`:collab` entry point: asks for the new room's password setting, or — when a
+   * room is already running — just re-copies its URL. */
+  const startCollab = useCallback(async () => {
+    const session = collabRef.current;
+    if (session) await copyRoomUrl(session.roomId, session.password !== null);
+    else setCollabPrompt({ kind: 'start' });
+  }, [copyRoomUrl]);
 
   /* Join a `#room=<id>` URL at startup, or when one is pasted into the address bar of an
    * already-open tab (that's a same-document navigation — only a hashchange fires, the app
@@ -347,14 +397,19 @@ export default function App() {
   useEffect(() => {
     const tryJoinFromHash = () => {
       if (!location.hash.startsWith(ROOM_HASH_PREFIX) || collabRef.current) return;
-      const roomId = location.hash.slice(ROOM_HASH_PREFIX.length);
-      if (!ROOM_ID_RE.test(roomId)) {
+      const room = parseRoomHash(location.hash);
+      if (!room) {
         dispatch({ type: 'MSG', msg: 'invalid collab room URL' });
         return;
       }
       if (!confirmDiscard('保存されていない変更があります。共同編集ルームに参加しますか?')) return;
-      void joinCollab(roomId, true);
-      dispatch({ type: 'MSG', msg: `joining collab room ${roomId}…` });
+      // A locked room's password isn't in the URL — ask, then join from the dialog.
+      if (room.locked) {
+        setCollabPrompt({ kind: 'join', roomId: room.roomId });
+        return;
+      }
+      void joinCollab(room.roomId, true, null);
+      dispatch({ type: 'MSG', msg: `joining collab room ${room.roomId}…` });
     };
     tryJoinFromHash();
     window.addEventListener('hashchange', tryJoinFromHash);
@@ -901,7 +956,7 @@ export default function App() {
         recentFiles={isDesktop ? recentFiles : []}
         onOpenRecent={(path) => void openRecent(path)}
         onRemoveRecent={removeRecentFile}
-        collab={collabRoom ? { roomId: collabRoom, peers: collabPeers.length } : null}
+        collab={collabRoom ? { ...collabRoom, peers: collabPeers.length } : null}
         onToggleCollab={() => {
           if (!collabRoom) void startCollab();
           else if (window.confirm('共同編集を終了しますか?')) leaveCollab();
@@ -939,6 +994,25 @@ export default function App() {
         viewportCenter={viewportCenter}
       />
       {state.showHelp && <HelpOverlay dispatch={dispatch} />}
+      {collabPrompt && (
+        <CollabDialog
+          // Start and join dialogs disagree about whether a password is optional, so a
+          // switch between them (cancel + reopen, or a room URL pasted mid-dialog) has to
+          // remount rather than carry the old choice over.
+          key={collabPrompt.kind}
+          prompt={collabPrompt}
+          onCancel={() => setCollabPrompt(null)}
+          onSubmit={(password) => {
+            setCollabPrompt(null);
+            if (collabPrompt.kind === 'start') {
+              void beginCollab(password);
+            } else {
+              void joinCollab(collabPrompt.roomId, true, password);
+              dispatch({ type: 'MSG', msg: `joining collab room ${collabPrompt.roomId}…` });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
