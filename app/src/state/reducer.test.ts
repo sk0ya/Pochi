@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, reduce, TOOL_KEYS } from './reducer';
 import type { EditorState } from './reducer';
-import { connectorPath, labelCenter } from '../model/doc';
+import { connectorPath, labelCenter, shapeAt } from '../model/doc';
 import type { Connector, Doc, Pt, Shape } from '../model/types';
-import { GRID } from '../model/types';
+import { GRID, snapPt } from '../model/types';
 
 // This suite runs under vitest's `node` environment (no DOM). `measureLabel` — used when
 // committing/repeating a text shape — falls back to a character-count width estimate when
@@ -1381,6 +1381,28 @@ describe('connectTarget: the shape a gesture in flight would attach to', () => {
     st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 460, y: 140 } });
     st = reduce(st, { type: 'DRAG_END' });
     expect(st.connectTarget).toBe(null);
+  });
+
+  it('connects to the shape the ring promised when the cursor sits just off its edge', () => {
+    // s2's left edge is deliberately off-grid: a cursor one pixel outside it snaps to a grid
+    // point *inside* the shape. The ring is drawn from the snapped cursor, so committing from
+    // the raw click point used to hand back a free endpoint while the ring said 's2'.
+    const offGrid: Doc = {
+      shapes: [
+        { id: 's1', kind: 'rect', x: 100, y: 100, w: 120, h: 80, label: '' },
+        { id: 's2', kind: 'rect', x: 410, y: 100, w: 120, h: 80, label: '' },
+      ],
+      connectors: [],
+    };
+    const p = { x: 409, y: 140 };
+    expect(shapeAt(offGrid, p)).toBeUndefined();
+    expect(shapeAt(offGrid, snapPt(p))?.id).toBe('s2');
+    let st = initialState(offGrid, false);
+    st = reduce(st, { type: 'START_ARROW_AT', p: { x: 160, y: 140 }, shapeId: 's1' });
+    st = reduce(st, { type: 'MOUSE_CURSOR', p });
+    expect(st.connectTarget).toBe('s2');
+    st = reduce(st, { type: 'CLICK', p });
+    expect(st.doc.connectors[0].to.shapeId).toBe('s2');
   });
 
   it('is cleared when the gesture is cancelled', () => {

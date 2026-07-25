@@ -1575,7 +1575,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     case 'CLICK': {
       const p = snapPt(action.p);
       if (state.mode === 'draw') return confirmDraw({ ...state, cursor: p });
-      if (state.mode === 'arrow') return confirmArrow({ ...state, cursor: action.p });
+      // Snapped, like MOUSE_CURSOR: the green connect ring is drawn from the *snapped*
+      // cursor's `shapeAt`, so committing from the raw point let the two disagree within
+      // half a grid step of a shape's edge — the ring promising a connection the release
+      // didn't make, or the reverse.
+      if (state.mode === 'arrow') return confirmArrow({ ...state, cursor: p });
       const conn = action.id ? undefined : connectorAt(state.doc, action.p);
       const hit = action.id ?? conn?.id ?? null;
       if (action.shift) {
