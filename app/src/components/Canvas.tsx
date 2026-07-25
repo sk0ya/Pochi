@@ -1334,6 +1334,10 @@ export function Canvas({
           markerEnd={showEndArrow ? marker : undefined}
         />
         {selected &&
+          // Self-loops route from their feet alone and ignore waypoints (see connectorPath),
+          // so a connector that kept some from before it became a loop shows no handles —
+          // dragging one would move nothing.
+          !isSelfLoop(c) &&
           c.waypoints?.map((wp, i) => (
             <circle
               key={i}

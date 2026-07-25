@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
+import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers, isSelfLoop } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
 import type { ArrowDirection, FontSize, LoopSide, ShapeKind, TriangleDirection } from '../model/types';
@@ -143,6 +143,10 @@ export function ContextMenu({
   // controls could ever appear for a shape that belongs to a multi-member group.
   const singleShape = menu.id ? findShape(state.doc, menu.id) : undefined;
   const singleConnector = menu.id ? findConnector(state.doc, menu.id) : undefined;
+  // A self-loop's path is decided by its two feet alone (connectorPath returns before it
+  // consults either), so routing and bend points are offered only for the connectors that
+  // actually honour them. The feet themselves are set from the sidebar's side buttons.
+  const canRoute = !!singleConnector && !isSelfLoop(singleConnector);
   const canEditText = !!menu.id && (!!singleShape || !!singleConnector);
 
   const targetGroupId = ids.length ? groupIdOf(state.doc, ids[0]) : undefined;
@@ -267,27 +271,31 @@ export function ContextMenu({
           )}
           {singleConnector && (
             <>
-              <div className="context-label">経路</div>
-              <div className="direction-row">
-                {CONNECTOR_ROUTINGS.map(([routing, icon, title]) => (
-                  <button
-                    key={routing}
-                    className={`direction-swatch${(singleConnector.routing === 'orthogonal' ? 'orthogonal' : 'straight') === routing ? ' active' : ''}`}
-                    style={{ fontSize: 18 }}
-                    title={title}
-                    onClick={() => run({ type: 'SET_CONNECTOR_ROUTING', id: menu.id!, routing })}
-                  >
-                    {icon}
+              {canRoute && (
+                <>
+                  <div className="context-label">経路</div>
+                  <div className="direction-row">
+                    {CONNECTOR_ROUTINGS.map(([routing, icon, title]) => (
+                      <button
+                        key={routing}
+                        className={`direction-swatch${(singleConnector.routing === 'orthogonal' ? 'orthogonal' : 'straight') === routing ? ' active' : ''}`}
+                        style={{ fontSize: 18 }}
+                        title={title}
+                        onClick={() => run({ type: 'SET_CONNECTOR_ROUTING', id: menu.id!, routing })}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => run({ type: 'ADD_WAYPOINT', id: menu.id!, p: menu.world })}>
+                    ベンドポイント追加
                   </button>
-                ))}
-              </div>
-              <button onClick={() => run({ type: 'ADD_WAYPOINT', id: menu.id!, p: menu.world })}>
-                ベンドポイント追加
-              </button>
-              {singleConnector.waypoints && singleConnector.waypoints.length > 0 && (
-                <button onClick={() => run({ type: 'CLEAR_WAYPOINTS', id: menu.id! })}>
-                  ベンドポイントを全て削除
-                </button>
+                  {singleConnector.waypoints && singleConnector.waypoints.length > 0 && (
+                    <button onClick={() => run({ type: 'CLEAR_WAYPOINTS', id: menu.id! })}>
+                      ベンドポイントを全て削除
+                    </button>
+                  )}
+                </>
               )}
               <div className="context-label">線種</div>
               <div className="direction-row">

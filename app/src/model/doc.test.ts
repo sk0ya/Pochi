@@ -385,6 +385,25 @@ describe('self-loop connectors', () => {
       }
   });
 
+  it('ignores routing and waypoints, and offers no elbow handle', () => {
+    // connectorPath decides a self-loop from its feet before it ever reads either field, so
+    // a loop that carries them (kept from before it became one) must not sprout a handle
+    // that moves nothing.
+    const loop: Connector = {
+      id: 'c',
+      from: { shapeId: 's1', ...SIDE_NORM.top },
+      to: { shapeId: 's1', ...SIDE_NORM.right },
+      label: '',
+      routing: 'orthogonal',
+      waypoints: [{ x: 500, y: 500 }],
+    };
+    const plain: Connector = { ...loop, id: 'c2', waypoints: undefined };
+    expect(connectorElbowHandle(doc, loop)).toBeUndefined();
+    expect(connectorPath(doc, loop)).toEqual(connectorPath(doc, { ...loop, routing: undefined, waypoints: undefined }));
+    // ...while a two-ended connector still gets one, so this isn't just switched off.
+    expect(connectorElbowHandle({ shapes: [shape, { ...shape, id: 's2', x: 300 }], connectors: [] }, { ...plain, to: { shapeId: 's2', x: 0, y: 0 } })).toBeDefined();
+  });
+
   it('nearestSide picks the side a point sits toward from the shape center', () => {
     expect(nearestSide(shape, { x: 50, y: -20 })).toBe('top');
     expect(nearestSide(shape, { x: 50, y: 80 })).toBe('bottom');

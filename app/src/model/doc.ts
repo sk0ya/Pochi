@@ -1079,6 +1079,9 @@ export function groupIdOf(doc: Doc, id: string): string | undefined {
  * handle (the midpoint of its bend segment); undefined if the connector
  * isn't using elbowed auto-routing (straight, or overridden by `waypoints`). */
 export function connectorElbowHandle(doc: Doc, c: Connector): { pos: Pt; axis: 'x' | 'y' } | undefined {
+  // A self-loop's shape comes entirely from its two feet — connectorPath returns before it
+  // ever looks at routing or waypoints — so there's no bend for a handle to move.
+  if (isSelfLoop(c)) return undefined;
   if (c.routing !== 'orthogonal' || (c.waypoints && c.waypoints.length)) return undefined;
   const from = resolveEndpoint(doc, c.from);
   const to = resolveEndpoint(doc, c.to);
