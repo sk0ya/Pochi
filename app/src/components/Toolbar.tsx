@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
 import type { RecentFile } from '../App';
 import type { ExportTheme } from '../model/svg';
+import { TOOL_KEYS } from '../state/reducer';
 import type { Action, EditorState, MouseTool } from '../state/reducer';
 
 const TOOLS: Array<[MouseTool, string, string, string]> = [
@@ -178,7 +179,13 @@ export function Toolbar({
           key={tool}
           className={`icon-btn${state.tool === tool ? ' active' : ''}`}
           onClick={() => dispatch({ type: 'SET_TOOL', tool })}
-          title={`${name} — ${desc}`}
+          // The key hints are shown only with vim off, which is where TOOL_KEYS applies — in
+          // vim mode those same letters are the modal draw commands, not tool switches.
+          title={
+            state.vim
+              ? `${name} — ${desc}`
+              : `${name} (${TOOL_KEYS[tool].join(' / ')}) — ${desc}`
+          }
         >
           {icon}
         </button>

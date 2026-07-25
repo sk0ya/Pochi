@@ -73,6 +73,41 @@ export type MouseTool =
   | 'arrow'
   | 'text';
 
+/**
+ * Keys that pick a mouse tool while vim mode is OFF, where the whole alphabet is otherwise
+ * unused — a plain-mode user had no way at all to change tools without a trip to the toolbar,
+ * even though App.tsx was already swallowing these keys.
+ *
+ * Each tool gets a mnemonic letter and a digit. The letters deliberately match vim's own draw
+ * keys (`r`/`e`/`q`/`g`/`o`/`a`/`t`), so the two modes teach each other rather than competing;
+ * the digits follow the toolbar's left-to-right order. In vim mode these same letters are the
+ * modal commands, so none of this applies there.
+ *
+ * Keyed by tool rather than by key so there's no ordering subtlety: the Toolbar reads it to
+ * label each button, `toolForKey` scans it to resolve a press, and neither can drift from the
+ * other.
+ */
+export const TOOL_KEYS: Record<MouseTool, string[]> = {
+  select: ['v', '1'],
+  sketch: ['s', '2'],
+  pen: ['p', '3'],
+  rect: ['r', '4'],
+  ellipse: ['e', '5'],
+  diamond: ['q', '6'],
+  triangle: ['g', '7'],
+  frame: ['o', '8'],
+  arrow: ['a', '9'],
+  text: ['t', '0'],
+};
+
+/** The tool a plain-mode keypress selects, if any (see {@link TOOL_KEYS}). */
+export function toolForKey(key: string): MouseTool | undefined {
+  for (const [tool, keys] of Object.entries(TOOL_KEYS)) {
+    if (keys.includes(key)) return tool as MouseTool;
+  }
+  return undefined;
+}
+
 export interface View {
   x: number;
   y: number;
@@ -1410,6 +1445,10 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: b
     });
   }
   if (key === 'F2' && state.selectedIds.length === 1) return startEdit(state, state.selectedIds[0]);
+  // Tool shortcuts (see TOOL_KEYS). Checked before the arrow-key nudge below, which owns
+  // hjkl/arrows — no overlap, but the ordering keeps that explicit.
+  const tool = toolForKey(key);
+  if (tool) return { ...state, tool, msg: `tool: ${tool}` };
   const delta = moveDelta(key, GRID * (shift ? BIG_STEP : 1));
   if (delta && state.selectedIds.length) {
     // Each arrow-key nudge here is its own atomic move (no transient/base to freeze), so

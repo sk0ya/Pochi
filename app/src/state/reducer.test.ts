@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialState, reduce } from './reducer';
+import { initialState, reduce, TOOL_KEYS } from './reducer';
 import type { EditorState } from './reducer';
 import { connectorPath, labelCenter } from '../model/doc';
 import type { Connector, Doc, Pt, Shape } from '../model/types';
@@ -1292,6 +1292,47 @@ describe('INSERT_TEMPLATE', () => {
     const state = initialState(null, false);
     const next = reduce(state, { type: 'INSERT_TEMPLATE', templateId: 'does-not-exist' });
     expect(next).toBe(state);
+  });
+});
+
+describe('tool shortcuts (vim off)', () => {
+  const press = (state: ReturnType<typeof initialState>, key: string) =>
+    reduce(state, { type: 'KEY', key, ctrl: false });
+
+  it('picks a tool by its letter and by its digit', () => {
+    let st = initialState(null, false);
+    expect(st.tool).toBe('sketch');
+    expect(press(st, 'r').tool).toBe('rect');
+    expect(press(st, '4').tool).toBe('rect');
+    expect(press(st, 'v').tool).toBe('select');
+    expect(press(st, '0').tool).toBe('text');
+    st = press(st, 'o');
+    expect(st.tool).toBe('frame');
+  });
+
+  it('covers every tool, so no toolbar button is unreachable by key', () => {
+    const st = initialState(null, false);
+    for (const [tool, keys] of Object.entries(TOOL_KEYS)) {
+      for (const key of keys) expect(press(st, key).tool).toBe(tool);
+    }
+  });
+
+  it('leaves the arrow-key nudge alone', () => {
+    const doc: Doc = {
+      shapes: [{ id: 's1', kind: 'rect', x: 100, y: 100, w: 40, h: 40, label: '' }],
+      connectors: [],
+    };
+    let st = { ...initialState(doc, false), selectedIds: ['s1'] };
+    st = press(st, 'l');
+    expect(st.tool).toBe('sketch'); // 'l' is a nudge, not a tool key
+    expect(st.doc.shapes[0].x).toBeGreaterThan(100);
+  });
+
+  it('does not hijack the keys in vim mode, where they are the modal commands', () => {
+    const st = initialState(null, true);
+    const drawing = press(st, 'r');
+    expect(drawing.tool).toBe('sketch'); // unchanged
+    expect(drawing.mode).toBe('draw'); // vim's draw command still runs
   });
 });
 
