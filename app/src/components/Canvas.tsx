@@ -1314,11 +1314,16 @@ export function Canvas({
 
   return (
     <>
+    {/* Both lines have to describe what actually happens: a double-click on empty canvas
+        creates a *text box* (DBL_CLICK → startTextInsert), not a rect, and the r/e/t keys only
+        exist while vim mode is on — so they're only offered when they'll work. */}
     {isEmpty && mode === 'normal' && (
       <div className="canvas-hint">
         ドラッグで手描き → 図形を自動認識(✏ Auto)
         <br />
-        ダブルクリックで四角を作成、または r / e / t キー
+        {vim
+          ? 'ダブルクリックでテキスト、r 四角 / e 楕円 / t テキスト'
+          : 'ダブルクリックでテキスト、ツールバーの ▭ ◯ でドラッグして図形'}
       </div>
     )}
     <svg
