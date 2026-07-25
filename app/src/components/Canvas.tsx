@@ -991,19 +991,51 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
   };
 
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (mode !== 'normal') return;
+    dispatch({ type: 'DBL_CLICK', p: toWorld(e), id: hitId(e.target) });
+  };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (mode !== 'normal') return;
+    dispatch({
+      type: 'CONTEXT_MENU_OPEN',
+      screen: { x: e.clientX, y: e.clientY },
+      world: toWorld(e),
+      id: hitId(e.target),
+    });
+  };
+
+  const onWheel = (e: { ctrlKey: boolean; shiftKey: boolean; deltaX: number; deltaY: number; clientX: number; clientY: number }) => {
+    if (e.ctrlKey) {
+      const r = svgRef.current!.getBoundingClientRect();
+      dispatch({
+        type: 'ZOOM',
+        factor: e.deltaY < 0 ? 1.1 : 1 / 1.1,
+        center: { x: e.clientX - r.left, y: e.clientY - r.top },
+      });
+    } else if (e.shiftKey) {
+      dispatch({ type: 'PAN', dx: -e.deltaY, dy: 0 });
+    } else {
+      dispatch({ type: 'PAN', dx: -e.deltaX, dy: -e.deltaY });
+    }
+  };
+
+  /* Every gesture handler that can't live on the svg as a React prop, kept fresh through a ref
+   * so each one registers once instead of re-binding on every render. */
+  const handlers = useRef({ onMouseMove, onMouseUp, onWheel });
+  handlers.current = { onMouseMove, onMouseUp, onWheel };
+
   /* A gesture's move/up halves live on `window`, not the svg: a drag routinely leaves the
    * canvas — dropping a shape against the toolbar, marquee-ing past the window edge — and it
    * must keep tracking and, above all, still *end* out there. Bound to the svg, the mouseup
    * never arrives, so the drag stays live and the shape goes on following a button-up cursor
    * once it comes back. Only mousedown stays on the svg (that half must be inside it).
    *
-   * Registered once and kept fresh through a ref, since these close over the render's state
-   * but re-binding per mousemove would be pointless churn. Events that land *outside* the
-   * canvas with no drag in flight are dropped: hover tracking has nothing to say about the
-   * sidebar, and a click on a toolbar button must not read as a canvas click that clears the
-   * selection. */
-  const handlers = useRef({ onMouseMove, onMouseUp });
-  handlers.current = { onMouseMove, onMouseUp };
+   * Events that land *outside* the canvas with no drag in flight are dropped: hover tracking
+   * has nothing to say about the sidebar, and a click on a toolbar button must not read as a
+   * canvas click that clears the selection. */
   useEffect(() => {
     const overCanvas = (t: EventTarget | null) =>
       t instanceof Node && !!svgRef.current?.contains(t);
@@ -1030,36 +1062,21 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     };
   }, []);
 
-  const onDoubleClick = (e: React.MouseEvent) => {
-    if (mode !== 'normal') return;
-    dispatch({ type: 'DBL_CLICK', p: toWorld(e), id: hitId(e.target) });
-  };
-
-  const onContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (mode !== 'normal') return;
-    dispatch({
-      type: 'CONTEXT_MENU_OPEN',
-      screen: { x: e.clientX, y: e.clientY },
-      world: toWorld(e),
-      id: hitId(e.target),
-    });
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey) {
-      const r = svgRef.current!.getBoundingClientRect();
-      dispatch({
-        type: 'ZOOM',
-        factor: e.deltaY < 0 ? 1.1 : 1 / 1.1,
-        center: { x: e.clientX - r.left, y: e.clientY - r.top },
-      });
-    } else if (e.shiftKey) {
-      dispatch({ type: 'PAN', dx: -e.deltaY, dy: 0 });
-    } else {
-      dispatch({ type: 'PAN', dx: -e.deltaX, dy: -e.deltaY });
-    }
-  };
+  /* Wheel is bound natively instead of through React's `onWheel`, because React registers
+   * wheel listeners as passive — `preventDefault()` inside one is a no-op. Without it the
+   * browser (or the WebView2 shell) acts on the same gesture the canvas just handled:
+   * Ctrl+wheel zooms the page *and* the diagram, and a plain wheel pan also rubber-band
+   * scrolls whatever is behind. */
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      handlers.current.onWheel(e);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, []);
 
   const drawPreview = () => {
     if (mode === 'draw' && state.draw) {
@@ -1244,7 +1261,6 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       style={{ cursor: bgCursor }}
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
-      onWheel={onWheel}
       onContextMenu={onContextMenu}
       onMouseLeave={() => setHoverId(null)}
       onDragOver={onDragOver}

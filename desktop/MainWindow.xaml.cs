@@ -28,6 +28,11 @@ public partial class MainWindow : Window
 
         Web.CoreWebView2.WebMessageReceived += OnWebMessage;
 
+        // Ctrl+wheel and Ctrl+/- are the canvas's own zoom (see Canvas.tsx). WebView2 claims
+        // them for shell zoom by default, which would scale the whole UI — toolbar, status bar
+        // and all — on top of the diagram zoom the same gesture already applied.
+        Web.CoreWebView2.Settings.IsZoomControlEnabled = false;
+
         // Runs before any page script on every navigation, so the frontend can tell it's
         // running in the desktop shell synchronously — even when loading the remote published
         // build, where `chrome.webview` itself may attach a beat later (see main.tsx boot()).
