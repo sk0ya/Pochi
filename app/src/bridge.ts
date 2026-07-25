@@ -1,18 +1,56 @@
 /**
- * Bridge to the WPF/WebView2 host via postMessage. Falls back to browser
- * download / file-input when running on the web.
+ * Bridge to a native host via postMessage. Falls back to browser download / file-input
+ * when no host answers.
+ *
+ * A host is detected by handshake, not by `window.chrome.webview` existing: Pochi is also
+ * loaded inside *other* apps' WebView2 panes, which expose `chrome.webview` but never reply
+ * to our messages. Detecting on the object alone made those look like the desktop shell, so
+ * the file-manager panel appeared and then did nothing when clicked - the messages went to a
+ * host that had no handler for them. Any host that answers `hello` with the ops it
+ * implements gets exactly the matching UI, so this isn't specific to the Pochi shell.
  */
 
-interface WebView2 {
+interface WebViewHost {
   postMessage(msg: unknown): void;
   addEventListener(type: 'message', cb: (e: { data: unknown }) => void): void;
 }
 
-const wv: WebView2 | undefined = (window as unknown as {
-  chrome?: { webview?: WebView2 };
+const wv: WebViewHost | undefined = (window as unknown as {
+  chrome?: { webview?: WebViewHost };
 }).chrome?.webview;
 
-export const isDesktop = !!wv;
+/** How long a host gets to answer `hello`. A host that implements the bridge replies within
+ * a frame; only hosts that ignore us ever wait this out, and they just get the web build. */
+const HANDSHAKE_TIMEOUT_MS = 800;
+
+/** The ops the shell implemented before `hello` existed. A host that answers but doesn't
+ * recognize `hello` (null result) is that older Pochi shell, which replies to every message
+ * and implements all of these. */
+const LEGACY_OPS: readonly string[] = [
+  'saveFileDialog',
+  'writeFile',
+  'openFileDialog',
+  'readFile',
+  'openImageDialog',
+  'pickFolder',
+  'listFiles',
+  'newFile',
+  'renameFile',
+  'duplicateFile',
+  'deleteFile',
+];
+
+let hostOps: ReadonlySet<string> = new Set();
+
+/** True once a host has answered the handshake - i.e. these calls actually reach someone.
+ * False on the web build and inside a foreign WebView2 pane. Set by `initBridge`. */
+export let isDesktop = false;
+
+/** Whether the host implements `op`. Gate UI on this rather than on `isDesktop` when a
+ * feature needs one particular op, so a partial host shows no dead buttons. */
+export function hasOp(op: string): boolean {
+  return hostOps.has(op);
+}
 
 const pending = new Map<number, (v: unknown) => void>();
 let seq = 1;
@@ -27,6 +65,35 @@ if (wv) {
       resolve(data.result ?? null);
     }
   });
+}
+
+/** Ask the host what it implements. Resolves to its op list, or null if nothing answered. */
+async function handshake(): Promise<readonly string[] | null> {
+  const timedOut = Symbol('timeout');
+  const id = seq++;
+  const reply = new Promise<unknown>((resolve) => pending.set(id, resolve));
+  const timer = new Promise<symbol>((resolve) =>
+    setTimeout(() => resolve(timedOut), HANDSHAKE_TIMEOUT_MS),
+  );
+  wv!.postMessage({ id, op: 'hello' });
+
+  const res = await Promise.race([reply, timer]);
+  if (res === timedOut) {
+    pending.delete(id); // nobody is going to answer it
+    return null;
+  }
+  const ops = (res as { ops?: unknown } | null)?.ops;
+  return Array.isArray(ops) ? ops.filter((o): o is string => typeof o === 'string') : LEGACY_OPS;
+}
+
+/** Perform the handshake. Await this before anything reads `isDesktop`/`hasOp` - main.tsx
+ * does so before importing App, so both are settled by first render. */
+export async function initBridge(): Promise<void> {
+  if (!wv) return;
+  const ops = await handshake();
+  if (!ops) return; // the host ignores our messages - keep the web fallbacks
+  hostOps = new Set(ops);
+  isDesktop = true;
 }
 
 function call<T>(op: string, args: Record<string, unknown>): Promise<T> {

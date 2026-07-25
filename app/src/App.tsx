@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   downloadFile,
+  hasOp,
   isDesktop,
   openFileDialog,
   openImageDialog,
@@ -74,6 +75,11 @@ function roomHash(roomId: string, locked: boolean): string {
 // detection) - a `https://app.pochi/...` URL is meaningless outside that WebView2 instance,
 // so shared links from the desktop build point at the public GitHub Pages deployment instead.
 const PUBLIC_BASE_URL = 'https://sk0ya.github.io/Pochi/';
+
+/** Whether the host implements the folder ops behind the file-manager panel. Read once here
+ * (not per render) because bridge.ts settles its handshake before App is imported - see
+ * main.tsx boot(). Any host that implements the ops gets the panel, Pochi's shell or not. */
+const canManageFiles = hasOp('pickFolder') && hasOp('listFiles');
 
 function readAutosave(): Doc | null {
   try {
@@ -258,11 +264,12 @@ export default function App() {
     }
   }, [recentFiles]);
 
-  /* Working folder for the file-manager panel (desktop only - see FilesSidebar). Persisted
-   * so the same folder reopens next launch. */
+  /* Working folder for the file-manager panel. Persisted so the same folder reopens next
+   * launch. Gated on the host actually implementing the folder ops rather than on isDesktop:
+   * the panel is useless - and its buttons silently dead - without them (see bridge.ts). */
   const [filesFolder, setFilesFolder] = useState<string | null>(() => {
     try {
-      return isDesktop ? localStorage.getItem(FILES_FOLDER_KEY) : null;
+      return canManageFiles ? localStorage.getItem(FILES_FOLDER_KEY) : null;
     } catch {
       return null;
     }
@@ -966,7 +973,7 @@ export default function App() {
         <ActivityBar
           active={activePanel}
           onSelect={(panel) => setActivePanel((p) => (p === panel ? null : panel))}
-          showFiles={isDesktop}
+          showFiles={canManageFiles}
         />
         {activePanel === 'files' && (
           <FilesSidebar

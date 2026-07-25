@@ -3,8 +3,8 @@ export type PanelId = 'files' | 'templates' | 'properties';
 /** VSCode-style narrow icon strip. Each icon toggles its panel — clicking the already-active
  * one closes it, clicking another switches to it (see App.tsx's `activePanel`).
  *
- * The Files panel (📁) is desktop-only — it manages real folders on disk — so App omits it
- * from `panels` on the web build. */
+ * The Files panel (📁) manages real folders on disk, so App passes `showFiles` only when the
+ * native host implements those ops — see `canManageFiles` there. */
 export function ActivityBar({
   active,
   onSelect,

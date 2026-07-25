@@ -119,6 +119,17 @@ public partial class MainWindow : Window
     // Extensions the file-manager panel lists and treats as diagrams (see listFiles below).
     private static readonly string[] DiagramExtensions = { ".pochi.json", ".json", ".excalidraw" };
 
+    // The ops below, reported to the frontend by the "hello" handshake (see bridge.ts). The
+    // frontend shows only the UI backed by an op listed here, so it degrades cleanly when
+    // Pochi is embedded in some other app's WebView2 pane — that host answers no handshake
+    // and gets the plain web build, instead of file buttons whose messages go nowhere.
+    // Keep in sync with the switch in OnWebMessage.
+    private static readonly string[] BridgeOps =
+    {
+        "saveFileDialog", "writeFile", "openFileDialog", "readFile", "openImageDialog",
+        "pickFolder", "listFiles", "newFile", "renameFile", "duplicateFile", "deleteFile",
+    };
+
     /** Splits a filename into (stem, extension), recognizing the compound ".pochi.json"
      *  suffix so uniquifying "foo.pochi.json" yields "foo (2).pochi.json", not "foo.pochi (2).json". */
     private static (string Stem, string Ext) SplitName(string fileName)
@@ -155,6 +166,11 @@ public partial class MainWindow : Window
 
             switch (op)
             {
+                case "hello":
+                {
+                    result = new { app = "pochi", version = 1, ops = BridgeOps };
+                    break;
+                }
                 case "saveFileDialog":
                 {
                     var dlg = new SaveFileDialog

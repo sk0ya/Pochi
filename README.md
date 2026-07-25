@@ -141,6 +141,8 @@ app/src/
   state/     reducer = モーダル入力ステートマシン(vimの中核)+ undo履歴
   input →    キーはApp.tsxのグローバルリスナーで捕捉し reducer にKEYアクションで流す
   components Canvas(SVG描画+マウス), StatusBar, Toolbar, TextEditOverlay, HelpOverlay
-  bridge.ts  WebView2 postMessage ブリッジ(web時はダウンロード/file inputにフォールバック)
+  bridge.ts  ネイティブホストへの postMessage ブリッジ。起動時の `hello` ハンドシェイクで
+             ホストが実装する op を受け取り、その分だけUIを出す(応答が無ければ
+             ダウンロード/file input にフォールバック)
 desktop/     WPFシェル。app/dist を仮想ホスト(https://app.pochi)にマップして表示
 ```
