@@ -439,6 +439,16 @@ const HOVER_MARGIN = 26;
 /** Half-length of the vim cursor's crosshair arms. */
 const CURSOR_ARM = 7;
 
+/* Double-click is recognised from our own two consecutive clicks, not from the DOM's
+ * `dblclick` event alone — that event doesn't reliably arrive. The canvas re-renders on the
+ * first click (selection outline, resize handles, connect dots appear right under the
+ * cursor), and when the second press lands on one of those freshly-mounted elements the
+ * browser no longer sees two clicks on the same node, so it dispatches no `dblclick` at all
+ * and label editing is simply unreachable by mouse. Windows' own double-click defaults:
+ * 500ms, and a slop box a few pixels wide so a hand that drifts still counts. */
+const DOUBLE_CLICK_MS = 500;
+const DOUBLE_CLICK_PX = 6;
+
 /** A dash pattern for transient UI chrome (marquee, snap guides, draw preview), converted to
  * world units so the dashes read the same at any zoom instead of merging into a solid line
  * when zoomed out. Shape/connector dash patterns are deliberately *not* run through this:
@@ -690,6 +700,9 @@ export function Canvas({
   // once mode actually leaves 'insert' (see the effect below), so the same
   // mousedown-drag that dismisses the editor can also start drawing/selecting.
   const pendingInsertMouseDown = useRef<PointerDownInfo | null>(null);
+  // Where and when the last plain click landed, for the double-click detection in
+  // `clickAt` below (see DOUBLE_CLICK_MS).
+  const lastClick = useRef<{ t: number; x: number; y: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [guides, setGuides] = useState<{ vx?: number; hy?: number }>({});
   // Mirrors `space`/pan-drag state into React state purely so the canvas
@@ -1036,11 +1049,37 @@ export function Canvas({
     }
   };
 
+  /** A plain (non-drag) click: selects what's under it, and — when it's the second such click
+   * in the same spot — opens the text editor, which is what the DOM's `dblclick` used to be
+   * relied on for (see DOUBLE_CLICK_MS for why it can't be). The `dblclick` handler is still
+   * wired up as well: it covers a slower pair than our own window when the OS is configured
+   * that way, and its own `mode !== 'normal'` guard makes it a no-op once this has already
+   * opened the editor. Shift/Ctrl-clicks only extend a selection, so they never pair up. */
+  const clickAt = (e: DragUpInfo, id: string | undefined, shift = false) => {
+    dispatch({ type: 'CLICK', p: toWorld(e), id, shift });
+    const prev = lastClick.current;
+    lastClick.current = null;
+    if (shift || e.button !== 0) return;
+    const now = performance.now();
+    if (
+      prev &&
+      now - prev.t <= DOUBLE_CLICK_MS &&
+      Math.hypot(e.clientX - prev.x, e.clientY - prev.y) <= DOUBLE_CLICK_PX
+    ) {
+      if (mode === 'normal') dispatch({ type: 'DBL_CLICK', p: toWorld(e), id });
+      return;
+    }
+    lastClick.current = { t: now, x: e.clientX, y: e.clientY };
+  };
+
   const onMouseUp = (e: DragUpInfo) => {
     const d = drag.current;
     drag.current = null;
     setGuides({});
     if (isPanning) setIsPanning(false);
+    // A gesture that actually moved something isn't a click: it must not pair up with the
+    // click before it into a double-click.
+    if (d?.moved) lastClick.current = null;
     // Right/middle-button releases with no active drag (e.g. a context-menu right-click)
     // must not fall through to the plain-click handling below, or they'd collapse
     // the current multi-selection to just the clicked item before the menu opens.
@@ -1054,7 +1093,7 @@ export function Canvas({
           } else {
             // Simple click: cancel the pending draw, treat as select/deselect.
             dispatch({ type: 'CANCEL' });
-            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+            clickAt(e, hitId(e.target));
           }
           return;
         case 'text':
@@ -1065,7 +1104,7 @@ export function Canvas({
             dispatch({ type: 'SKETCH_END' });
           } else {
             dispatch({ type: 'SKETCH_CANCEL' });
-            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+            clickAt(e, hitId(e.target));
           }
           return;
         case 'marquee':
@@ -1074,18 +1113,22 @@ export function Canvas({
           } else if (d.marqueeShift) {
             // Shift/Ctrl+click without drag: toggle the item in the selection.
             dispatch({ type: 'MARQUEE_CANCEL' });
-            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target), shift: true });
+            clickAt(e, hitId(e.target), true);
           } else {
             // Select tool plain click without drag: normal click (selects hit, clears otherwise).
             dispatch({ type: 'MARQUEE_CANCEL' });
-            dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+            clickAt(e, hitId(e.target));
           }
           return;
         case 'move':
         case 'resize':
         case 'moveconn':
           dispatch({ type: 'DRAG_END' });
-          if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: d.id });
+          // `d.id`, not the release target: by now the first click has drawn the selection
+          // outline and its handles over the shape, and the second press often lands on one
+          // of those instead — they carry no data-id, so hit-testing the target here would
+          // lose the shape and open a stray text box on top of it.
+          if (!d.moved) clickAt(e, d.id);
           return;
         case 'endpoint':
         case 'waypoint':
@@ -1093,7 +1136,7 @@ export function Canvas({
           dispatch({ type: 'DRAG_END' });
           return;
         case 'pan':
-          if (!d.moved) dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+          if (!d.moved) clickAt(e, hitId(e.target));
           return;
       }
     }
@@ -1102,7 +1145,7 @@ export function Canvas({
       dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
       return;
     }
-    dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
+    clickAt(e, hitId(e.target));
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
