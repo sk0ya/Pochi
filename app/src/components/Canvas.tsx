@@ -166,6 +166,64 @@ function trianglePoints(box: { x: number; y: number; w: number; h: number; direc
     .join(' ');
 }
 
+/** An outline tracing a shape's silhouette, standing `pad` off it. Shared by the selection/hot
+ * halo and the green "this is what the arrow will connect to" ring, so the two can never drift
+ * apart on how a diamond or triangle is outlined. `strokeBase` is only consulted for freedraw,
+ * which has no silhouette to offset: its own stroke is traced, thickened by `pad` per side. */
+function ShapeOutline({
+  s,
+  pad,
+  color,
+  width,
+  opacity = 0.6,
+  strokeBase,
+}: {
+  s: Shape;
+  pad: number;
+  color: string;
+  width: number;
+  opacity?: number;
+  strokeBase: number;
+}) {
+  if (s.kind === 'freedraw') {
+    return (
+      <path
+        d={freedrawPathD(s)}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeBase + pad * 2}
+        opacity={opacity}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    );
+  }
+  const common = { fill: 'none', stroke: color, strokeWidth: width, opacity };
+  if (s.kind === 'ellipse') {
+    return (
+      <ellipse
+        cx={s.x + s.w / 2}
+        cy={s.y + s.h / 2}
+        rx={s.w / 2 + pad}
+        ry={s.h / 2 + pad}
+        {...common}
+      />
+    );
+  }
+  if (s.kind === 'diamond') return <polygon points={diamondPoints(s, pad)} {...common} />;
+  if (s.kind === 'triangle') return <polygon points={trianglePoints(s, pad)} {...common} />;
+  return (
+    <rect
+      x={s.x - pad}
+      y={s.y - pad}
+      width={s.w + pad * 2}
+      height={s.h + pad * 2}
+      rx={s.kind === 'frame' ? 10 : 6}
+      {...common}
+    />
+  );
+}
+
 function ShapeView({
   s,
   selected,
@@ -204,50 +262,21 @@ function ShapeView({
   // on-screen thickness and stand-off (see the screen-pixel note above `CONNECT_DOT_OFFSET`) —
   // otherwise it thins to nothing when zoomed out and swells into a blob when zoomed in.
   const haloPad = 3 * inv;
-  const halo = { fill: 'none', stroke: haloColor, strokeWidth: (selected ? 3 : 2) * inv, opacity: 0.6 };
-  /** Halo width for an open path (freedraw, connectors): the stroke's own world-space width
-   * plus a constant on-screen margin, so the ring reads the same however thick the line is. */
-  const pathHalo = strokeBase + (selected ? 4 : 3) * inv;
   // With the arrow tool active, dragging the shape body starts a new arrow
   // from it instead of moving it (see onMouseDown), so the dot-matching
   // "alias" cursor is the honest affordance here, not "move".
   const bodyCursor = tool === 'arrow' ? 'alias' : 'move';
   return (
     <g data-id={s.id} style={{ cursor: bodyCursor }}>
-      {haloColor && (s.kind === 'rect' || s.kind === 'image') && (
-        <rect
-          x={s.x - haloPad}
-          y={s.y - haloPad}
-          width={s.w + haloPad * 2}
-          height={s.h + haloPad * 2}
-          rx={6}
-          {...halo}
-        />
-      )}
-      {haloColor && s.kind === 'ellipse' && (
-        <ellipse cx={cx} cy={cy} rx={s.w / 2 + haloPad} ry={s.h / 2 + haloPad} {...halo} />
-      )}
-      {haloColor && s.kind === 'freedraw' && (
-        <path
-          d={freedrawPathD(s)}
-          fill="none"
-          stroke={haloColor}
-          strokeWidth={pathHalo}
-          opacity={0.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
-      {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, haloPad)} {...halo} />}
-      {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, haloPad)} {...halo} />}
-      {haloColor && s.kind === 'frame' && (
-        <rect
-          x={s.x - haloPad}
-          y={s.y - haloPad}
-          width={s.w + haloPad * 2}
-          height={s.h + haloPad * 2}
-          rx={10}
-          {...halo}
+      {/* A text shape is excluded: its own dashed outline below already switches to the halo
+          colour, so a second ring around it would just read as a double border. */}
+      {haloColor && s.kind !== 'text' && (
+        <ShapeOutline
+          s={s}
+          pad={haloPad}
+          color={haloColor}
+          width={(selected ? 3 : 2) * inv}
+          strokeBase={strokeBase}
         />
       )}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
@@ -723,6 +752,9 @@ export function Canvas({
   const hoverShape = hoverId ? findShape(doc, hoverId) : undefined;
   const selectedConnector =
     state.selectedIds.length === 1 ? findConnector(doc, state.selectedIds[0]) : undefined;
+  /** Shape the in-flight arrow/endpoint would attach to — resolved by the reducer so the ring
+   * always agrees with what gets committed (see `connectTarget` in reducer.ts). */
+  const connectTargetShape = state.connectTarget ? findShape(doc, state.connectTarget) : undefined;
 
   const newDrag = (
     kind: DragState['kind'],
@@ -1396,6 +1428,22 @@ export function Canvas({
           !drag.current &&
           state.tool !== 'select' &&
           connectDots(hoverShape, inv)}
+        {/* Drawn over the shapes so it reads as an answer to the gesture in flight: releasing
+            here attaches to this shape (and if it's the arrow's own source, closes a self-loop).
+            Green, matching the connect dots and the drag preview, so "connection" stays one
+            visual family distinct from the blue selection accent. Absent = lands loose. */}
+        {connectTargetShape && (
+          <g style={{ pointerEvents: 'none' }}>
+            <ShapeOutline
+              s={connectTargetShape}
+              pad={4 * inv}
+              color="var(--connect)"
+              width={2.5 * inv}
+              opacity={0.95}
+              strokeBase={STROKE_WIDTH_BASE[connectTargetShape.strokeWidth ?? 'm']}
+            />
+          </g>
+        )}
         {mode === 'hint' && state.hint && hintBadges(state.hint, view.scale)}
         {selectedBox && mode === 'normal' && (() => {
           const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);

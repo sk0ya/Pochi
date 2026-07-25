@@ -141,6 +141,15 @@ export interface EditorState {
   /** While an arrow is being drawn from a shape, which side of that shape it started on —
    * used to pick the exit side if the arrow is closed back onto the same shape (a self-loop). */
   arrowFromSide: LoopSide | null;
+  /**
+   * The shape a connector would attach to if the gesture in flight — drawing a new arrow, or
+   * re-aiming a selected connector's endpoint — were released right now; null when it would land
+   * loose on the canvas. Published by the reducer rather than re-derived by the view, because
+   * "what will this connect to" is decided by non-obvious rules (an attach margin, a wider
+   * keep-margin while a self-loop is being reshaped) and a highlight that disagreed with the
+   * outcome would be worse than none. The Canvas draws it as a green ring (see ShapeOutline).
+   */
+  connectTarget: string | null;
   /** Target size of the selection's bounding box while in transient `resize` mode. */
   resizeBox: { w: number; h: number } | null;
   /** Rubber-band selection rectangle being dragged (Shift+drag). */
@@ -306,6 +315,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     draw: null,
     arrowFrom: null,
     arrowFromSide: null,
+    connectTarget: null,
     marquee: null,
     editingId: null,
     editingIsNew: false,
@@ -353,6 +363,8 @@ function commitBase(state: EditorState, extra?: Partial<EditorState>): EditorSta
     undo: changed ? [...state.undo, state.base as Doc].slice(-UNDO_LIMIT) : state.undo,
     redo: changed ? [] : state.redo,
     base: null,
+    // An endpoint drag is one of these sessions, and its target ring must go out with it.
+    connectTarget: null,
     ...extra,
   };
 }
@@ -424,6 +436,7 @@ function endTransient(state: EditorState, extra?: Partial<EditorState>): EditorS
     draw: null,
     arrowFrom: null,
     arrowFromSide: null,
+    connectTarget: null,
     resizeBox: null,
     count: '',
     ...extra,
@@ -440,6 +453,7 @@ function cancelTransient(state: EditorState, extra?: Partial<EditorState>): Edit
     draw: null,
     arrowFrom: null,
     arrowFromSide: null,
+    connectTarget: null,
     resizeBox: null,
     editingId: null,
     editingIsNew: false,
@@ -639,6 +653,13 @@ function confirmDraw(state: EditorState): EditorState {
   });
 }
 
+/** The shape a new arrow would attach to if confirmed with the cursor where it is now — the
+ * same lookup `confirmArrow` performs, so `connectTarget` (and the ring the Canvas draws from
+ * it) can never promise a connection the commit wouldn't actually make. */
+function arrowTargetId(state: EditorState): string | null {
+  return shapeAt(state.doc, state.cursor)?.id ?? null;
+}
+
 function startArrow(state: EditorState): EditorState {
   const { shape } = hotItem(state);
   const from: Endpoint = shape
@@ -650,6 +671,7 @@ function startArrow(state: EditorState): EditorState {
     arrowFrom: from,
     // Remember the side the arrow starts on, so a self-loop exits where it began.
     arrowFromSide: shape ? nearestSide(shape, state.cursor) : null,
+    connectTarget: arrowTargetId(state),
     selectedIds: [],
     count: '',
     msg: 'ARROW: move to target, Enter/click to connect, Esc to cancel',
@@ -678,6 +700,7 @@ function confirmArrow(state: EditorState): EditorState {
     mode: 'normal',
     arrowFrom: null,
     arrowFromSide: null,
+    connectTarget: null,
     selectedIds: [c.id],
     count: '',
     msg: 'connected',
@@ -1297,11 +1320,13 @@ function handleTransientKey(state: EditorState, key: string, shift: boolean): Ed
   if (state.mode === 'draw' || state.mode === 'arrow') {
     const delta = moveDelta(key, step);
     if (delta) {
-      return {
+      const moved = {
         ...state,
         cursor: { x: state.cursor.x + delta.x, y: state.cursor.y + delta.y },
         count: '',
       };
+      // Keyboard-driven arrows get the same live target ring as a mouse drag.
+      return state.mode === 'arrow' ? { ...moved, connectTarget: arrowTargetId(moved) } : moved;
     }
     if (key === 'Enter') return state.mode === 'draw' ? confirmDraw(state) : confirmArrow(state);
     if (key === 'Escape') return cancelTransient(state, { msg: 'cancelled' });
@@ -1546,7 +1571,9 @@ function reduceCore(state: EditorState, action: Action): EditorState {
 
     case 'MOUSE_CURSOR': {
       if (state.mode !== 'draw' && state.mode !== 'arrow') return state;
-      return { ...state, cursor: snapPt(action.p) };
+      const moved = { ...state, cursor: snapPt(action.p) };
+      if (state.mode !== 'arrow') return moved;
+      return { ...moved, connectTarget: arrowTargetId(moved) };
     }
 
     case 'DRAG_START': {
@@ -1603,6 +1630,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state,
         base: state.doc,
         selectedIds: [action.id],
+        connectTarget: null,
       };
 
     case 'ENDPOINT_DRAG_MOVE': {
@@ -1642,7 +1670,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         // keeping where it was already pinned, if the user had fixed it to an edge.
         const otherFoot = other.anchor ?? SIDE_NORM.top;
         doc = setConnectorEndpoint(doc, action.id, otherEnd, wasLoop ? other : { shapeId: target.id, ...otherFoot });
-        return { ...state, doc };
+        return { ...state, doc, connectTarget: target.id };
       }
       // Deliberately unsnapped: the endpoint handle is 6px and the user is dragging it
       // directly, so quantizing to the grid would leave it visibly lagging the cursor
@@ -1664,7 +1692,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         : other;
       let doc = setConnectorEndpoint(state.doc, action.id, action.end, endpoint);
       doc = setConnectorEndpoint(doc, action.id, otherEnd, otherKept);
-      return { ...state, doc };
+      return { ...state, doc, connectTarget: target?.id ?? null };
     }
 
     case 'START_INSERT':
@@ -1795,6 +1823,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         ...state,
         mode: 'arrow',
         arrowFrom: from,
+        connectTarget: arrowTargetId({ ...state, cursor: snapPt(action.p) }),
         // The pointer starts at/near a connect dot, so its side of the shape is the
         // side a self-loop should exit from if the drag closes back onto this shape.
         arrowFromSide: s ? nearestSide(s, action.p) : null,

@@ -1295,6 +1295,63 @@ describe('INSERT_TEMPLATE', () => {
   });
 });
 
+describe('connectTarget: the shape a gesture in flight would attach to', () => {
+  const twoShapes: Doc = {
+    shapes: [
+      { id: 's1', kind: 'rect', x: 100, y: 100, w: 120, h: 80, label: '' },
+      { id: 's2', kind: 'rect', x: 400, y: 100, w: 120, h: 80, label: '' },
+    ],
+    connectors: [],
+  };
+
+  it('tracks the shape under the cursor while an arrow is dragged, and matches what gets connected', () => {
+    let st = initialState(twoShapes, false);
+    st = reduce(st, { type: 'START_ARROW_AT', p: { x: 160, y: 140 }, shapeId: 's1' });
+    st = reduce(st, { type: 'MOUSE_CURSOR', p: { x: 300, y: 140 } }); // empty canvas between them
+    expect(st.connectTarget).toBe(null);
+    st = reduce(st, { type: 'MOUSE_CURSOR', p: { x: 460, y: 140 } }); // over s2
+    expect(st.connectTarget).toBe('s2');
+    // The ring promised s2; the commit must deliver s2.
+    st = reduce(st, { type: 'CLICK', p: { x: 460, y: 140 }, id: 's2' });
+    expect(st.doc.connectors[0].to.shapeId).toBe('s2');
+    expect(st.connectTarget).toBe(null);
+  });
+
+  it('points back at the arrow\'s own source when the cursor returns to it (a self-loop)', () => {
+    let st = initialState(twoShapes, false);
+    st = reduce(st, { type: 'START_ARROW_AT', p: { x: 160, y: 140 }, shapeId: 's1' });
+    st = reduce(st, { type: 'MOUSE_CURSOR', p: { x: 300, y: 140 } });
+    st = reduce(st, { type: 'MOUSE_CURSOR', p: { x: 210, y: 170 } });
+    expect(st.connectTarget).toBe('s1');
+  });
+
+  it('follows a dragged endpoint on and off a shape, and clears when the drag ends', () => {
+    const doc: Doc = {
+      ...twoShapes,
+      connectors: [{ id: 'c1', from: { shapeId: 's1', x: 160, y: 140 }, to: { x: 300, y: 300 }, label: '' }],
+    };
+    let st = initialState(doc, false);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_START', id: 'c1', end: 'to' });
+    expect(st.connectTarget).toBe(null);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 460, y: 140 } });
+    expect(st.connectTarget).toBe('s2');
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 300, y: 300 } });
+    expect(st.connectTarget).toBe(null);
+    st = reduce(st, { type: 'ENDPOINT_DRAG_MOVE', id: 'c1', end: 'to', p: { x: 460, y: 140 } });
+    st = reduce(st, { type: 'DRAG_END' });
+    expect(st.connectTarget).toBe(null);
+  });
+
+  it('is cleared when the gesture is cancelled', () => {
+    let st = initialState(twoShapes, true);
+    st = reduce(st, { type: 'START_ARROW_AT', p: { x: 160, y: 140 }, shapeId: 's1' });
+    st = reduce(st, { type: 'MOUSE_CURSOR', p: { x: 460, y: 140 } });
+    expect(st.connectTarget).toBe('s2');
+    st = reduce(st, { type: 'CANCEL' });
+    expect(st.connectTarget).toBe(null);
+  });
+});
+
 describe('self-loop arrows', () => {
   const twoShapes: Doc = {
     shapes: [
