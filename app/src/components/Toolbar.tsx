@@ -109,6 +109,7 @@ function FileMenu({
 export function Toolbar({
   state,
   dispatch,
+  viewport,
   onNew,
   onSave,
   onOpen,
@@ -127,6 +128,9 @@ export function Toolbar({
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
+  /** The canvas's live on-screen size — Fit has to frame the content in *that* box, not the
+   * window's (see the comment on `viewport` in App.tsx). */
+  viewport: () => { screenW: number; screenH: number };
   onNew: () => void;
   onSave: () => void;
   onOpen: () => void;
@@ -189,9 +193,7 @@ export function Toolbar({
       <span className="sep" />
       <button
         className="icon-btn"
-        onClick={() =>
-          dispatch({ type: 'FIT', screenW: window.innerWidth, screenH: window.innerHeight })
-        }
+        onClick={() => dispatch({ type: 'FIT', ...viewport() })}
         title="Fit — 全体を画面に収める"
       >
         ⤢

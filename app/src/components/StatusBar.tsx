@@ -7,10 +7,14 @@ export function StatusBar({
   state,
   dispatch,
   runCommand,
+  viewportCenter,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
   runCommand: (cmd: string) => void;
+  /** Centre of the canvas in its own coordinates — the anchor the zoom reset holds still (see
+   * the comment on `viewport` in App.tsx for why the window's centre is the wrong point). */
+  viewportCenter: () => { x: number; y: number };
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -91,12 +95,7 @@ export function StatusBar({
       </span>
       <button
         className="zoom-btn"
-        onClick={() =>
-          dispatch({
-            type: 'RESET_ZOOM',
-            center: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-          })
-        }
+        onClick={() => dispatch({ type: 'RESET_ZOOM', center: viewportCenter() })}
         title="クリックで100%にリセット"
       >
         {Math.round(state.view.scale * 100)}%

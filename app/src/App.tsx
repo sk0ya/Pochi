@@ -204,6 +204,23 @@ export default function App() {
     }
   }, [theme]);
 
+  /* The canvas's own on-screen box. Every zoom/centre command has to be measured against *it*,
+   * not the window: the canvas is inset by the toolbar, the status bar, the 45px activity bar
+   * and — when a panel is open — another 208px of sidebar, so window/2 sits well right of and
+   * below the visible centre (over 120px off horizontally with a panel open). Read live on each
+   * use rather than tracked as state; these are one-shot commands, not render inputs. */
+  const canvasRef = useRef<SVGSVGElement | null>(null);
+  const viewport = useCallback(() => {
+    const r = canvasRef.current?.getBoundingClientRect();
+    return { screenW: r?.width ?? window.innerWidth, screenH: r?.height ?? window.innerHeight };
+  }, []);
+  /** Canvas-local centre point, for the zoom actions that anchor on it (ZOOM/RESET_ZOOM take
+   * `center` in canvas coordinates — see the wheel handler in Canvas.tsx). */
+  const viewportCenter = useCallback(() => {
+    const { screenW, screenH } = viewport();
+    return { x: screenW / 2, y: screenH / 2 };
+  }, [viewport]);
+
   /* Which ActivityBar panel is open (see ActivityBar/TemplateSidebar/PropertiesSidebar), if any.
    * Session-only UI state, not persisted. */
   const [activePanel, setActivePanel] = useState<PanelId | null>(null);
@@ -727,7 +744,7 @@ export default function App() {
           const willJump = s.pending === 'mark-jump' && /^[a-z]$/.test(e.key) && !!s.marks[e.key];
           dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
           if (willJump) {
-            dispatch({ type: 'CENTER', screenW: window.innerWidth, screenH: window.innerHeight });
+            dispatch({ type: 'CENTER', ...viewport() });
           }
           return;
         }
@@ -798,16 +815,12 @@ export default function App() {
       }
       if (e.key === '+' || e.key === '=' || e.key === '-') {
         e.preventDefault();
-        dispatch({
-          type: 'ZOOM',
-          factor: e.key === '-' ? 1 / 1.2 : 1.2,
-          center: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-        });
+        dispatch({ type: 'ZOOM', factor: e.key === '-' ? 1 / 1.2 : 1.2, center: viewportCenter() });
         return;
       }
       if (s.vim && e.key === 'z' && s.mode === 'normal' && !e.ctrlKey) {
         e.preventDefault();
-        dispatch({ type: 'CENTER', screenW: window.innerWidth, screenH: window.innerHeight });
+        dispatch({ type: 'CENTER', ...viewport() });
         return;
       }
       if (e.ctrlKey && (e.key === 'r' || e.key === 'z' || e.key === 'y')) {
@@ -823,12 +836,7 @@ export default function App() {
       if (s.vim && s.mode === 'normal' && (e.key === 'w' || e.key === 'b')) {
         e.preventDefault();
         dispatch({ type: 'KEY', key: e.key, ctrl: false, shift: e.shiftKey });
-        dispatch({
-          type: 'CENTER',
-          screenW: window.innerWidth,
-          screenH: window.innerHeight,
-          onlyIfOffscreen: true,
-        });
+        dispatch({ type: 'CENTER', ...viewport(), onlyIfOffscreen: true });
         return;
       }
       if (HANDLED.has(e.key)) {
@@ -838,7 +846,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [save, open, doCopyPng]);
+  }, [save, open, doCopyPng, viewport, viewportCenter]);
 
   /* paste an image or plain text from the OS clipboard */
   useEffect(() => {
@@ -879,6 +887,7 @@ export default function App() {
       <Toolbar
         state={state}
         dispatch={dispatch}
+        viewport={viewport}
         onNew={requestNew}
         onSave={() => void save()}
         onOpen={() => void open()}
@@ -917,13 +926,18 @@ export default function App() {
         {activePanel === 'templates' && <TemplateSidebar theme={theme} dispatch={dispatch} />}
         {activePanel === 'properties' && <PropertiesSidebar state={state} dispatch={dispatch} />}
         <div className="canvas-wrap">
-          <Canvas state={state} dispatch={dispatch} />
+          <Canvas state={state} dispatch={dispatch} svgRef={canvasRef} />
           <RemoteCursors cursors={peerCursors} view={state.view} />
           <TextEditOverlay state={state} dispatch={dispatch} />
           <ContextMenu state={state} dispatch={dispatch} />
         </div>
       </div>
-      <StatusBar state={state} dispatch={dispatch} runCommand={runCommand} />
+      <StatusBar
+        state={state}
+        dispatch={dispatch}
+        runCommand={runCommand}
+        viewportCenter={viewportCenter}
+      />
       {state.showHelp && <HelpOverlay dispatch={dispatch} />}
     </div>
   );

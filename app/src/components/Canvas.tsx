@@ -625,8 +625,17 @@ interface DragUpInfo extends DragMoveInfo {
   target: EventTarget | null;
 }
 
-export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Dispatch<Action> }) {
-  const svgRef = useRef<SVGSVGElement>(null);
+export function Canvas({
+  state,
+  dispatch,
+  svgRef,
+}: {
+  state: EditorState;
+  dispatch: Dispatch<Action>;
+  /** Owned by App so the zoom/centre commands outside the canvas (Fit, the zoom-reset button,
+   * `z`, `+`/`-`) can measure the canvas's real on-screen box rather than the window's. */
+  svgRef: React.RefObject<SVGSVGElement | null>;
+}) {
   const drag = useRef<DragState | null>(null);
   const space = useRef(false);
   // A mousedown that arrived while a text editor's textarea was still focused: the
