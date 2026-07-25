@@ -559,6 +559,18 @@ type PointerDownInfo = Pick<
   'clientX' | 'clientY' | 'button' | 'shiftKey' | 'ctrlKey' | 'target' | 'preventDefault'
 >;
 
+/* The move/up halves of a gesture are handled on `window`, not the svg (see the effect in
+ * {@link Canvas}), so they see a native MouseEvent as often as a React one. Both satisfy
+ * these structural types — only the few fields actually read are required. */
+interface DragMoveInfo {
+  clientX: number;
+  clientY: number;
+}
+interface DragUpInfo extends DragMoveInfo {
+  button: number;
+  target: EventTarget | null;
+}
+
 export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Dispatch<Action> }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<DragState | null>(null);
@@ -818,7 +830,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onMouseMove = (e: DragMoveInfo) => {
     const d = drag.current;
     // Also track hover while editing text (mode 'insert') so a shape's connect
     // dots stay available — dragging one starts an arrow — without first having
@@ -910,7 +922,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     }
   };
 
-  const onMouseUp = (e: React.MouseEvent) => {
+  const onMouseUp = (e: DragUpInfo) => {
     const d = drag.current;
     drag.current = null;
     setGuides({});
@@ -978,6 +990,45 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     }
     dispatch({ type: 'CLICK', p: toWorld(e), id: hitId(e.target) });
   };
+
+  /* A gesture's move/up halves live on `window`, not the svg: a drag routinely leaves the
+   * canvas — dropping a shape against the toolbar, marquee-ing past the window edge — and it
+   * must keep tracking and, above all, still *end* out there. Bound to the svg, the mouseup
+   * never arrives, so the drag stays live and the shape goes on following a button-up cursor
+   * once it comes back. Only mousedown stays on the svg (that half must be inside it).
+   *
+   * Registered once and kept fresh through a ref, since these close over the render's state
+   * but re-binding per mousemove would be pointless churn. Events that land *outside* the
+   * canvas with no drag in flight are dropped: hover tracking has nothing to say about the
+   * sidebar, and a click on a toolbar button must not read as a canvas click that clears the
+   * selection. */
+  const handlers = useRef({ onMouseMove, onMouseUp });
+  handlers.current = { onMouseMove, onMouseUp };
+  useEffect(() => {
+    const overCanvas = (t: EventTarget | null) =>
+      t instanceof Node && !!svgRef.current?.contains(t);
+    const move = (e: MouseEvent) => {
+      // Released outside the window (over another app, past the screen edge): no mouseup ever
+      // arrives, so the first move back in with no button still held ends the gesture rather
+      // than letting it run on.
+      if (drag.current && e.buttons === 0) {
+        handlers.current.onMouseUp(e);
+        return;
+      }
+      if (!drag.current && !overCanvas(e.target)) return;
+      handlers.current.onMouseMove(e);
+    };
+    const up = (e: MouseEvent) => {
+      if (!drag.current && !overCanvas(e.target)) return;
+      handlers.current.onMouseUp(e);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, []);
 
   const onDoubleClick = (e: React.MouseEvent) => {
     if (mode !== 'normal') return;
@@ -1192,8 +1243,6 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       className="canvas"
       style={{ cursor: bgCursor }}
       onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
       onDoubleClick={onDoubleClick}
       onWheel={onWheel}
       onContextMenu={onContextMenu}
