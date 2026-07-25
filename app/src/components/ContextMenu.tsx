@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Dispatch } from 'react';
+import type { Dispatch, ReactNode } from 'react';
+import { ShapeIcon } from './ShapeIcons';
 import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers, isSelfLoop } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
@@ -63,13 +64,14 @@ export const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle',
 
 /** The kinds an existing shape can be converted into, and — from a right-click on empty
  * canvas — inserted as. Deliberately typed as the reducer's DrawKind: that's the set of kinds
- * that can be created without a text/image flow of their own, which is exactly this list. */
-export const SHAPE_KINDS: Array<[DrawKind, string, string]> = [
-  ['rect', '▭', '四角形'],
-  ['ellipse', '◯', '楕円'],
-  ['diamond', '◇', 'ひし形'],
-  ['triangle', '△', '三角形'],
-  ['frame', '▢', 'フレーム(コンテナ)'],
+ * that can be created without a text/image flow of their own, which is exactly this list.
+ * Drawn icons rather than text glyphs, for the reason ShapeIcons.tsx gives. */
+export const SHAPE_KINDS: Array<[DrawKind, ReactNode, string]> = [
+  ['rect', <ShapeIcon kind="rect" />, '四角形'],
+  ['ellipse', <ShapeIcon kind="ellipse" />, '楕円'],
+  ['diamond', <ShapeIcon kind="diamond" />, 'ひし形'],
+  ['triangle', <ShapeIcon kind="triangle" />, '三角形'],
+  ['frame', <ShapeIcon kind="frame" />, 'フレーム(コンテナ)'],
 ];
 
 const ALIGN_EDGES: Array<[AlignEdge, string, string]> = [

@@ -823,6 +823,11 @@ body {
 .direction-swatch {
   width: 26px;
   height: 26px;
+  /* Centers a drawn shape icon (ShapeIcons.tsx) as exactly as it does a text glyph — an
+   * inline <svg> would otherwise sit on the text baseline, a little low in the button. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 5px;
   border: 1px solid var(--border);
   background: transparent;

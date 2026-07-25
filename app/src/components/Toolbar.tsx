@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Dispatch } from 'react';
+import type { Dispatch, ReactNode } from 'react';
 import type { RecentFile } from '../App';
 import type { ExportTheme } from '../model/svg';
+import { ShapeIcon } from './ShapeIcons';
 import { TOOL_KEYS } from '../state/reducer';
 import type { Action, EditorState, MouseTool } from '../state/reducer';
 
-const TOOLS: Array<[MouseTool, string, string, string]> = [
+// The shape tools use the drawn icons (see ShapeIcons.tsx); the rest stay text glyphs, none of
+// which is confusable with another.
+const TOOLS: Array<[MouseTool, ReactNode, string, string]> = [
   ['select', '⬚', 'Select', '図形を作成しない (選択・移動・パンのみ)'],
   ['sketch', '✏', 'Auto', '手描きで図形を自動判定(丸→楕円、角→四角、線→矢印)'],
   ['pen', '〰', 'Pen', '手描き線をそのまま残す(図形に変換しない)'],
-  ['rect', '▭', 'Rect', 'ドラッグで四角を描く (r)'],
-  ['ellipse', '◯', 'Ellipse', 'ドラッグで楕円を描く (e)'],
-  ['diamond', '◇', 'Diamond', 'ドラッグでひし形を描く (q)'],
-  ['triangle', '△', 'Triangle', 'ドラッグで三角形を描く (g)。向きは右クリックメニューで変更'],
-  ['frame', '▢', 'Frame', 'ドラッグでフレーム(コンテナ)を描く (o)。移動すると内側の図形も一緒に動く'],
+  ['rect', <ShapeIcon kind="rect" />, 'Rect', 'ドラッグで四角を描く (r)'],
+  ['ellipse', <ShapeIcon kind="ellipse" />, 'Ellipse', 'ドラッグで楕円を描く (e)'],
+  ['diamond', <ShapeIcon kind="diamond" />, 'Diamond', 'ドラッグでひし形を描く (q)'],
+  ['triangle', <ShapeIcon kind="triangle" />, 'Triangle', 'ドラッグで三角形を描く (g)。向きは右クリックメニューで変更'],
+  ['frame', <ShapeIcon kind="frame" />, 'Frame', 'ドラッグでフレーム(コンテナ)を描く (o)。移動すると内側の図形も一緒に動く'],
   ['arrow', '→', 'Arrow', '図形から図形へドラッグで矢印 (a)'],
   ['text', 'T', 'Text', 'クリックでテキスト (t)'],
 ];
