@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
 import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
@@ -93,6 +93,27 @@ export function ContextMenu({
   const ref = useRef<HTMLDivElement>(null);
   const menu = state.contextMenu;
 
+  /* Keep the menu on screen by measuring it, not by guessing. This used to clamp against a
+   * hardcoded height estimate (420–570px plus per-section increments), which meant a right-click
+   * anywhere in the lower part of the window pinned the menu to a fixed y far from the cursor —
+   * and the guess couldn't account for the CSS max-height/scroll cap either. Measured in a
+   * layout effect so the corrected position is what actually paints; `null` until then means
+   * "render at the raw click point", which is already right for the common case. */
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!menu || !el) {
+      setPos(null);
+      return;
+    }
+    const { width, height } = el.getBoundingClientRect();
+    const M = 8; // breathing room, so the menu never sits flush against a window edge
+    setPos({
+      left: Math.max(M, Math.min(menu.screen.x, window.innerWidth - width - M)),
+      top: Math.max(M, Math.min(menu.screen.y, window.innerHeight - height - M)),
+    });
+  }, [menu]);
+
   useEffect(() => {
     if (!menu) return;
     const close = () => dispatch({ type: 'CONTEXT_MENU_CLOSE' });
@@ -147,23 +168,9 @@ export function ContextMenu({
   // a multi-selection may mix sizes, so none of the buttons is shown active then.
   const currentFontSize = canEditText ? (singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm') : undefined;
 
-  // Clamp so the menu doesn't run off the viewport edge.
-  const menuHeight =
-    (hasTarget
-      ? singleShape?.kind === 'triangle'
-        ? 470
-        : singleConnector
-          ? 570
-          : 420
-      : 90) +
-    (isFillable ? 60 : 0) +
-    (canChangeShape ? 60 : 0) +
-    (canAlign ? 90 : 0) +
-    (canDistribute ? 90 : 0) +
-    (hasTarget ? 60 : 0);
   const style: React.CSSProperties = {
-    left: Math.min(menu.screen.x, window.innerWidth - 190),
-    top: Math.min(menu.screen.y, window.innerHeight - menuHeight),
+    left: pos?.left ?? menu.screen.x,
+    top: pos?.top ?? menu.screen.y,
   };
 
   return (
