@@ -19,10 +19,14 @@ export function TextEditOverlay({
 
   useEffect(() => {
     const ta = ref.current;
-    if (ta) {
-      ta.focus();
-      ta.select();
-    }
+    if (!ta) return;
+    ta.focus();
+    // Caret at the end, not the whole label selected. This editor opens over an *existing*
+    // label as often as a fresh shape (double-click, `i`, F2, the context menu), and with
+    // everything selected the first keystroke silently replaced a label the user only meant to
+    // extend. Ctrl+A is still there for a deliberate replace.
+    const end = ta.value.length;
+    ta.setSelectionRange(end, end);
   }, [id]);
 
   if (state.mode !== 'insert' || (!shape && !conn)) return null;
@@ -66,6 +70,10 @@ export function TextEditOverlay({
       defaultValue={shape?.label ?? conn?.label ?? ''}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing) return;
+        // Esc *commits* here, unlike the draw/move/resize modes where it cancels — this
+        // deliberately follows vim, whose insert mode also keeps what you typed on the way out.
+        // The whole point of the auto-recognise and double-click flows is "shape appears, type,
+        // leave", so having Esc discard the text would break the app's main path.
         if (e.key === 'Escape') {
           e.preventDefault();
           commit();
