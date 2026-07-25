@@ -662,7 +662,7 @@ export default function App() {
     }
   }, []);
 
-  const addImageFromDataUrl = useCallback(async (dataUrl: string) => {
+  const addImageFromDataUrl = useCallback(async (dataUrl: string, at?: Pt) => {
     const dims = await new Promise<{ w: number; h: number }>((resolve) => {
       const img = new Image();
       img.onload = () => resolve({ w: img.naturalWidth || IMAGE_MAX_DIM, h: img.naturalHeight || IMAGE_MAX_DIM });
@@ -672,13 +672,13 @@ export default function App() {
     const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(dims.w, dims.h, 1));
     const w = Math.max(GRID, Math.round((dims.w * scale) / GRID) * GRID);
     const h = Math.max(GRID, Math.round((dims.h * scale) / GRID) * GRID);
-    dispatch({ type: 'ADD_IMAGE', src: dataUrl, w, h });
+    dispatch({ type: 'ADD_IMAGE', src: dataUrl, w, h, at });
   }, []);
 
-  const importImage = useCallback(async () => {
+  const importImage = useCallback(async (at?: Pt) => {
     const picked = isDesktop ? await openImageDialog() : await pickImageFile();
     if (!picked) return;
-    await addImageFromDataUrl(picked.dataUrl);
+    await addImageFromDataUrl(picked.dataUrl, at);
   }, [addImageFromDataUrl]);
 
   const runCommand = useCallback(
@@ -984,7 +984,7 @@ export default function App() {
           <Canvas state={state} dispatch={dispatch} svgRef={canvasRef} />
           <RemoteCursors cursors={peerCursors} view={state.view} />
           <TextEditOverlay state={state} dispatch={dispatch} />
-          <ContextMenu state={state} dispatch={dispatch} />
+          <ContextMenu state={state} dispatch={dispatch} onInsertImage={(at) => void importImage(at)} />
         </div>
       </div>
       <StatusBar

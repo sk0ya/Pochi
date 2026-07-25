@@ -1600,3 +1600,61 @@ describe('connector endpoint drag', () => {
     expect(st.doc.connectors[0].waypoints).toEqual([{ x: 331, y: 247 }]);
   });
 });
+
+describe('INSERT_SHAPE_AT: context-menu insert on empty canvas', () => {
+  const empty: Doc = { shapes: [], connectors: [] };
+
+  it('places a default-sized shape centered on the clicked point, snapped to the grid', () => {
+    const st = reduce(initialState(empty, false), {
+      type: 'INSERT_SHAPE_AT',
+      kind: 'rect',
+      p: { x: 405, y: 301 },
+    });
+    const s = st.doc.shapes[0];
+    // 405/301 snap to 400/304, then the shape is centered on that point.
+    expect({ x: s.x, y: s.y, w: s.w, h: s.h }).toEqual({
+      x: 400 - GRID * 5,
+      y: 304 - GRID * 3,
+      w: GRID * 10,
+      h: GRID * 6,
+    });
+    expect(s.kind).toBe('rect');
+    expect(st.selectedIds).toEqual([s.id]);
+  });
+
+  it('gives a triangle a default direction, like the draw flow does', () => {
+    const st = reduce(initialState(empty, false), {
+      type: 'INSERT_SHAPE_AT',
+      kind: 'triangle',
+      p: { x: 200, y: 200 },
+    });
+    expect(st.doc.shapes[0].direction).toBe('up');
+  });
+
+  it('drops into text entry in plain mode, but stays in normal mode under vim', () => {
+    const plain = reduce(initialState(empty, false), {
+      type: 'INSERT_SHAPE_AT',
+      kind: 'ellipse',
+      p: { x: 200, y: 200 },
+    });
+    expect(plain.mode).toBe('insert');
+    expect(plain.editingId).toBe(plain.doc.shapes[0].id);
+    expect(plain.editingIsNew).toBe(true);
+
+    const vim = reduce(initialState(empty, true), {
+      type: 'INSERT_SHAPE_AT',
+      kind: 'ellipse',
+      p: { x: 200, y: 200 },
+    });
+    expect(vim.mode).toBe('normal');
+    expect(vim.editingId).toBeNull();
+    // Recorded as a repeatable edit, so `.` stamps another one at the cursor.
+    expect(vim.lastEdit).toEqual({ kind: 'draw', shapeKind: 'ellipse', w: GRID * 10, h: GRID * 6 });
+  });
+
+  it('ignores the vim cursor: two inserts at different points land where each was clicked', () => {
+    let st = reduce(initialState(empty, true), { type: 'INSERT_SHAPE_AT', kind: 'rect', p: { x: 0, y: 0 } });
+    st = reduce(st, { type: 'INSERT_SHAPE_AT', kind: 'rect', p: { x: GRID * 40, y: GRID * 40 } });
+    expect(st.doc.shapes.map((s) => s.x)).toEqual([-GRID * 5, GRID * 35]);
+  });
+});

@@ -269,7 +269,8 @@ export type Action =
   | { type: 'START_DRAW_AT'; kind: DrawKind; p: Pt }
   | { type: 'START_ARROW_AT'; p: Pt; shapeId?: string }
   | { type: 'TEXT_AT'; p: Pt }
-  | { type: 'ADD_IMAGE'; src: string; w: number; h: number }
+  | { type: 'INSERT_SHAPE_AT'; kind: DrawKind; p: Pt }
+  | { type: 'ADD_IMAGE'; src: string; w: number; h: number; at?: Pt }
   | { type: 'ADD_TEXT'; text: string }
   | { type: 'PASTE_CLIP'; clip: Clipboard }
   | { type: 'INSERT_TEMPLATE'; templateId: string; at?: Pt }
@@ -685,6 +686,50 @@ function confirmDraw(state: EditorState): EditorState {
       h: r.h,
       ...(state.draw.kind === 'triangle' ? { direction: 'up' as const } : {}),
     },
+  });
+}
+
+/**
+ * Places a shape straight onto the canvas at `p` — the context menu's "insert here" on empty
+ * canvas. There's no drag to size it, so it lands DEFAULT_W×DEFAULT_H centered on the clicked
+ * point (both halves are whole grid steps, so the corners stay snapped). What happens next
+ * mirrors confirmDraw: plain mode drops into text entry, vim mode stays in normal and records
+ * the insert as a repeatable edit.
+ */
+function insertShapeAt(state: EditorState, kind: DrawKind, p: Pt): EditorState {
+  const c = snapPt(p);
+  const direction = kind === 'triangle' ? { direction: 'up' as const } : {};
+  const shape: Shape = {
+    id: newId(),
+    kind,
+    x: c.x - DEFAULT_W / 2,
+    y: c.y - DEFAULT_H / 2,
+    w: DEFAULT_W,
+    h: DEFAULT_H,
+    label: '',
+    ...direction,
+  };
+  if (!state.vim) {
+    return {
+      ...state,
+      base: state.doc,
+      doc: addShape(state.doc, shape),
+      mode: 'insert',
+      draw: null,
+      editingId: shape.id,
+      editingIsNew: true,
+      selectedIds: [shape.id],
+      count: '',
+      msg: '',
+    };
+  }
+  return commit(state, addShape(state.doc, shape), {
+    mode: 'normal',
+    draw: null,
+    selectedIds: [shape.id],
+    count: '',
+    msg: 'placed (i: add text)',
+    lastEdit: { kind: 'draw', shapeKind: kind, w: DEFAULT_W, h: DEFAULT_H, ...direction },
   });
 }
 
@@ -1880,6 +1925,9 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     case 'TEXT_AT':
       return startTextInsert(state, action.p);
 
+    case 'INSERT_SHAPE_AT':
+      return insertShapeAt(state, action.kind, action.p);
+
     case 'CANCEL':
       return cancelTransient(state, { msg: '' });
 
@@ -2407,14 +2455,20 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     }
 
     case 'ADD_IMAGE': {
-      const at = snapPt(state.cursor);
+      const w = Math.max(GRID, snap(action.w));
+      const h = Math.max(GRID, snap(action.h));
+      // A point picked on the canvas (the context menu's insert) means "put it here", so the
+      // image is centered on it; the cursor fallback keeps the toolbar/vim path's top-left drop.
+      const at = action.at
+        ? { x: snap(action.at.x - w / 2), y: snap(action.at.y - h / 2) }
+        : snapPt(state.cursor);
       const shape: Shape = {
         id: newId(),
         kind: 'image',
         x: at.x,
         y: at.y,
-        w: Math.max(GRID, snap(action.w)),
-        h: Math.max(GRID, snap(action.h)),
+        w,
+        h,
         label: '',
         src: action.src,
       };

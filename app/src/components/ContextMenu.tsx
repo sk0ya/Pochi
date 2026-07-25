@@ -3,8 +3,8 @@ import type { Dispatch } from 'react';
 import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers, isSelfLoop } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { ArrowDirection, FontSize, LoopSide, ShapeKind, TriangleDirection } from '../model/types';
-import type { Action, EditorState } from '../state/reducer';
+import type { ArrowDirection, FontSize, LoopSide, Pt, TriangleDirection } from '../model/types';
+import type { Action, DrawKind, EditorState } from '../state/reducer';
 
 export const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
   ['up', '▲', '上向き'],
@@ -61,7 +61,10 @@ export const FONT_SIZES: Array<[FontSize, string, string]> = [
 
 export const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'frame']);
 
-export const SHAPE_KINDS: Array<[ShapeKind, string, string]> = [
+/** The kinds an existing shape can be converted into, and — from a right-click on empty
+ * canvas — inserted as. Deliberately typed as the reducer's DrawKind: that's the set of kinds
+ * that can be created without a text/image flow of their own, which is exactly this list. */
+export const SHAPE_KINDS: Array<[DrawKind, string, string]> = [
   ['rect', '▭', '四角形'],
   ['ellipse', '◯', '楕円'],
   ['diamond', '◇', 'ひし形'],
@@ -86,9 +89,13 @@ const DISTRIBUTE_AXES: Array<[DistributeAxis, string, string]> = [
 export function ContextMenu({
   state,
   dispatch,
+  onInsertImage,
 }: {
   state: EditorState;
   dispatch: Dispatch<Action>;
+  /** Opens the image picker and drops the chosen file at `at` — the file dialog is async and
+   * lives in App, so this can't be a plain action the way the other insert entries are. */
+  onInsertImage: (at: Pt) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const menu = state.contextMenu;
@@ -396,6 +403,32 @@ export function ContextMenu({
         </>
       ) : (
         <>
+          {/* Right-clicking bare canvas used to offer paste and nothing else, so putting a
+            * shape down meant a trip to the toolbar. Everything here lands at the clicked
+            * point rather than at the vim cursor. */}
+          <div className="context-label">挿入</div>
+          <div className="direction-row">
+            {SHAPE_KINDS.map(([kind, icon, title]) => (
+              <button
+                key={kind}
+                className="direction-swatch"
+                title={title}
+                onClick={() => run({ type: 'INSERT_SHAPE_AT', kind, p: menu.world })}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => run({ type: 'TEXT_AT', p: menu.world })}>テキスト</button>
+          <button
+            onClick={() => {
+              dispatch({ type: 'CONTEXT_MENU_CLOSE' });
+              onInsertImage(menu.world);
+            }}
+          >
+            画像…
+          </button>
+          <div className="context-sep" />
           <button
             disabled={!state.clipboard}
             onClick={() => run({ type: 'PASTE_AT', p: menu.world })}
