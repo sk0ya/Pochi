@@ -715,13 +715,53 @@ export function translateItems(doc: Doc, ids: string[], dx: number, dy: number):
   };
 }
 
+/** Whether `frame` holds `s`: a nested *frame* must sit ENTIRELY inside (all four corners
+ * within), so one that merely overlaps an edge isn't held; anything else counts once its
+ * centre is in the rect. */
+function frameHolds(frame: Shape, s: Shape): boolean {
+  if (s.kind === 'frame') {
+    return (
+      s.x >= frame.x && s.y >= frame.y && s.x + s.w <= frame.x + frame.w && s.y + s.h <= frame.y + frame.h
+    );
+  }
+  const cx = s.x + s.w / 2;
+  const cy = s.y + s.h / 2;
+  return cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h;
+}
+
 /**
- * Ids of `ids` plus every shape "contained" by a frame among them. A plain shape counts as
- * contained when its center lies inside the frame's rect; a nested *frame* must sit ENTIRELY
- * inside (all four corners within), so a frame that merely overlaps the edge of the one being
- * moved is left behind instead of dragged along. Composes for nested frames — a frame found
- * this way is itself queued, so its own contents (and any frame nested inside *that*) get
- * pulled in too.
+ * The one frame each shape belongs to: the smallest that holds it, so a shape sitting in a
+ * nested frame belongs to *that* frame rather than to every enclosing one as well. Shapes
+ * with no owner (and frames not fully inside another) are simply absent.
+ *
+ * The Excalidraw exporter derives frame membership the same innermost-by-area way (see
+ * `computeFrameIds`), so what moves together here is what lands in a frame over there —
+ * modulo nested frames, which that one places by centre like anything else.
+ */
+function frameOwners(doc: Doc): Map<string, string> {
+  const frames = doc.shapes.filter((s) => s.kind === 'frame');
+  const owner = new Map<string, string>();
+  for (const s of doc.shapes) {
+    let best: Shape | undefined;
+    for (const f of frames) {
+      if (f.id === s.id || !frameHolds(f, s)) continue;
+      if (!best || f.w * f.h < best.w * best.h) best = f;
+    }
+    if (best) owner.set(s.id, best.id);
+  }
+  return owner;
+}
+
+/**
+ * Ids of `ids` plus every shape a frame among them owns, following ownership down through
+ * nested frames — a frame found this way is itself queued, so its own contents (and anything
+ * nested inside *that*) come along too.
+ *
+ * Ownership is exclusive (see `frameOwners`), which is what keeps a nested frame's contents
+ * with the nested frame. Testing every shape against the moving frame's rect independently
+ * would drag a shape out of a nested frame that's staying put — that frame only overlaps the
+ * outer one's edge, so it isn't pulled along, but its contents' centres can still fall inside
+ * the outer rect.
  *
  * There's no persistent parent/child bookkeeping: membership is recomputed fresh from `doc`
  * every time this is called. Callers pass the doc snapshot from the
@@ -732,30 +772,14 @@ export function translateItems(doc: Doc, ids: string[], dx: number, dy: number):
 export function frameContainedIds(doc: Doc, ids: string[]): string[] {
   const result = new Set(ids);
   const queue = ids.filter((id) => findShape(doc, id)?.kind === 'frame');
+  if (!queue.length) return [...result];
+  const owner = frameOwners(doc);
   while (queue.length) {
-    const frame = findShape(doc, queue.shift() as string);
-    if (!frame) continue;
+    const frameId = queue.shift() as string;
     for (const s of doc.shapes) {
-      if (result.has(s.id)) continue;
-      const contained =
-        s.kind === 'frame'
-          ? // A nested frame is pulled along only when it sits entirely inside.
-            s.x >= frame.x &&
-            s.y >= frame.y &&
-            s.x + s.w <= frame.x + frame.w &&
-            s.y + s.h <= frame.y + frame.h
-          : // A plain shape counts as inside when its center is within the rect.
-            (() => {
-              const cx = s.x + s.w / 2;
-              const cy = s.y + s.h / 2;
-              return (
-                cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h
-              );
-            })();
-      if (contained) {
-        result.add(s.id);
-        if (s.kind === 'frame') queue.push(s.id);
-      }
+      if (result.has(s.id) || owner.get(s.id) !== frameId) continue;
+      result.add(s.id);
+      if (s.kind === 'frame') queue.push(s.id);
     }
   }
   return [...result];

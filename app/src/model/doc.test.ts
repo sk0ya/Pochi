@@ -515,6 +515,27 @@ describe('frameContainedIds', () => {
     expect(frameContainedIds(doc, ['outer']).sort()).toEqual(['inner', 'leaf', 'outer']);
   });
 
+  it('leaves the contents of a nested frame behind when that frame itself stays put', () => {
+    const outer = frame('outer', 0, 0, 200, 200);
+    // Pokes out past outer's right/bottom edge, so it isn't dragged along...
+    const over = frame('over', 120, 120, 100, 100);
+    // ...and this sits inside it, with a center (150,150) that is *also* inside outer.
+    const leaf = rect('leaf', 140, 140, 20, 20);
+    const doc: Doc = { shapes: [outer, over, leaf], connectors: [] };
+    expect(frameContainedIds(doc, ['outer'])).toEqual(['outer']);
+    // Moving the frame it actually belongs to still takes it.
+    expect(frameContainedIds(doc, ['over']).sort()).toEqual(['leaf', 'over']);
+  });
+
+  it('gives a shape inside two overlapping frames to the smaller one', () => {
+    const big = frame('big', 0, 0, 300, 300);
+    const small = frame('small', 100, 100, 250, 250); // overlaps big, not inside it
+    const leaf = rect('leaf', 140, 140, 20, 20); // center (150,150) inside both
+    const doc: Doc = { shapes: [big, small, leaf], connectors: [] };
+    expect(frameContainedIds(doc, ['big'])).toEqual(['big']);
+    expect(frameContainedIds(doc, ['small']).sort()).toEqual(['leaf', 'small']);
+  });
+
   it('a frame with nothing inside it resolves to just itself', () => {
     const f = frame('f1', 0, 0, 50, 50);
     const doc: Doc = { shapes: [f], connectors: [] };
