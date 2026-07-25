@@ -284,15 +284,31 @@ function ShapeView({
       {/* A freedraw stroke is an open line: never filled, so the `filled` flag and the
           tinted fill are ignored — only the stroke color applies. */}
       {s.kind === 'freedraw' && (
-        <path
-          d={freedrawPathD(s)}
-          fill="none"
-          stroke={trueStroke}
-          strokeWidth={selected ? strokeBase + 0.5 : strokeBase}
-          strokeDasharray={s.dashed ? '6 4' : undefined}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <>
+          {/* Wide invisible stroke so the (thin) visible line is a realistic click target —
+              without it, selecting a pen stroke means hitting its ~2px path exactly, since
+              a `fill="none"` open path hit-tests on its stroke alone. Same trick, and the
+              same screen-constant width, as a connector's hit band. A `transparent` stroke
+              still takes pointer events; only `none` would opt out. */}
+          <path
+            d={freedrawPathD(s)}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={strokeBase + 12 * inv}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={freedrawPathD(s)}
+            fill="none"
+            stroke={trueStroke}
+            strokeWidth={selected ? strokeBase + 0.5 : strokeBase}
+            strokeDasharray={s.dashed ? '6 4' : undefined}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ pointerEvents: 'none' }}
+          />
+        </>
       )}
       {s.kind === 'diamond' && <polygon points={diamondPoints(s)} {...common} />}
       {s.kind === 'triangle' && <polygon points={trianglePoints(s)} {...common} />}
