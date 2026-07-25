@@ -166,7 +166,19 @@ function trianglePoints(box: { x: number; y: number; w: number; h: number; direc
     .join(' ');
 }
 
-function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; hot: boolean; tool: string }) {
+function ShapeView({
+  s,
+  selected,
+  hot,
+  tool,
+  inv,
+}: {
+  s: Shape;
+  selected: boolean;
+  hot: boolean;
+  tool: string;
+  inv: number;
+}) {
   // The shape's own color always stays visible; selection/hot is shown as a
   // halo around it instead of overriding the stroke (otherwise you can't see
   // the color you just picked while the item is still selected).
@@ -188,7 +200,14 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   const cy = s.y + s.h / 2;
   const labelPos = labelCenter(s);
   const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
-  const halo = { fill: 'none', stroke: haloColor, strokeWidth: selected ? 3 : 2, opacity: 0.6 };
+  // The halo is selection *feedback*, not part of the drawing, so its ring keeps a constant
+  // on-screen thickness and stand-off (see the screen-pixel note above `CONNECT_DOT_OFFSET`) —
+  // otherwise it thins to nothing when zoomed out and swells into a blob when zoomed in.
+  const haloPad = 3 * inv;
+  const halo = { fill: 'none', stroke: haloColor, strokeWidth: (selected ? 3 : 2) * inv, opacity: 0.6 };
+  /** Halo width for an open path (freedraw, connectors): the stroke's own world-space width
+   * plus a constant on-screen margin, so the ring reads the same however thick the line is. */
+  const pathHalo = strokeBase + (selected ? 4 : 3) * inv;
   // With the arrow tool active, dragging the shape body starts a new arrow
   // from it instead of moving it (see onMouseDown), so the dot-matching
   // "alias" cursor is the honest affordance here, not "move".
@@ -196,26 +215,40 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   return (
     <g data-id={s.id} style={{ cursor: bodyCursor }}>
       {haloColor && (s.kind === 'rect' || s.kind === 'image') && (
-        <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={6} {...halo} />
+        <rect
+          x={s.x - haloPad}
+          y={s.y - haloPad}
+          width={s.w + haloPad * 2}
+          height={s.h + haloPad * 2}
+          rx={6}
+          {...halo}
+        />
       )}
       {haloColor && s.kind === 'ellipse' && (
-        <ellipse cx={cx} cy={cy} rx={s.w / 2 + 3} ry={s.h / 2 + 3} {...halo} />
+        <ellipse cx={cx} cy={cy} rx={s.w / 2 + haloPad} ry={s.h / 2 + haloPad} {...halo} />
       )}
       {haloColor && s.kind === 'freedraw' && (
         <path
           d={freedrawPathD(s)}
           fill="none"
           stroke={haloColor}
-          strokeWidth={selected ? 6 : 5}
+          strokeWidth={pathHalo}
           opacity={0.6}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
       )}
-      {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, 3)} {...halo} />}
-      {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, 3)} {...halo} />}
+      {haloColor && s.kind === 'diamond' && <polygon points={diamondPoints(s, haloPad)} {...halo} />}
+      {haloColor && s.kind === 'triangle' && <polygon points={trianglePoints(s, haloPad)} {...halo} />}
       {haloColor && s.kind === 'frame' && (
-        <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} rx={10} {...halo} />
+        <rect
+          x={s.x - haloPad}
+          y={s.y - haloPad}
+          width={s.w + haloPad * 2}
+          height={s.h + haloPad * 2}
+          rx={10}
+          {...halo}
+        />
       )}
       {s.kind === 'rect' && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={4} {...common} />}
       {s.kind === 'ellipse' && <ellipse cx={cx} cy={cy} rx={s.w / 2} ry={s.h / 2} {...common} />}
@@ -271,7 +304,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
           />
           {/* Wide invisible stroke so the (thin) visible border is still an easy
               click/drag target — this is the frame's whole "hit zone" for its edges,
-              matching frameHitZone in model/doc.ts. */}
+              matching frameHitZone in model/doc.ts, which the hover path calls with this
+              same screen-constant band. */}
           <rect
             x={s.x}
             y={s.y}
@@ -279,7 +313,7 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
             height={s.h}
             fill="none"
             stroke="transparent"
-            strokeWidth={FRAME_BORDER_BAND * 2}
+            strokeWidth={FRAME_BORDER_BAND * inv * 2}
           />
           {/* Label area is also clickable/draggable (part of "the frame", not its interior). */}
           <rect
@@ -301,6 +335,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
           preserveAspectRatio="xMidYMid slice"
         />
       )}
+      {/* A text shape has no body of its own: this dashed outline is purely the "empty text
+          box" / selection affordance, so it stays screen-constant like the halo above. */}
       {s.kind === 'text' && (
         <rect
           x={s.x}
@@ -309,8 +345,8 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
           height={s.h}
           fill="transparent"
           stroke={haloColor ?? (s.label ? 'transparent' : trueStroke)}
-          strokeDasharray="4 3"
-          strokeWidth={haloColor ? 1.5 : 1}
+          strokeDasharray={dash(4, 3, inv)}
+          strokeWidth={(haloColor ? 1.5 : 1) * inv}
         />
       )}
       {s.kind === 'frame' ? (
@@ -340,6 +376,13 @@ function ShapeView({ s, selected, hot, tool }: { s: Shape; selected: boolean; ho
   );
 }
 
+/* Every measurement below is in *screen* pixels, not world units: handles and hit areas are
+ * things the pointer aims at, so they have to stay the same physical size whatever the zoom.
+ * Since they're drawn inside the world-space `<g scale(view.scale)>`, each one is multiplied
+ * by `inv` (= 1 / view.scale) at use — the same inverse-scale trick hintBadges uses. Left in
+ * world units they'd shrink to a couple of pixels at 20% zoom (unclickable) and bloat to
+ * several times their intended size at 400% (stealing clicks from the shape underneath). */
+
 /** How far outside the shape's edge each connect dot floats — past both the
  * shape's own move-drag hit area and the edge resize handles, which sit
  * right on the border, so the two don't compete for the same click. */
@@ -348,6 +391,14 @@ const CONNECT_DOT_OFFSET = 18;
  * it, so the pointer can travel from the shape out to the connect dots
  * without the hover state dropping in between. Must exceed CONNECT_DOT_OFFSET. */
 const HOVER_MARGIN = 26;
+/** Half-length of the vim cursor's crosshair arms. */
+const CURSOR_ARM = 7;
+
+/** A dash pattern for transient UI chrome (marquee, snap guides, draw preview), converted to
+ * world units so the dashes read the same at any zoom instead of merging into a solid line
+ * when zoomed out. Shape/connector dash patterns are deliberately *not* run through this:
+ * those belong to the drawing and scale with it, and the SVG export reproduces them verbatim. */
+const dash = (on: number, off: number, inv: number): string => `${on * inv} ${off * inv}`;
 
 /** Topmost shape whose bounds, expanded by `margin`, contain `p`. A frame's open interior
  * doesn't count (same reasoning as frameHitZone) — hovering a shape a frame contains must
@@ -355,11 +406,11 @@ const HOVER_MARGIN = 26;
  * which caps the outside reach at the border band, a frame stays hovered anywhere within `margin`
  * of its border (frameBorderOrLabel has no outer cap) so the pointer can reach the frame's own
  * connect dots, which float CONNECT_DOT_OFFSET (> band) outside the edge. */
-function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number): Shape | undefined {
+function shapeNear(doc: { shapes: Shape[] }, p: Pt, margin: number, band: number): Shape | undefined {
   for (let i = doc.shapes.length - 1; i >= 0; i--) {
     const s = doc.shapes[i];
     if (p.x >= s.x - margin && p.x <= s.x + s.w + margin && p.y >= s.y - margin && p.y <= s.y + s.h + margin) {
-      if (s.kind === 'frame' && !frameBorderOrLabel(s, p)) continue;
+      if (s.kind === 'frame' && !frameBorderOrLabel(s, p, band)) continue;
       return s;
     }
   }
@@ -375,6 +426,7 @@ const CONNECT_DOT_TITLE = 'ドラッグして矢印を作成';
  * on those same axes — or the triangle's three vertices, pushed out from its
  * centroid instead since they aren't axis-aligned. */
 function connectPoints(s: Shape, offset: number): Pt[] {
+  // `offset` arrives already converted to world units (see connectDots).
   if (s.kind === 'triangle') {
     const verts = triangleVertices(s);
     const cx = (verts[0].x + verts[1].x + verts[2].x) / 3;
@@ -405,17 +457,17 @@ function connectPoints(s: Shape, offset: number): Pt[] {
  * green (--connect, not the blue --accent) and drawn as a ring rather than a
  * filled square, so "drag to connect" and "drag to resize" stay tellable apart
  * by both color and shape. */
-function connectDots(s: Shape) {
+function connectDots(s: Shape, inv: number) {
   return (
     <>
-      {connectPoints(s, CONNECT_DOT_OFFSET).map((p, i) => (
+      {connectPoints(s, CONNECT_DOT_OFFSET * inv).map((p, i) => (
         <g key={i}>
           <circle
             data-handle="connect"
             data-shape={s.id}
             cx={p.x}
             cy={p.y}
-            r={10}
+            r={10 * inv}
             fill="transparent"
             style={{ cursor: 'alias' }}
           >
@@ -424,13 +476,13 @@ function connectDots(s: Shape) {
           <circle
             cx={p.x}
             cy={p.y}
-            r={5.5}
+            r={5.5 * inv}
             fill="var(--connect)"
             stroke="var(--bg)"
-            strokeWidth={1.5}
+            strokeWidth={1.5 * inv}
             style={{ pointerEvents: 'none' }}
           />
-          <circle cx={p.x} cy={p.y} r={2} fill="var(--bg)" style={{ pointerEvents: 'none' }} />
+          <circle cx={p.x} cy={p.y} r={2 * inv} fill="var(--bg)" style={{ pointerEvents: 'none' }} />
         </g>
       ))}
     </>
@@ -446,22 +498,24 @@ const ENDPOINT_FLOATING_TITLE = '自動接続 — 辺までドラッグすると
  * A *fixed* end (pinned to a point on the shape's border) is a solid disc; a *floating* one —
  * which only aims at the shape and slides around its border — is a ring, the same hollow
  * shape the connect dots use, since both mean "not committed to a spot yet". */
-function endpointHandle(handle: string, p: Pt, fixed: boolean) {
+function endpointHandle(handle: string, p: Pt, fixed: boolean, inv: number) {
   return (
     <g>
       <circle
         data-handle={handle}
         cx={p.x}
         cy={p.y}
-        r={6}
+        r={6 * inv}
         fill="var(--connect)"
         stroke="var(--bg)"
-        strokeWidth={1.5}
+        strokeWidth={1.5 * inv}
         style={{ cursor: 'crosshair' }}
       >
         <title>{fixed ? ENDPOINT_FIXED_TITLE : ENDPOINT_FLOATING_TITLE}</title>
       </circle>
-      {!fixed && <circle cx={p.x} cy={p.y} r={2} fill="var(--bg)" style={{ pointerEvents: 'none' }} />}
+      {!fixed && (
+        <circle cx={p.x} cy={p.y} r={2 * inv} fill="var(--bg)" style={{ pointerEvents: 'none' }} />
+      )}
     </g>
   );
 }
@@ -591,6 +645,9 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
   const [isPanning, setIsPanning] = useState(false);
 
   const { doc, view, cursor, mode, vim } = state;
+  /** World units per screen pixel — the factor that keeps handles and hit areas a constant
+   * on-screen size inside the world-space `<g scale(view.scale)>`. */
+  const inv = 1 / view.scale;
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -836,7 +893,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
     // dots stay available — dragging one starts an arrow — without first having
     // to click away to leave the text editor.
     if (!d && (mode === 'normal' || mode === 'insert')) {
-      const near = shapeNear(doc, toWorld(e), HOVER_MARGIN);
+      const near = shapeNear(doc, toWorld(e), HOVER_MARGIN * inv, FRAME_BORDER_BAND * inv);
       setHoverId(near?.id ?? null);
     }
     if (mode === 'draw' || mode === 'arrow') {
@@ -1088,8 +1145,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
       const common = {
         fill: 'none',
         stroke: 'var(--accent)',
-        strokeDasharray: '6 4',
-        strokeWidth: 1.5,
+        strokeDasharray: dash(6, 4, inv),
+        strokeWidth: 1.5 * inv,
       };
       if (state.draw.kind === 'rect') {
         return <rect x={x} y={y} width={w} height={h} rx={4} {...common} />;
@@ -1117,8 +1174,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           x2={cursor.x}
           y2={cursor.y}
           stroke="var(--connect)"
-          strokeDasharray="6 4"
-          strokeWidth={1.5}
+          strokeDasharray={dash(6, 4, inv)}
+          strokeWidth={1.5 * inv}
           markerEnd="url(#arrow-connect)"
         />
       );
@@ -1152,7 +1209,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           points={points}
           fill="none"
           stroke="transparent"
-          strokeWidth={12}
+          strokeWidth={12 * inv}
           style={{ cursor: bodyCursor }}
         />
         {haloColor && (
@@ -1160,7 +1217,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             points={points}
             fill="none"
             stroke={haloColor}
-            strokeWidth={selected ? 6 : 5}
+            strokeWidth={STROKE_WIDTH_BASE[c.strokeWidth ?? 'm'] + (selected ? 4 : 3) * inv}
             strokeLinecap="round"
             strokeLinejoin="round"
             opacity={0.5}
@@ -1184,10 +1241,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
               data-index={i}
               cx={wp.x}
               cy={wp.y}
-              r={5}
+              r={5 * inv}
               fill="var(--bg)"
               stroke="var(--accent)"
-              strokeWidth={1.5}
+              strokeWidth={1.5 * inv}
               style={{ cursor: 'move' }}
             />
           ))}
@@ -1196,10 +1253,10 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             data-handle="elbow"
             cx={elbowHandle.pos.x}
             cy={elbowHandle.pos.y}
-            r={5}
+            r={5 * inv}
             fill="var(--bg)"
             stroke="var(--accent)"
-            strokeWidth={1.5}
+            strokeWidth={1.5 * inv}
             style={{ cursor: elbowHandle.axis === 'x' ? 'ew-resize' : 'ns-resize' }}
           />
         )}
@@ -1317,13 +1374,14 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             selected={state.selectedIds.includes(s.id)}
             hot={hotShape?.id === s.id}
             tool={state.tool}
+            inv={inv}
           />
         ))}
         {hoverShape &&
           (mode === 'normal' || mode === 'insert') &&
           !drag.current &&
           state.tool !== 'select' &&
-          connectDots(hoverShape)}
+          connectDots(hoverShape, inv)}
         {mode === 'hint' && state.hint && hintBadges(state.hint, view.scale)}
         {selectedBox && mode === 'normal' && (() => {
           const shapes = selectedShapeIds.map((sid) => findShape(doc, sid)).filter((s): s is Shape => !!s);
@@ -1335,33 +1393,40 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           return (
             <rect
               data-handle="resize"
-              x={handle.x - 5}
-              y={handle.y - 5}
-              width={10}
-              height={10}
+              x={handle.x - 5 * inv}
+              y={handle.y - 5 * inv}
+              width={10 * inv}
+              height={10 * inv}
               fill="var(--accent)"
               style={{ cursor }}
             />
           );
         })()}
-        {selectedBox && mode === 'normal' && selectedBox.w > 16 && selectedBox.h > 16 &&
-          edgeResizeHandles(selectedBox).map((eh) => (
-            <rect
-              key={eh.dir}
-              data-handle={`resize-${eh.dir}`}
-              x={eh.pos.x - (eh.dir === 'n' || eh.dir === 's' ? 5 : 4)}
-              y={eh.pos.y - (eh.dir === 'e' || eh.dir === 'w' ? 5 : 4)}
-              width={eh.dir === 'n' || eh.dir === 's' ? 10 : 8}
-              height={eh.dir === 'e' || eh.dir === 'w' ? 10 : 8}
-              fill="var(--accent)"
-              style={{ cursor: eh.dir === 'n' || eh.dir === 's' ? 'ns-resize' : 'ew-resize' }}
-            />
-          ))}
+        {/* The edge handles are hidden on a selection too small to fit them without swamping
+            it — a screen-space threshold, since that's the size the handles now keep. */}
+        {selectedBox && mode === 'normal' && selectedBox.w * view.scale > 16 && selectedBox.h * view.scale > 16 &&
+          edgeResizeHandles(selectedBox).map((eh) => {
+            const long = 10 * inv;
+            const short = 8 * inv;
+            const horizontal = eh.dir === 'n' || eh.dir === 's';
+            return (
+              <rect
+                key={eh.dir}
+                data-handle={`resize-${eh.dir}`}
+                x={eh.pos.x - (horizontal ? long : short) / 2}
+                y={eh.pos.y - (horizontal ? short : long) / 2}
+                width={horizontal ? long : short}
+                height={horizontal ? short : long}
+                fill="var(--accent)"
+                style={{ cursor: horizontal ? 'ns-resize' : 'ew-resize' }}
+              />
+            );
+          })}
         {guides.vx !== undefined && (
-          <line x1={guides.vx} y1={-50000} x2={guides.vx} y2={50000} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
+          <line x1={guides.vx} y1={-50000} x2={guides.vx} y2={50000} stroke="var(--accent)" strokeWidth={inv} strokeDasharray={dash(3, 3, inv)} style={{ pointerEvents: 'none' }} />
         )}
         {guides.hy !== undefined && (
-          <line x1={-50000} y1={guides.hy} x2={50000} y2={guides.hy} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" style={{ pointerEvents: 'none' }} />
+          <line x1={-50000} y1={guides.hy} x2={50000} y2={guides.hy} stroke="var(--accent)" strokeWidth={inv} strokeDasharray={dash(3, 3, inv)} style={{ pointerEvents: 'none' }} />
         )}
         {selectedConnector && mode === 'normal' && (() => {
           const path = connectorPath(doc, selectedConnector);
@@ -1372,8 +1437,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
           const loop = isSelfLoop(selectedConnector);
           return (
             <>
-              {endpointHandle('endpoint-from', a, loop || !!selectedConnector.from.anchor)}
-              {endpointHandle('endpoint-to', b, loop || !!selectedConnector.to.anchor)}
+              {endpointHandle('endpoint-from', a, loop || !!selectedConnector.from.anchor, inv)}
+              {endpointHandle('endpoint-to', b, loop || !!selectedConnector.to.anchor, inv)}
             </>
           );
         })()}
@@ -1387,8 +1452,8 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             fill="var(--accent)"
             fillOpacity={0.08}
             stroke="var(--accent)"
-            strokeDasharray="4 3"
-            strokeWidth={1}
+            strokeDasharray={dash(4, 3, inv)}
+            strokeWidth={inv}
             style={{ pointerEvents: 'none' }}
           />
         )}
@@ -1397,7 +1462,7 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
             points={state.sketch.map((p) => `${p.x},${p.y}`).join(' ')}
             fill="none"
             stroke="var(--accent)"
-            strokeWidth={1.5}
+            strokeWidth={1.5 * inv}
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ pointerEvents: 'none' }}
@@ -1406,20 +1471,20 @@ export function Canvas({ state, dispatch }: { state: EditorState; dispatch: Disp
         {vim && mode !== 'insert' && (
           <g style={{ pointerEvents: 'none' }}>
             <line
-              x1={cursor.x - 7}
+              x1={cursor.x - CURSOR_ARM * inv}
               y1={cursor.y}
-              x2={cursor.x + 7}
+              x2={cursor.x + CURSOR_ARM * inv}
               y2={cursor.y}
               stroke="var(--cursor)"
-              strokeWidth={2}
+              strokeWidth={2 * inv}
             />
             <line
               x1={cursor.x}
-              y1={cursor.y - 7}
+              y1={cursor.y - CURSOR_ARM * inv}
               x2={cursor.x}
-              y2={cursor.y + 7}
+              y2={cursor.y + CURSOR_ARM * inv}
               stroke="var(--cursor)"
-              strokeWidth={2}
+              strokeWidth={2 * inv}
             />
           </g>
         )}

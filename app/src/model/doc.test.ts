@@ -514,6 +514,19 @@ describe('frameHitZone', () => {
   it('hits the top-left label zone', () => {
     expect(frameHitZone(f, { x: 50, y: 20 })).toBe(true);
   });
+
+  it('widens and narrows with an explicit band, as the mouse paths pass per zoom level', () => {
+    // Zoomed out to 20%, the mouse path passes FRAME_BORDER_BAND / 0.2 so the band still spans
+    // the same number of *screen* pixels; a point far outside in world units is then a hit.
+    const zoomedOut = FRAME_BORDER_BAND * 5;
+    expect(frameHitZone(f, { x: -30, y: 100 })).toBe(false);
+    expect(frameHitZone(f, { x: -30, y: 100 }, zoomedOut)).toBe(true);
+    // Zoomed in to 400%, the same screen width is a quarter of the world band, so the frame
+    // stops claiming a wide inner ring of clicks meant for the shapes it contains.
+    const zoomedIn = FRAME_BORDER_BAND / 4;
+    expect(frameHitZone(f, { x: 5, y: 100 })).toBe(true);
+    expect(frameHitZone(f, { x: 5, y: 100 }, zoomedIn)).toBe(false);
+  });
 });
 
 describe('frameBorderOrLabel: uncapped outer reach for hover', () => {

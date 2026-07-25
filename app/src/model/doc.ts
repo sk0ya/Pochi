@@ -113,36 +113,45 @@ export const FRAME_LABEL_PAD_Y = 8;
  * having to measure it. */
 export const FRAME_LABEL_ZONE_W = 160;
 export const FRAME_LABEL_ZONE_H = 28;
-/** Width of the clickable/draggable band around a frame's border. */
+/** Width of the clickable/draggable band around a frame's border, in world units — the right
+ * measure for the (world-space) vim cursor. A pointer aims in *screen* pixels instead, so the
+ * mouse paths scale this by 1/view.scale and pass it as the `band` argument below, keeping the
+ * band the same physical width to grab at any zoom (see Canvas.tsx). */
 export const FRAME_BORDER_BAND = 10;
 
 /**
- * Whether `p` lands on a frame's hit zone: a band straddling its border — extending
- * FRAME_BORDER_BAND both inside AND outside the rect edge, matching the Canvas's invisible
- * border hit-stroke, whose 2×band width is centered on the edge — plus its top-left label
- * area. A frame's open interior is deliberately excluded (see `shapeAt`) so a frame can sit on
- * top of — or be created around — other shapes without swallowing clicks meant for them; only
- * the border and the label are "the frame" as far as hit-testing is concerned.
+ * Whether `p` lands on a frame's hit zone: a band straddling its border — extending `band`
+ * both inside AND outside the rect edge, matching the Canvas's invisible border hit-stroke,
+ * whose 2×band width is centered on the edge — plus its top-left label area. A frame's open
+ * interior is deliberately excluded (see `shapeAt`) so a frame can sit on top of — or be
+ * created around — other shapes without swallowing clicks meant for them; only the border and
+ * the label are "the frame" as far as hit-testing is concerned.
  */
-export function frameHitZone(f: { x: number; y: number; w: number; h: number }, p: Pt): boolean {
-  const band = FRAME_BORDER_BAND;
+export function frameHitZone(
+  f: { x: number; y: number; w: number; h: number },
+  p: Pt,
+  band = FRAME_BORDER_BAND,
+): boolean {
   // Past the band's outer edge: no hit.
   if (p.x < f.x - band || p.x > f.x + f.w + band || p.y < f.y - band || p.y > f.y + f.h + band) {
     return false;
   }
-  return frameBorderOrLabel(f, p);
+  return frameBorderOrLabel(f, p, band);
 }
 
 /**
  * Like `frameHitZone` but WITHOUT the outer-band cap: true for the border ring's inside half and
  * the label, and for everything OUTSIDE the rect — leaving the caller's own outer bound to decide
- * how far outside still counts. Only the deep interior (inset by FRAME_BORDER_BAND, minus the
- * label zone) is excluded, so a shape a frame contains keeps the hover instead of the frame
- * stealing it. Used for hover, where a frame's connect dots float CONNECT_DOT_OFFSET outside the
- * edge — farther than the border band — so hover must reach them (see shapeNear in Canvas.tsx).
+ * how far outside still counts. Only the deep interior (inset by `band`, minus the label zone) is
+ * excluded, so a shape a frame contains keeps the hover instead of the frame stealing it. Used
+ * for hover, where a frame's connect dots float CONNECT_DOT_OFFSET outside the edge — farther
+ * than the border band — so hover must reach them (see shapeNear in Canvas.tsx).
  */
-export function frameBorderOrLabel(f: { x: number; y: number; w: number; h: number }, p: Pt): boolean {
-  const band = FRAME_BORDER_BAND;
+export function frameBorderOrLabel(
+  f: { x: number; y: number; w: number; h: number },
+  p: Pt,
+  band = FRAME_BORDER_BAND,
+): boolean {
   const inInner =
     p.x >= f.x + band && p.x <= f.x + f.w - band && p.y >= f.y + band && p.y <= f.y + f.h - band;
   if (!inInner) return true;
