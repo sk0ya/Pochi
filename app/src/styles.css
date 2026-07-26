@@ -341,6 +341,10 @@ body {
   border-right: 1px solid var(--border);
 }
 
+.icon-sidebar[hidden] {
+  display: none;
+}
+
 .sidebar-title {
   padding: 11px 10px 7px;
   font-weight: 600;

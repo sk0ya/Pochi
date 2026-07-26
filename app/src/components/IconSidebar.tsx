@@ -21,7 +21,13 @@ const FILTERS: Array<{ id: IconSetFilter; label: string }> = [
 const ALL_LICENSES = '__all__';
 const UNKNOWN_LICENSE = '__unknown__';
 
-export function IconSidebar({ dispatch }: { dispatch: Dispatch<Action> }) {
+export function IconSidebar({
+  dispatch,
+  hidden = false,
+}: {
+  dispatch: Dispatch<Action>;
+  hidden?: boolean;
+}) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<IconSetFilter>('all');
   const [icons, setIcons] = useState<string[]>([]);
@@ -107,7 +113,7 @@ export function IconSidebar({ dispatch }: { dispatch: Dispatch<Action> }) {
   };
 
   return (
-    <aside className="icon-sidebar">
+    <aside className="icon-sidebar" hidden={hidden}>
       <div className="sidebar-title">アイコン</div>
       <div className="icon-set-filter">
         {FILTERS.map((item) => (

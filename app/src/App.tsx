@@ -987,7 +987,7 @@ export default function App() {
           />
         )}
         {activePanel === 'templates' && <TemplateSidebar theme={theme} dispatch={dispatch} />}
-        {activePanel === 'icons' && <IconSidebar dispatch={dispatch} />}
+        <IconSidebar dispatch={dispatch} hidden={activePanel !== 'icons'} />
         {activePanel === 'properties' && <PropertiesSidebar state={state} dispatch={dispatch} />}
         <div className="canvas-wrap">
           <Canvas state={state} dispatch={dispatch} svgRef={canvasRef} />
