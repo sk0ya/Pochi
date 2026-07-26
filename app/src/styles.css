@@ -344,6 +344,177 @@ body {
   color: var(--text);
 }
 
+.icon-sidebar {
+  width: 208px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-title {
+  padding: 11px 10px 7px;
+  font-weight: 600;
+}
+
+.icon-set-filter {
+  display: flex;
+  gap: 3px;
+  padding: 0 8px 8px;
+}
+
+.icon-set-filter button {
+  min-width: 0;
+  flex: 1;
+  padding: 5px 2px;
+  overflow: hidden;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: inherit;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.icon-set-filter button:hover {
+  background: var(--hover);
+}
+
+.icon-set-filter button.active {
+  background: var(--active-bg);
+  border-color: var(--accent-dim);
+}
+
+.icon-search {
+  margin: 0 8px 8px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  outline: none;
+}
+
+.icon-result-count {
+  padding: 0 9px 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.icon-search:focus {
+  border-color: var(--accent);
+}
+
+.icon-license-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.icon-license-filter select {
+  min-width: 0;
+  flex: 1;
+  padding: 4px 5px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: inherit;
+}
+
+.icon-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  padding: 8px;
+  align-content: start;
+}
+
+.icon-card {
+  min-width: 0;
+  padding: 7px 3px 5px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.icon-license {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-license.unknown {
+  color: var(--danger-text);
+}
+
+.icon-card:hover {
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.icon-preview,
+.icon-preview svg {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 3px;
+}
+
+img.icon-preview {
+  object-fit: contain;
+}
+
+.icon-grid > .context-hint {
+  grid-column: 1 / -1;
+}
+
+.icon-legal-note {
+  flex: none;
+  padding: 7px 8px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.icon-attribution {
+  padding: 0 10px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.icon-attribution a {
+  color: var(--accent);
+}
+
+.icon-trademark-note {
+  margin-top: 4px;
+  color: var(--danger-text);
+}
+
 /* Properties panel (see PropertiesSidebar.tsx): follows the current selection, reusing
  * .context-label, .context-sep, .color-swatch and .direction-swatch from the context menu
  * for everything except the x/y/w/h numeric fields, which are new here. */

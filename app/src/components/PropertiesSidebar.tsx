@@ -230,6 +230,27 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
         </>
       )}
 
+      {singleShape?.iconAttribution && (
+        <>
+          <div className="context-sep" />
+          <div className="context-label">アイコンの出典</div>
+          <div className="icon-attribution">
+            <div>{singleShape.iconAttribution.iconName}</div>
+            <div>{singleShape.iconAttribution.collectionName}</div>
+            {singleShape.iconAttribution.author && <div>作者: {singleShape.iconAttribution.author}</div>}
+            <div>
+              ライセンス: {singleShape.iconAttribution.license ?? '不明（使用前に要確認）'}
+            </div>
+            {singleShape.iconAttribution.licenseUrl && (
+              <a href={singleShape.iconAttribution.licenseUrl} target="_blank" rel="noreferrer">ライセンスを確認</a>
+            )}
+            {singleShape.iconAttribution.brand && (
+              <div className="icon-trademark-note">商標・ブランド利用規約も確認してください。</div>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="context-sep" />
       <div className="context-label">色</div>
       <div className="color-row">

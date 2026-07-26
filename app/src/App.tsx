@@ -21,6 +21,7 @@ import { CollabDialog } from './components/CollabDialog';
 import type { CollabPrompt } from './components/CollabDialog';
 import { ContextMenu } from './components/ContextMenu';
 import { HelpOverlay } from './components/HelpOverlay';
+import { IconSidebar } from './components/IconSidebar';
 import { PropertiesSidebar } from './components/PropertiesSidebar';
 import { RemoteCursors } from './components/RemoteCursors';
 import { StatusBar } from './components/StatusBar';
@@ -986,6 +987,7 @@ export default function App() {
           />
         )}
         {activePanel === 'templates' && <TemplateSidebar theme={theme} dispatch={dispatch} />}
+        {activePanel === 'icons' && <IconSidebar dispatch={dispatch} />}
         {activePanel === 'properties' && <PropertiesSidebar state={state} dispatch={dispatch} />}
         <div className="canvas-wrap">
           <Canvas state={state} dispatch={dispatch} svgRef={canvasRef} />

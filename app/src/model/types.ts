@@ -55,6 +55,8 @@ export interface Shape {
   color?: string;
   /** Data URL for kind: 'image'. */
   src?: string;
+  /** Provenance retained for SVG icons fetched from an external icon collection. */
+  iconAttribution?: IconAttribution;
   /** Apex direction for kind: 'triangle'; undefined = 'up'. */
   direction?: TriangleDirection;
   /** Stroke for kind: 'freedraw', as a flat [x0, y0, x1, y1, ...] of integers in
@@ -71,6 +73,18 @@ export interface Shape {
   dashed?: boolean;
   /** Shared id linking items that move/select/delete/color together. */
   groupId?: string;
+}
+
+export interface IconAttribution {
+  iconName: string;
+  collection: string;
+  collectionName: string;
+  author?: string;
+  authorUrl?: string;
+  license?: string;
+  licenseUrl?: string;
+  /** Brand collections can also be subject to trademark/brand-usage rules. */
+  brand: boolean;
 }
 
 /** Arrow endpoint: bound to a shape (follows it) or a fixed point.

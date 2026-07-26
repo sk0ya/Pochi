@@ -45,7 +45,7 @@ import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
-import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, IconAttribution, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
@@ -270,7 +270,7 @@ export type Action =
   | { type: 'START_ARROW_AT'; p: Pt; shapeId?: string }
   | { type: 'TEXT_AT'; p: Pt }
   | { type: 'INSERT_SHAPE_AT'; kind: DrawKind; p: Pt }
-  | { type: 'ADD_IMAGE'; src: string; w: number; h: number; at?: Pt }
+  | { type: 'ADD_IMAGE'; src: string; w: number; h: number; at?: Pt; iconAttribution?: IconAttribution }
   | { type: 'ADD_TEXT'; text: string }
   | { type: 'PASTE_CLIP'; clip: Clipboard }
   | { type: 'INSERT_TEMPLATE'; templateId: string; at?: Pt }
@@ -2471,6 +2471,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         h,
         label: '',
         src: action.src,
+        iconAttribution: action.iconAttribution,
       };
       return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'image added' });
     }

@@ -25,6 +25,7 @@ import {
   triangleVertices,
 } from '../model/doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
+import { decodeIconDrag, fetchIconDataUrl, ICON_DRAG_MIME, iconAttributionTooltip } from '../model/icons';
 import { TEMPLATE_DRAG_MIME } from '../model/templates';
 import type { Connector, FontSize, Pt, Shape } from '../model/types';
 import { FONT_LINE_H, FONT_SIZE_PX, GRID, snap, STROKE_WIDTH_BASE } from '../model/types';
@@ -268,6 +269,7 @@ function ShapeView({
   const bodyCursor = tool === 'arrow' ? 'alias' : 'move';
   return (
     <g data-id={s.id} style={{ cursor: bodyCursor }}>
+      {s.iconAttribution && <title>{iconAttributionTooltip(s.iconAttribution)}</title>}
       {/* A text shape is excluded: its own dashed outline below already switches to the halo
           colour, so a second ring around it would just read as a double border. */}
       {haloColor && s.kind !== 'text' && (
@@ -752,20 +754,33 @@ export function Canvas({
     };
   };
 
-  /* Drop target for a template dragged from the sidebar (see TemplateSidebar.tsx): accept only
-   * drags carrying TEMPLATE_DRAG_MIME (so an OS file/image drag, which the app doesn't handle
-   * here, still shows the "no drop" cursor instead of silently swallowing the drop), and insert
-   * centered on the drop point rather than the vim cursor. */
+  /* Drop target for the two independent insert panels. Unknown/OS drags are deliberately
+   * ignored, so they keep the browser's "no drop" cursor rather than being swallowed. */
   const onDragOver = (e: React.DragEvent<SVGSVGElement>) => {
-    if (!e.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return;
+    if (
+      !e.dataTransfer.types.includes(TEMPLATE_DRAG_MIME) &&
+      !e.dataTransfer.types.includes(ICON_DRAG_MIME)
+    ) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   };
   const onDrop = (e: React.DragEvent<SVGSVGElement>) => {
     const templateId = e.dataTransfer.getData(TEMPLATE_DRAG_MIME);
-    if (!templateId) return;
-    e.preventDefault();
-    dispatch({ type: 'INSERT_TEMPLATE', templateId, at: toWorld(e) });
+    if (templateId) {
+      e.preventDefault();
+      dispatch({ type: 'INSERT_TEMPLATE', templateId, at: toWorld(e) });
+      return;
+    }
+    const icon = decodeIconDrag(e.dataTransfer.getData(ICON_DRAG_MIME));
+    if (icon) {
+      e.preventDefault();
+      const at = toWorld(e);
+      void fetchIconDataUrl(icon.iconName).then((src) => {
+        dispatch({ type: 'ADD_IMAGE', src, w: 96, h: 96, at, iconAttribution: icon.attribution });
+      }).catch(() => {
+        // The sidebar remains usable after a transient API/network failure.
+      });
+    }
   };
 
   const hitId = (target: EventTarget | null): string | undefined =>

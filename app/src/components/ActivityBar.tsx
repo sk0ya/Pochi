@@ -1,4 +1,4 @@
-export type PanelId = 'files' | 'templates' | 'properties';
+export type PanelId = 'files' | 'templates' | 'icons' | 'properties';
 
 /** VSCode-style narrow icon strip. Each icon toggles its panel — clicking the already-active
  * one closes it, clicking another switches to it (see App.tsx's `activePanel`).
@@ -25,6 +25,13 @@ export function ActivityBar({
           📁
         </button>
       )}
+      <button
+        className={`activity-icon${active === 'icons' ? ' active' : ''}`}
+        onClick={() => onSelect('icons')}
+        title="アイコン挿入"
+      >
+        ◇
+      </button>
       <button
         className={`activity-icon${active === 'templates' ? ' active' : ''}`}
         onClick={() => onSelect('templates')}
