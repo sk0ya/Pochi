@@ -404,11 +404,12 @@ body {
 }
 
 .icon-sidebar {
-  width: 208px;
+  width: 240px;
   flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  font-size: 14px;
   background: var(--panel);
   border-right: 1px solid var(--border);
 }
@@ -419,6 +420,7 @@ body {
 
 .sidebar-title {
   padding: 11px 10px 7px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -430,15 +432,15 @@ body {
 
 .icon-set-filter button {
   min-width: 0;
-  flex: 1;
-  padding: 5px 2px;
+  flex: 0 1 auto;
+  padding: 5px 6px;
   overflow: hidden;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 5px;
   font: inherit;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
@@ -461,13 +463,14 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   font: inherit;
+  font-size: 14px;
   outline: none;
 }
 
 .icon-result-count {
   padding: 0 9px 5px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .icon-search:focus {
@@ -480,7 +483,7 @@ body {
   gap: 6px;
   margin: 0 8px 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .icon-license-filter select {
@@ -563,7 +566,7 @@ body {
   border: 1px solid transparent;
   border-radius: 7px;
   font: inherit;
-  font-size: 10px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -572,7 +575,7 @@ body {
   margin-top: 2px;
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -607,7 +610,7 @@ img.icon-preview {
   padding: 7px 8px;
   color: var(--muted);
   border-top: 1px solid var(--border);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -632,7 +635,7 @@ img.icon-preview {
  * .context-label, .context-sep, .color-swatch and .direction-swatch from the context menu
  * for everything except the x/y/w/h numeric fields, which are new here. */
 .properties-sidebar {
-  width: 208px;
+  width: 240px;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -640,6 +643,7 @@ img.icon-preview {
   min-height: 0;
   overflow-y: auto;
   padding: 8px 0;
+  font-size: 14px;
   background: var(--panel);
   border-right: 1px solid var(--border);
 }
@@ -651,7 +655,7 @@ img.icon-preview {
   border-radius: 5px;
   margin: 0 8px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
 }
@@ -666,7 +670,7 @@ img.icon-preview {
   justify-content: space-between;
   gap: 6px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text);
 }
 
@@ -677,7 +681,7 @@ img.icon-preview {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 3px 5px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .properties-number-input:focus {
@@ -694,13 +698,22 @@ img.icon-preview {
   border-radius: 4px;
   padding: 5px 6px;
   font-family: system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 14px;
   resize: vertical;
 }
 
 .properties-label-textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.properties-sidebar .context-label,
+.properties-sidebar .context-hint {
+  font-size: 14px;
+}
+
+.properties-sidebar .icon-attribution {
+  font-size: 13px;
 }
 
 /* File-manager panel (desktop only — see FilesSidebar.tsx): a folder header on top, a
