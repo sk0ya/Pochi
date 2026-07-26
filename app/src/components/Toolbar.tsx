@@ -21,6 +21,25 @@ const TOOLS: Array<[MouseTool, ReactNode, string, string]> = [
   ['text', 'T', 'Text', 'クリックでテキスト (t)'],
 ];
 
+function ImageAddIcon() {
+  return (
+    <svg className="toolbar-action-icon image-add-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="2.25" y="3.25" width="15.5" height="13.5" rx="2" />
+      <circle cx="6.5" cy="7.5" r="1.5" />
+      <path d="m3.5 14 4.25-4 3 2.75 2.25-2 3.5 3.25" />
+    </svg>
+  );
+}
+
+function PngCopyIcon() {
+  return (
+    <svg className="toolbar-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="6.5" y="6.5" width="10.5" height="10.5" rx="1.5" />
+      <path d="M13.5 4.5V4A1.5 1.5 0 0 0 12 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h.5" />
+    </svg>
+  );
+}
+
 /** Closes `menu` on outside click or Escape. Shared by every toolbar dropdown. */
 function useCloseOnOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -194,6 +213,14 @@ export function Toolbar({
           {icon}
         </button>
       ))}
+      <button
+        className="icon-btn"
+        onClick={onImportImage}
+        title="画像を追加 — ファイルを選んで配置"
+        aria-label="画像を追加"
+      >
+        <ImageAddIcon />
+      </button>
       <span className="sep" />
       <button className="icon-btn" onClick={() => dispatch({ type: 'UNDO' })} title="Undo (u / Ctrl+Z)">
         ↶
@@ -210,12 +237,14 @@ export function Toolbar({
         ⤢
       </button>
       <span className="sep" />
-      <button onClick={onImportImage} title="Image — 画像ファイルを取り込む">
-        Image
-      </button>
-      <span className="sep" />
-      <button onClick={onCopyPng} title="Copy PNG — 画像としてコピー (:png / Ctrl+Alt+C)">
-        PNG
+      <button
+        className="png-copy-btn"
+        onClick={onCopyPng}
+        title="PNGコピー — 選択範囲を画像としてコピー。未選択時は全体 (:png / Ctrl+Alt+C)"
+        aria-label="PNGとしてコピー"
+      >
+        <PngCopyIcon />
+        <span>PNG</span>
       </button>
       <span className="spacer" />
       <button
