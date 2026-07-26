@@ -25,6 +25,8 @@
   --danger-text: #ff9aa3;
   --overlay-bg: rgba(18, 21, 26, 0.92);
   --swatch-border: rgba(255, 255, 255, 0.25);
+  --scrollbar-thumb: #465166;
+  --scrollbar-thumb-hover: #5b6a83;
 }
 
 :root[data-theme='light'] {
@@ -48,6 +50,8 @@
   --danger-text: #b3262e;
   --overlay-bg: rgba(255, 255, 255, 0.94);
   --swatch-border: rgba(0, 0, 0, 0.2);
+  --scrollbar-thumb: #aeb8c8;
+  --scrollbar-thumb-hover: #8f9db1;
 }
 
 * {
@@ -252,23 +256,6 @@ body {
   flex: none;
   padding: 8px;
   border-bottom: 1px solid var(--border);
-  /* Thin scrollbar (Firefox) so it doesn't eat into the row's height like a full-size one would. */
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-/* Thin scrollbar (Chromium/WebView2) — same intent as scrollbar-width: thin above. */
-.template-filter::-webkit-scrollbar {
-  height: 4px;
-}
-
-.template-filter::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.template-filter::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
 }
 
 .template-filter-icon {
@@ -440,6 +427,56 @@ body {
   gap: 5px;
   padding: 8px;
   align-content: start;
+}
+
+/* Sidebar scrollbars: compact, softly rounded, and themed like the surrounding panels. */
+.template-filter,
+.template-grid,
+.icon-grid {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.template-filter::-webkit-scrollbar,
+.template-grid::-webkit-scrollbar,
+.icon-grid::-webkit-scrollbar {
+  width: 10px;
+  height: 8px;
+}
+
+.template-filter::-webkit-scrollbar-track,
+.template-grid::-webkit-scrollbar-track,
+.icon-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.template-filter::-webkit-scrollbar-thumb,
+.template-grid::-webkit-scrollbar-thumb,
+.icon-grid::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+.template-filter::-webkit-scrollbar-thumb:hover,
+.template-grid::-webkit-scrollbar-thumb:hover,
+.icon-grid::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.template-filter::-webkit-scrollbar-thumb:active,
+.template-grid::-webkit-scrollbar-thumb:active,
+.icon-grid::-webkit-scrollbar-thumb:active {
+  background-color: var(--accent);
+}
+
+.template-filter::-webkit-scrollbar-corner,
+.template-grid::-webkit-scrollbar-corner,
+.icon-grid::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .icon-card {
