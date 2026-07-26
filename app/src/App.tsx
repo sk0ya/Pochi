@@ -231,7 +231,7 @@ export default function App() {
   }, [theme]);
 
   /* The canvas's own on-screen box. Every zoom/centre command has to be measured against *it*,
-   * not the window: the canvas is inset by the toolbar, the status bar, the 45px activity bar
+   * not the window: the canvas is inset by the toolbar, the status bar, the 79px activity bar
    * and — when a panel is open — another 208px of sidebar, so window/2 sits well right of and
    * below the visible centre (over 120px off horizontally with a panel open). Read live on each
    * use rather than tracked as state; these are one-shot commands, not render inputs. */

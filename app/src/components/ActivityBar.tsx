@@ -1,6 +1,8 @@
+import { PochiIcon } from './PochiIcons';
+
 export type PanelId = 'files' | 'templates' | 'icons' | 'properties';
 
-/** VSCode-style narrow icon strip. Each icon toggles its panel — clicking the already-active
+/** Labelled navigation rail. Each item toggles its panel — clicking the already-active
  * one closes it, clicking another switches to it (see App.tsx's `activePanel`).
  *
  * The Files panel (📁) manages real folders on disk, so App passes `showFiles` only when the
@@ -22,7 +24,8 @@ export function ActivityBar({
           onClick={() => onSelect('files')}
           title="ファイル管理"
         >
-          📁
+          <PochiIcon name="files" />
+          <span className="activity-label">ファイル</span>
         </button>
       )}
       <button
@@ -30,21 +33,24 @@ export function ActivityBar({
         onClick={() => onSelect('icons')}
         title="アイコン挿入"
       >
-        ◇
+        <PochiIcon name="icons" />
+        <span className="activity-label">アイコン</span>
       </button>
       <button
         className={`activity-icon${active === 'templates' ? ' active' : ''}`}
         onClick={() => onSelect('templates')}
         title="テンプレート挿入"
       >
-        🧩
+        <PochiIcon name="templates" />
+        <span className="activity-label">テンプレート</span>
       </button>
       <button
         className={`activity-icon${active === 'properties' ? ' active' : ''}`}
         onClick={() => onSelect('properties')}
         title="プロパティ"
       >
-        ✎
+        <PochiIcon name="properties" />
+        <span className="activity-label">プロパティ</span>
       </button>
     </div>
   );

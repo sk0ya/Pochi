@@ -4,6 +4,8 @@ import { exportSvg } from '../model/svg';
 import type { ExportTheme } from '../model/svg';
 import { CATEGORIES, TEMPLATE_DRAG_MIME, TEMPLATES, templatesByCategory } from '../model/templates';
 import type { Action } from '../state/reducer';
+import { PochiIcon } from './PochiIcons';
+import type { TemplateCategoryIconName } from './PochiIcons';
 
 /** Template-insert panel (opened from ActivityBar.tsx). A top row of category icons filters the
  * grid below — "全" (default) shows every template across every category, one icon per
@@ -23,7 +25,7 @@ export function TemplateSidebar({ theme, dispatch }: { theme: ExportTheme; dispa
           onClick={() => setFilterId(null)}
           title="すべて表示"
         >
-          All
+          <PochiIcon name="all" size={18} />
         </button>
         {CATEGORIES.map((cat) => (
           <button
@@ -32,7 +34,7 @@ export function TemplateSidebar({ theme, dispatch }: { theme: ExportTheme; dispa
             onClick={() => setFilterId(cat.id)}
             title={cat.name}
           >
-            {cat.icon}
+            <PochiIcon name={cat.id as TemplateCategoryIconName} size={18} />
           </button>
         ))}
       </div>
