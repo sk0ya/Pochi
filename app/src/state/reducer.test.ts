@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, reduce, TOOL_KEYS } from './reducer';
 import type { EditorState } from './reducer';
-import { connectorPath, labelCenter, shapeAt } from '../model/doc';
+import { connectorPath, inscribedBox, labelBox, labelCenter, shapeAt } from '../model/doc';
 import type { Connector, Doc, Pt, Shape } from '../model/types';
 import { GRID, snapPt } from '../model/types';
 
@@ -976,6 +976,142 @@ describe('SET_FONT_SIZE', () => {
     expect(state.doc.shapes[0].fontSize).toBeUndefined();
     state = reduce(state, { type: 'REDO' });
     expect(state.doc.shapes[0].fontSize).toBe('l');
+  });
+});
+
+describe('INSERT_AUTOSIZE: the box grows with the text being typed into it', () => {
+  /** Whether `s`'s text area holds `label` — what the auto-fit is there to guarantee. */
+  const holdsLabel = (s: Shape, label: string): boolean => {
+    const inner = inscribedBox(s);
+    const need = labelBox(label, s.fontSize);
+    return inner.w >= need.w && inner.h >= need.h;
+  };
+
+  /** Opens the text-edit overlay on `shapes[0]`. */
+  const startEditing = (shapes: Shape[]): EditorState =>
+    reduce(vimState({ shapes, connectors: [] }), { type: 'START_INSERT', id: shapes[0].id });
+
+  /** Starts editing `shapes[0]`'s label and types `label` into the overlay. */
+  const typeInto = (shapes: Shape[], label: string): EditorState =>
+    reduce(startEditing(shapes), { type: 'INSERT_AUTOSIZE', label });
+
+  it('widens a rect too small for the label, keeping the shape centred where it was', () => {
+    const s = rect('s1', GRID * 10, GRID * 10, GRID * 4, GRID * 4);
+    const grown = typeInto([s], 'hello world').doc.shapes[0];
+    expect(grown.w).toBeGreaterThan(s.w);
+    expect(holdsLabel(grown, 'hello world')).toBe(true);
+    // Grown around its own centre: the shape stays put instead of creeping right/down.
+    expect(grown.x + grown.w / 2).toBe(s.x + s.w / 2);
+    expect(grown.y + grown.h / 2).toBe(s.y + s.h / 2);
+  });
+
+  it('grows on the axis that ran out: extra lines make it taller, not wider', () => {
+    const s = rect('s1', 0, 0, GRID * 20, GRID * 2);
+    const grown = typeInto([s], 'a\nb\nc\nd').doc.shapes[0];
+    expect(grown.w).toBe(s.w);
+    expect(grown.h).toBeGreaterThan(s.h);
+    expect(holdsLabel(grown, 'a\nb\nc\nd')).toBe(true);
+  });
+
+  it('grows an ellipse past what a rect would need, clearing its curve', () => {
+    const box = { x: 0, y: 0, w: GRID * 4, h: GRID * 4 };
+    const asRect: Shape = { id: 's1', kind: 'rect', ...box, label: '' };
+    const asEllipse: Shape = { id: 's1', kind: 'ellipse', ...box, label: '' };
+    const grownRect = typeInto([asRect], 'hello').doc.shapes[0];
+    const grownEllipse = typeInto([asEllipse], 'hello').doc.shapes[0];
+    expect(grownEllipse.w).toBeGreaterThan(grownRect.w);
+    expect(holdsLabel(grownEllipse, 'hello')).toBe(true);
+  });
+
+  it('only ever grows a container: a box already big enough is left alone', () => {
+    const state = startEditing([rect('s1', 0, 0, GRID * 40, GRID * 20)]);
+    const next = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'x' });
+    expect(next).toBe(state);
+  });
+
+  it('leaves kinds whose box is not a text container alone (frame, image)', () => {
+    const f = frame('f1', 0, 0, GRID * 4, GRID * 4);
+    const img: Shape = { id: 'i1', kind: 'image', x: 0, y: 0, w: GRID * 4, h: GRID * 4, label: '' };
+    expect(typeInto([f], 'a very long frame title').doc.shapes[0]).toMatchObject({ w: f.w, h: f.h });
+    expect(typeInto([img], 'a very long caption').doc.shapes[0]).toMatchObject({ w: img.w, h: img.h });
+  });
+
+  it('gives growth back when the text shrinks again, down to the size the edit started at', () => {
+    const t: Shape = { id: 't1', kind: 'text', x: 0, y: 0, w: GRID * 8, h: GRID * 2, label: '' };
+    let state = startEditing([t]);
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'hello world hello world' });
+    const long = state.doc.shapes[0].w;
+    expect(long).toBeGreaterThan(t.w);
+    // Deleting back down gives the extra width back...
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'hello world' });
+    const shorter = state.doc.shapes[0].w;
+    expect(shorter).toBeLessThan(long);
+    expect(shorter).toBeGreaterThan(t.w);
+    // ...but never past where the box started, on the last keystroke or on the commit.
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'a' });
+    expect(state.doc.shapes[0].w).toBe(t.w);
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'a' });
+    expect(state.doc.shapes[0].w).toBe(t.w);
+  });
+
+  it('never shrinks a fresh text shape below the box it was created with', () => {
+    // `t` on empty canvas makes a roomy box to start typing into; the first character used to
+    // snap it down to one character wide the moment it was typed.
+    let state = key(vimState({ shapes: [], connectors: [] }), 't');
+    const created = state.doc.shapes[0];
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'a' });
+    expect(state.doc.shapes[0]).toMatchObject({ w: created.w, h: created.h });
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'a' });
+    expect(state.doc.shapes[0]).toMatchObject({ w: created.w, h: created.h });
+  });
+
+  it('shrinks a container back to the size it was, and no further', () => {
+    const s = rect('s1', GRID * 10, GRID * 10, GRID * 6, GRID * 4);
+    let state = startEditing([s]);
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'hello world' });
+    expect(state.doc.shapes[0].w).toBeGreaterThan(s.w);
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'x' });
+    expect(state.doc.shapes[0]).toMatchObject({ x: s.x, y: s.y, w: s.w, h: s.h });
+  });
+
+  it('does the same for the sidebar label field, floored at the size the session started at', () => {
+    const t: Shape = { id: 't1', kind: 'text', x: 0, y: 0, w: GRID * 4, h: GRID * 2, label: '' };
+    let state = vimState({ shapes: [t], connectors: [] });
+    state = reduce(state, { type: 'SET_LABEL', id: 't1', label: 'hello world' });
+    expect(state.doc.shapes[0].w).toBeGreaterThan(t.w);
+    state = reduce(state, { type: 'SET_LABEL', id: 't1', label: 'hi' });
+    expect(state.doc.shapes[0].w).toBe(t.w);
+    state = reduce(state, { type: 'COMMIT_LABEL', id: 't1' });
+    expect(state.doc.shapes[0].w).toBe(t.w);
+  });
+
+  it('is ignored outside insert mode', () => {
+    const state = vimState({ shapes: [rect('s1', 0, 0)], connectors: [] });
+    expect(reduce(state, { type: 'INSERT_AUTOSIZE', label: 'hello world' })).toBe(state);
+  });
+
+  it('folds the growth and the label into one undo step', () => {
+    const s = rect('s1', 0, 0, GRID * 4, GRID * 4);
+    let state = startEditing([s]);
+    state = reduce(state, { type: 'INSERT_AUTOSIZE', label: 'hello world' });
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'hello world' });
+    expect(state.doc.shapes[0].w).toBeGreaterThan(s.w);
+    state = reduce(state, { type: 'UNDO' });
+    expect(state.doc.shapes[0]).toMatchObject({ x: s.x, y: s.y, w: s.w, h: s.h, label: '' });
+  });
+
+  it('fits the box on commit too, for a label that never went through the overlay', () => {
+    const s = rect('s1', 0, 0, GRID * 4, GRID * 4);
+    let state = startEditing([s]);
+    state = reduce(state, { type: 'INSERT_COMMIT', label: 'hello world' });
+    expect(holdsLabel(state.doc.shapes[0], 'hello world')).toBe(true);
+  });
+
+  it('fits the box while the sidebar label field is being typed into', () => {
+    const s = rect('s1', 0, 0, GRID * 4, GRID * 4);
+    let state = vimState({ shapes: [s], connectors: [] });
+    state = reduce(state, { type: 'SET_LABEL', id: 's1', label: 'hello world' });
+    expect(holdsLabel(state.doc.shapes[0], 'hello world')).toBe(true);
   });
 });
 

@@ -21,9 +21,11 @@ import {
   insideDepth,
   isSelfLoop,
   itemsInRect,
+  labelBox,
   labelCenter,
-  measureLabel,
   nearestSide,
+  outerForInscribed,
+  textShapeSize,
   SIDE_NORM,
   type ReorderDir,
   reorderItems,
@@ -46,7 +48,7 @@ import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, IconAttribution, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
-import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
+import { GRID, emptyDoc, newId, snap, snapPt, snapUp } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
 
@@ -191,6 +193,12 @@ export interface EditorState {
   marquee: { a: Pt; b: Pt } | null;
   editingId: string | null;
   editingIsNew: boolean;
+  /**
+   * Size the shape being edited had when the edit started — the floor the label auto-fit
+   * (see fitToLabel) may grow past but never shrinks below, so the box can't collapse out
+   * from under the caret. Null whenever nothing is being edited.
+   */
+  editingBox: { w: number; h: number } | null;
   /** Active `f` hint-jump: every shape's assigned label plus the prefix typed so far. */
   hint: { entries: HintEntry[]; typed: string } | null;
   /**
@@ -254,6 +262,7 @@ export type Action =
   | { type: 'SET_CONNECTOR_ARROW_DIRECTION'; id: string; arrowDirection: ArrowDirection }
   | { type: 'SET_CONNECTOR_LOOP_SIDE'; id: string; end: 'from' | 'to'; loopSide: LoopSide }
   | { type: 'START_INSERT'; id: string }
+  | { type: 'INSERT_AUTOSIZE'; label: string }
   | { type: 'INSERT_COMMIT'; label: string }
   | { type: 'SET_LABEL'; id: string; label: string }
   | { type: 'COMMIT_LABEL'; id: string }
@@ -355,6 +364,7 @@ export function initialState(doc: Doc | null, vim: boolean): EditorState {
     marquee: null,
     editingId: null,
     editingIsNew: false,
+    editingBox: null,
     resizeBox: null,
     hint: null,
     marks: {},
@@ -493,6 +503,7 @@ function cancelTransient(state: EditorState, extra?: Partial<EditorState>): Edit
     resizeBox: null,
     editingId: null,
     editingIsNew: false,
+    editingBox: null,
     marquee: null,
     sketch: null,
     count: '',
@@ -668,6 +679,7 @@ function confirmDraw(state: EditorState): EditorState {
       draw: null,
       editingId: shape.id,
       editingIsNew: true,
+      editingBox: { w: shape.w, h: shape.h },
       selectedIds: [shape.id],
       count: '',
       msg: '',
@@ -718,6 +730,7 @@ function insertShapeAt(state: EditorState, kind: DrawKind, p: Pt): EditorState {
       draw: null,
       editingId: shape.id,
       editingIsNew: true,
+      editingBox: { w: shape.w, h: shape.h },
       selectedIds: [shape.id],
       count: '',
       msg: '',
@@ -866,6 +879,10 @@ function handleHintKey(state: EditorState, key: string): EditorState {
   return { ...state, hint: { entries: state.hint.entries, typed } };
 }
 
+/** Box a fresh text shape is created with: roomy enough to aim at and start typing into, and
+ * the floor its auto-fit then grows from but never shrinks below (see fitToLabel). */
+const TEXT_START_BOX = { w: GRID * 8, h: GRID * 2 };
+
 function startTextInsert(state: EditorState, p: Pt): EditorState {
   const at = snapPt(p);
   const shape: Shape = {
@@ -873,8 +890,7 @@ function startTextInsert(state: EditorState, p: Pt): EditorState {
     kind: 'text',
     x: at.x,
     y: at.y,
-    w: GRID * 8,
-    h: GRID * 2,
+    ...TEXT_START_BOX,
     label: '',
   };
   return {
@@ -884,18 +900,21 @@ function startTextInsert(state: EditorState, p: Pt): EditorState {
     mode: 'insert',
     editingId: shape.id,
     editingIsNew: true,
+    editingBox: { w: shape.w, h: shape.h },
     selectedIds: [shape.id],
     count: '',
   };
 }
 
 function startEdit(state: EditorState, id: string): EditorState {
+  const s = findShape(state.doc, id);
   return {
     ...state,
     base: state.doc,
     mode: 'insert',
     editingId: id,
     editingIsNew: false,
+    editingBox: s ? { w: s.w, h: s.h } : null,
     selectedIds: [id],
     count: '',
   };
@@ -1212,14 +1231,16 @@ function repeatLastEdit(state: EditorState): EditorState {
     }
     case 'text': {
       const at = snapPt(state.cursor);
-      const m = measureLabel(edit.text);
+      // Same size the original ended up: typed into a fresh TEXT_START_BOX, which the auto-fit
+      // grows past for a long label but never shrinks below for a short one.
+      const size = textShapeSize(edit.text);
       const shape: Shape = {
         id: newId(),
         kind: 'text',
         x: at.x,
         y: at.y,
-        w: Math.max(GRID * 2, snap(m.w + GRID)),
-        h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+        w: Math.max(TEXT_START_BOX.w, size.w),
+        h: Math.max(TEXT_START_BOX.h, size.h),
         label: edit.text,
       };
       return commit(state, addShape(state.doc, shape), {
@@ -1505,6 +1526,51 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: b
   return state;
 }
 
+/**
+ * Kinds that grow to keep their whole label inside them. Deliberately not every kind: a frame's
+ * label lives in a fixed-size corner zone that growing the frame wouldn't enlarge (and resizing
+ * a container from its title would shove its contents' layout around), while image/freedraw
+ * boxes are the picture or the stroke itself, not a text container — stretching those to fit a
+ * caption would distort the artwork.
+ */
+const LABEL_FIT_KINDS = new Set<ShapeKind>(['rect', 'ellipse', 'diamond', 'triangle']);
+
+/**
+ * Size patch keeping `label` inside `s`, or null when it already fits.
+ *
+ * `floor` is the size the shape had when the edit began (`editingBox`, or the pre-edit doc for
+ * the sidebar field). The box grows past it as the text needs, and gives that growth back when
+ * the text shrinks again — but never goes below it. Without that floor a box would collapse out
+ * from under the caret: a fresh text shape is created roomy to type into, then sized to its
+ * label, so the very first character used to snap it down to one character wide; and a box the
+ * user sized by hand is theirs to keep, not something a short label may shrink.
+ *
+ * A text shape *is* its label, so it takes the label's size directly, anchored at its top-left
+ * the way every label edit has always sized it. A container is grown around its own centre
+ * instead, so it stays put on screen rather than creeping down and to the right as you type.
+ */
+function fitToLabel(s: Shape, label: string, floor: { w: number; h: number }): Partial<Shape> | null {
+  let need: { w: number; h: number };
+  if (s.kind === 'text') {
+    need = textShapeSize(label, s.fontSize);
+  } else if (LABEL_FIT_KINDS.has(s.kind)) {
+    const outer = outerForInscribed(s.kind, labelBox(label, s.fontSize));
+    need = { w: snapUp(outer.w), h: snapUp(outer.h) };
+  } else {
+    return null;
+  }
+  const w = Math.max(floor.w, need.w);
+  const h = Math.max(floor.h, need.h);
+  if (w === s.w && h === s.h) return null;
+  if (s.kind === 'text') return { w, h };
+  return { x: s.x - (w - s.w) / 2, y: s.y - (h - s.h) / 2, w, h };
+}
+
+/** The floor `fitToLabel` sizes against for the shape currently in the text-edit overlay. */
+function editFloor(state: EditorState, s: Shape): { w: number; h: number } {
+  return state.editingBox ?? { w: s.w, h: s.h };
+}
+
 function commitInsert(state: EditorState, label: string): EditorState {
   const id = state.editingId;
   if (!id) return { ...state, mode: 'normal' };
@@ -1526,16 +1592,10 @@ function commitInsert(state: EditorState, label: string): EditorState {
     if (s.kind === 'text' && trimmed === '') {
       doc = deleteItem(state.doc, id);
     } else {
-      let patch: Partial<Shape> = { label: trimmed };
-      if (s.kind === 'text' && trimmed !== '') {
-        const m = measureLabel(trimmed, s.fontSize);
-        patch = {
-          ...patch,
-          w: Math.max(GRID * 2, snap(m.w + GRID)),
-          h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
-        };
-      }
-      patch.label = trimmed;
+      // Re-fit on commit as well as live (INSERT_AUTOSIZE): trimming the trailing whitespace
+      // can change the size, and a label can reach here without a keystroke ever passing
+      // through the overlay's input handler.
+      const patch: Partial<Shape> = { label: trimmed, ...(fitToLabel(s, trimmed, editFloor(state, s)) ?? {}) };
       doc = updateShape(state.doc, id, patch);
       if (state.vim && state.editingIsNew && s.kind === 'text' && trimmed !== '') {
         textCreate = { kind: 'text', text: trimmed };
@@ -1552,6 +1612,7 @@ function commitInsert(state: EditorState, label: string): EditorState {
     mode: 'normal',
     editingId: null,
     editingIsNew: false,
+    editingBox: null,
     selectedIds: state.selectedIds.filter(
       (sid) => doc.shapes.some((s) => s.id === sid) || doc.connectors.some((c) => c.id === sid),
     ),
@@ -1786,6 +1847,19 @@ function reduceCore(state: EditorState, action: Action): EditorState {
     case 'START_INSERT':
       return startEdit(state, action.id);
 
+    // Live re-fit while the text-edit overlay is being typed into, so the box keeps up with the
+    // text instead of the text running out of it. Folds into the edit's existing undo step
+    // (`base` was snapshotted when the edit started), so — like SET_LABEL — it deliberately
+    // pushes no undo entry of its own, and returns `state` untouched when nothing has to move.
+    case 'INSERT_AUTOSIZE': {
+      if (state.mode !== 'insert' || !state.editingId) return state;
+      const s = findShape(state.doc, state.editingId);
+      if (!s) return state;
+      const patch = fitToLabel(s, action.label, editFloor(state, s));
+      if (!patch) return state;
+      return { ...state, doc: updateShape(state.doc, state.editingId, patch) };
+    }
+
     case 'INSERT_COMMIT':
       return commitInsert(state, action.label);
 
@@ -1805,23 +1879,22 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       } else {
         const s = findShape(state.doc, action.id);
         if (!s) return state;
-        let patch: Partial<Shape> = { label: action.label };
-        if (s.kind === 'text') {
-          const m = measureLabel(action.label, s.fontSize);
-          patch = {
-            ...patch,
-            w: Math.max(GRID * 2, snap(m.w + GRID)),
-            h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
-          };
-        }
+        // Floor at the size the shape had when this typing session started (`base`), so the
+        // field can grow the box and give the growth back without ever shrinking past that.
+        const before = findShape(base, action.id) ?? s;
+        const patch: Partial<Shape> = {
+          label: action.label,
+          ...(fitToLabel(s, action.label, { w: before.w, h: before.h }) ?? {}),
+        };
         doc = updateShape(state.doc, action.id, patch);
       }
       return { ...state, doc, base };
     }
 
     // Ends a SET_LABEL live session (sidebar field losing focus, or the field unmounting because
-    // the selection changed): trims trailing whitespace, deletes a text shape left empty, and
-    // folds the whole typing session into one undo step via commitBase.
+    // the selection changed): trims trailing whitespace, deletes a text shape left empty, re-fits
+    // the box to the trimmed label, and folds the whole typing session into one undo step via
+    // commitBase.
     case 'COMMIT_LABEL': {
       const conn = findConnector(state.doc, action.id);
       let doc = state.doc;
@@ -1837,16 +1910,11 @@ function reduceCore(state: EditorState, action: Action): EditorState {
           if (s.kind === 'text' && trimmed === '') {
             doc = deleteItem(doc, action.id);
           } else if (trimmed !== s.label) {
-            let patch: Partial<Shape> = { label: trimmed };
-            if (s.kind === 'text') {
-              const m = measureLabel(trimmed, s.fontSize);
-              patch = {
-                ...patch,
-                w: Math.max(GRID * 2, snap(m.w + GRID)),
-                h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
-              };
-            }
-            doc = updateShape(doc, action.id, patch);
+            // Same floor SET_LABEL sized against, so trimming can't drop the box below the size
+            // the session started at (see fitToLabel).
+            const before = findShape(state.base ?? state.doc, action.id) ?? s;
+            const size = fitToLabel(s, trimmed, { w: before.w, h: before.h });
+            doc = updateShape(doc, action.id, { label: trimmed, ...(size ?? {}) });
           }
         }
       }
@@ -1981,6 +2049,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         mode: 'insert',
         editingId: shape.id,
         editingIsNew: true,
+        editingBox: { w: shape.w, h: shape.h },
         selectedIds: [shape.id],
         msg: `auto: ${res.kind}`,
       };
@@ -2181,13 +2250,7 @@ function reduceCore(state: EditorState, action: Action): EditorState {
           // the label would visually overflow/underflow it. Other kinds keep a
           // user-controlled box, so only fontSize changes for them.
           if (s.kind === 'text' && s.label) {
-            const m = measureLabel(s.label, fontSize);
-            return {
-              ...s,
-              fontSize,
-              w: Math.max(GRID * 2, snap(m.w + GRID)),
-              h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
-            };
+            return { ...s, fontSize, ...textShapeSize(s.label, fontSize) };
           }
           return { ...s, fontSize };
         }),
@@ -2480,14 +2543,12 @@ function reduceCore(state: EditorState, action: Action): EditorState {
       const trimmed = action.text.replace(/\s+$/, '');
       if (!trimmed) return state;
       const at = snapPt(state.cursor);
-      const m = measureLabel(trimmed);
       const shape: Shape = {
         id: newId(),
         kind: 'text',
         x: at.x,
         y: at.y,
-        w: Math.max(GRID * 2, snap(m.w + GRID)),
-        h: Math.max(GRID * 2, snap(m.h + GRID / 2)),
+        ...textShapeSize(trimmed),
         label: trimmed,
       };
       return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'text added' });

@@ -1003,6 +1003,9 @@ img.icon-preview {
 }
 
 /* text editing overlay */
+/* Font size and line height are set inline, from the shape's own font size and the zoom.
+   The border + padding below are mirrored as CHROME_PX in TextEditOverlay.tsx, which offsets
+   the box by them so the text area lines up with the shape — keep the two in sync. */
 .text-edit {
   background: var(--overlay-bg);
   color: var(--text);
@@ -1013,7 +1016,6 @@ img.icon-preview {
   text-align: center;
   font-family: system-ui, sans-serif;
   padding: 4px;
-  line-height: 20px;
 }
 
 /* context menu */

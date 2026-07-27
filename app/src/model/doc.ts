@@ -1,4 +1,4 @@
-import { FONT_LINE_H, FONT_SIZE_PX, FREEDRAW_RES, GRID } from './types';
+import { FONT_LINE_H, FONT_SIZE_PX, FREEDRAW_RES, GRID, snapUp } from './types';
 import type { Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, TriangleDirection } from './types';
 
 /** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
@@ -103,6 +103,21 @@ export function inscribedBox(s: {
     };
   }
   return { x, y, w, h };
+}
+
+/**
+ * Inverse of `inscribedBox`: the bbox a shape of this kind needs for its inscribed box to be
+ * at least `inner`. Used to grow a shape around the label being typed into it.
+ *
+ * Only the kinds whose inscribed box is a fixed fraction of the bbox scale up here. For
+ * rect/text/image the two are the same box, so the bbox is the answer as-is — and a frame,
+ * whose label zone is a *capped* top-left corner (FRAME_LABEL_ZONE_W/H), can't be grown into
+ * holding a longer label at all, which is why callers leave frames alone.
+ */
+export function outerForInscribed(kind: string, inner: { w: number; h: number }): { w: number; h: number } {
+  if (kind === 'ellipse') return { w: inner.w * Math.SQRT2, h: inner.h * Math.SQRT2 };
+  if (kind === 'diamond' || kind === 'triangle') return { w: inner.w * 2, h: inner.h * 2 };
+  return { w: inner.w, h: inner.h };
 }
 
 /** How far in from a frame's own top-left corner its label starts. */
@@ -1255,4 +1270,25 @@ export function measureLabel(label: string, fontSize?: FontSize): { w: number; h
     for (const line of lines) w = Math.max(w, line.length * px);
   }
   return { w: Math.ceil(w), h: lines.length * FONT_LINE_H[fontSize ?? 'm'] };
+}
+
+/** Breathing room between a label and the edge of the box holding it, per side. Splitting
+ * GRID horizontally and GRID/2 vertically is the padding text shapes have always been sized
+ * with, now applied to every box a label has to fit inside. */
+export const LABEL_PAD_X = GRID / 2;
+export const LABEL_PAD_Y = GRID / 4;
+
+/** Smallest box that holds `label` with its padding — what a shape's text area (its
+ * `inscribedBox`) and the text-edit overlay both have to be at least as big as. */
+export function labelBox(label: string, fontSize?: FontSize): { w: number; h: number } {
+  const m = measureLabel(label, fontSize);
+  return { w: m.w + LABEL_PAD_X * 2, h: m.h + LABEL_PAD_Y * 2 };
+}
+
+/** Size of a text shape, whose box *is* its label: `labelBox` snapped out to whole grid steps
+ * (out, not to nearest, so the snap can't cut back into the text), floored at GRID*2 so an
+ * empty or one-character shape stays big enough to grab. */
+export function textShapeSize(label: string, fontSize?: FontSize): { w: number; h: number } {
+  const box = labelBox(label, fontSize);
+  return { w: Math.max(GRID * 2, snapUp(box.w)), h: Math.max(GRID * 2, snapUp(box.h)) };
 }

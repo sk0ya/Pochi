@@ -158,4 +158,8 @@ export const newId = (): string => Math.random().toString(36).slice(2, 10);
 
 export const snap = (v: number): number => Math.round(v / GRID) * GRID;
 
+/** Snap to the grid without ever going below `v` — for sizes that must still *hold* something
+ * (a label, say) after snapping, where plain `snap` could round down past it. */
+export const snapUp = (v: number): number => Math.ceil(v / GRID) * GRID;
+
 export const snapPt = (p: Pt): Pt => ({ x: snap(p.x), y: snap(p.y) });
