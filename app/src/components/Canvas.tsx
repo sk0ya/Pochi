@@ -22,6 +22,7 @@ import {
   resizeHandlePoint,
   resolveEndpoint,
   shapeAt,
+  shapeLabelLines,
   triangleVertices,
 } from '../model/doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from '../model/palette';
@@ -41,24 +42,26 @@ const markerKey = (hex: string): string => hex.replace('#', '');
  * white light-theme background reads the same alpha as noticeably lighter than a dark one. */
 export const FRAME_TINT_OPACITY_APP = 0.16;
 
+/** A centred label. `lines` is the text already split for drawing — wrapped to the shape it
+ * sits in (see shapeLabelLines), or just the label's own newlines where there's no box to fit
+ * inside (connectors). */
 function Label({
-  label,
+  lines,
   cx,
   cy,
   color,
   fontSize,
   anchor = 'middle',
 }: {
-  label: string;
+  lines: string[];
   cx: number;
   cy: number;
   color?: string;
   fontSize?: FontSize;
   anchor?: 'middle' | 'start';
 }) {
-  if (!label) return null;
+  if (!lines.length || (lines.length === 1 && lines[0] === '')) return null;
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
-  const lines = label.split('\n');
   const startY = cy - ((lines.length - 1) * lineH) / 2;
   return (
     <text
@@ -81,21 +84,20 @@ function Label({
  * shape's centered label) — the visual cue that distinguishes a frame's label placement from
  * the container itself, per the feature's design (see FRAME_LABEL_PAD_X/Y in model/doc.ts). */
 function FrameLabel({
-  label,
+  lines,
   x,
   y,
   color,
   fontSize,
 }: {
-  label: string;
+  lines: string[];
   x: number;
   y: number;
   color?: string;
   fontSize?: FontSize;
 }) {
-  if (!label) return null;
+  if (!lines.length || (lines.length === 1 && lines[0] === '')) return null;
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
-  const lines = label.split('\n');
   return (
     <text
       fill={color ?? 'var(--muted)'}
@@ -258,6 +260,14 @@ function ShapeView({
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
   const labelPos = labelCenter(s);
+  // Wrapped to the room the shape actually gives its text, so a label longer than its box
+  // stacks up inside it instead of running out past the edges. Memoized on what the wrap
+  // depends on (not, notably, x/y): this runs for every shape on every canvas render — hover,
+  // pan, each frame of a drag — and wrapping a long label costs a measurement per token.
+  const labelLines = useMemo(
+    () => shapeLabelLines(s),
+    [s.label, s.w, s.kind, s.direction, s.fontSize],
+  );
   const haloColor = selected ? 'var(--accent)' : hot ? 'var(--accent-dim)' : undefined;
   // The halo is selection *feedback*, not part of the drawing, so its ring keeps a constant
   // on-screen thickness and stand-off (see the screen-pixel note above `CONNECT_DOT_OFFSET`) —
@@ -398,7 +408,7 @@ function ShapeView({
       )}
       {s.kind === 'frame' ? (
         <FrameLabel
-          label={s.label}
+          lines={labelLines}
           x={s.x + FRAME_LABEL_PAD_X}
           y={s.y + FRAME_LABEL_PAD_Y}
           color={s.color}
@@ -406,7 +416,7 @@ function ShapeView({
         />
       ) : (
         <Label
-          label={s.label}
+          lines={labelLines}
           cx={labelPos.x}
           cy={labelPos.y}
           color={
@@ -1380,7 +1390,9 @@ export function Canvas({
           />
         )}
         <Label
-          label={c.label}
+          // A connector label floats on the line with no box around it, so nothing to wrap to:
+          // only its own newlines split it.
+          lines={c.label.split('\n')}
           cx={labelPos.x}
           cy={labelPos.y}
           anchor={labelPos.anchor}

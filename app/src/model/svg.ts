@@ -6,6 +6,7 @@ import {
   freedrawPathD,
   FRAME_LABEL_PAD_Y,
   labelCenter,
+  shapeLabelLines,
   triangleVertices,
 } from './doc';
 import { fillTint, FLAT_FILL_DEFAULT, readableTextColor } from './palette';
@@ -65,7 +66,7 @@ const THEMES: Record<ExportTheme, ThemeColors> = {
 };
 
 function labelSvg(
-  label: string,
+  lines: string[],
   x: number,
   y: number,
   color: string,
@@ -73,9 +74,8 @@ function labelSvg(
   anchor: 'middle' | 'start' | 'end' = 'middle',
   baseline: 'middle' | 'hanging' = 'middle',
 ): string {
-  if (!label) return '';
+  if (!lines.length || (lines.length === 1 && lines[0] === '')) return '';
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
-  const lines = label.split('\n');
   const startY = baseline === 'hanging' ? y : y - ((lines.length - 1) * lineH) / 2;
   const tspans = lines
     .map((line, i) => `<tspan x="${x}" y="${startY + i * lineH}">${esc(line)}</tspan>`)
@@ -97,7 +97,15 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     const labelColor = s.color ?? t.frameStroke;
     return (
       body +
-      labelSvg(s.label, s.x + FRAME_LABEL_PAD_X, s.y + FRAME_LABEL_PAD_Y, labelColor, s.fontSize, 'start', 'hanging')
+      labelSvg(
+        shapeLabelLines(s),
+        s.x + FRAME_LABEL_PAD_X,
+        s.y + FRAME_LABEL_PAD_Y,
+        labelColor,
+        s.fontSize,
+        'start',
+        'hanging',
+      )
     );
   }
   const cx = s.x + s.w / 2;
@@ -130,7 +138,8 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
       ? s.color ?? t.text
       : t.text;
   const labelPos = labelCenter(s);
-  return body + labelSvg(s.label, labelPos.x, labelPos.y, labelColor, s.fontSize);
+  // Same wrapped lines the canvas draws, so an export is what was on screen.
+  return body + labelSvg(shapeLabelLines(s), labelPos.x, labelPos.y, labelColor, s.fontSize);
 }
 
 function markerDef(id: string, hex: string): string {
@@ -171,7 +180,8 @@ export function exportSvg(doc: Doc, theme: ExportTheme = 'light'): string {
     );
     if (c.label) {
       const { x: mx, y: my, anchor } = connectorLabelPos(doc, c);
-      parts.push(labelSvg(c.label, mx, my, c.color ?? t.connectorLabel, c.fontSize, anchor));
+      // No box around a connector label to wrap it to (see the canvas's Label).
+      parts.push(labelSvg(c.label.split('\n'), mx, my, c.color ?? t.connectorLabel, c.fontSize, anchor));
     }
   }
 

@@ -13,7 +13,9 @@ import {
   frameHitZone,
   inscribedBox,
   isSelfLoop,
+  labelBox,
   labelCenter,
+  labelMaxWidth,
   nearestSide,
   measureLabel,
   reorderItems,
@@ -27,6 +29,7 @@ import {
   toAnchor,
   translateItems,
   triangleVertices,
+  wrapLabel,
 } from './doc';
 import type { Connector, Doc, LoopSide, Pt, Shape } from './types';
 
@@ -849,6 +852,85 @@ describe('measureLabel', () => {
     const oneLine = measureLabel('a', 'l');
     const twoLines = measureLabel('a\nb', 'l');
     expect(twoLines.h).toBe(oneLine.h * 2);
+  });
+});
+
+// Under the character-count fallback above, every character is exactly FONT_SIZE_PX wide — 14px
+// at the default 'm' — so a width of `n * 14` fits exactly n characters per line.
+const CH = 14;
+
+describe('wrapLabel', () => {
+  it('leaves a label that already fits alone, keeping its own line breaks', () => {
+    expect(wrapLabel('one\ntwo', 10 * CH)).toEqual(['one', 'two']);
+  });
+
+  it('breaks a long line at a space, dropping the space it broke at', () => {
+    expect(wrapLabel('hello world', 6 * CH)).toEqual(['hello', 'world']);
+  });
+
+  it('breaks between characters for scripts written without spaces', () => {
+    expect(wrapLabel('あいうえおかきくけこ', 4 * CH)).toEqual(['あいうえ', 'おかきく', 'けこ']);
+  });
+
+  it('keeps closing punctuation off the head of a wrapped line', () => {
+    // Breaking purely on width would put 「。」 alone at the start of line 2.
+    expect(wrapLabel('あいう。えお', 4 * CH)).toEqual(['あいう。', 'えお']);
+  });
+
+  it('cuts a single word too long for the box rather than letting it hang out', () => {
+    expect(wrapLabel('supercalifragilistic', 5 * CH)).toEqual(['super', 'calif', 'ragil', 'istic']);
+  });
+
+  it('wraps each of the label\'s own lines separately', () => {
+    expect(wrapLabel('hello world\nbye', 6 * CH)).toEqual(['hello', 'world', 'bye']);
+  });
+
+  it('does not wrap at all without a positive width to wrap to', () => {
+    expect(wrapLabel('hello world', 0)).toEqual(['hello world']);
+  });
+
+  it('produces no blank line where it broke at whitespace', () => {
+    // The leading run of spaces is a token of its own: breaking after it must not leave an
+    // empty line behind, which would push the whole label off centre when it's drawn.
+    expect(wrapLabel('   spaced out words here', 5 * CH)).toEqual(['space', 'd out', 'words', 'here']);
+    expect(wrapLabel('aaaaaaa bb', 1 * CH)).toEqual(['a', 'a', 'a', 'a', 'a', 'a', 'a', 'b', 'b']);
+  });
+
+  it("keeps a blank line in the label that's genuinely blank", () => {
+    expect(wrapLabel('hello world\n\nbye', 6 * CH)).toEqual(['hello', 'world', '', 'bye']);
+  });
+
+  it('keeps a no-line-start character off the head of a line it had to cut mid-word', () => {
+    // Cutting purely on width would break as ['word', '.wor', 'd'], opening a line with '.';
+    // the character before it comes down too so it doesn't.
+    expect(wrapLabel('word.word', 4 * CH)).toEqual(['wor', 'd.wo', 'rd']);
+  });
+});
+
+describe('labelMaxWidth', () => {
+  it('is the width a label of exactly that size needs, so a fitting label never wraps', () => {
+    const s = { x: 0, y: 0, w: 200, h: 80, kind: 'rect' };
+    const label = 'x'.repeat(Math.floor(labelMaxWidth(s) / CH));
+    expect(wrapLabel(label, labelMaxWidth(s))).toEqual([label]);
+    expect(labelBox(label).w).toBeLessThanOrEqual(s.w);
+  });
+
+  it('is narrower for shapes whose text area is only part of their box', () => {
+    const box = { x: 0, y: 0, w: 200, h: 80 };
+    expect(labelMaxWidth({ ...box, kind: 'ellipse' })).toBeLessThan(labelMaxWidth({ ...box, kind: 'rect' }));
+    expect(labelMaxWidth({ ...box, kind: 'diamond' })).toBeLessThan(labelMaxWidth({ ...box, kind: 'ellipse' }));
+  });
+
+  it('measures a frame against its whole width, not its fixed-size corner label zone', () => {
+    expect(labelMaxWidth({ x: 0, y: 0, w: 600, h: 400, kind: 'frame' })).toBeGreaterThan(400);
+  });
+
+  it('never goes below one character, so a tiny shape gets a wrap width instead of a column', () => {
+    const tiny = { x: 0, y: 0, w: 16, h: 16, kind: 'ellipse' };
+    expect(labelMaxWidth(tiny)).toBe(CH);
+    expect(labelMaxWidth({ ...tiny, fontSize: 'l' as const })).toBeGreaterThan(CH);
+    // One character per line at that floor — never zero-width, which would wrap forever.
+    expect(wrapLabel('abc', labelMaxWidth(tiny))).toEqual(['a', 'b', 'c']);
   });
 });
 

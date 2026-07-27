@@ -105,21 +105,6 @@ export function inscribedBox(s: {
   return { x, y, w, h };
 }
 
-/**
- * Inverse of `inscribedBox`: the bbox a shape of this kind needs for its inscribed box to be
- * at least `inner`. Used to grow a shape around the label being typed into it.
- *
- * Only the kinds whose inscribed box is a fixed fraction of the bbox scale up here. For
- * rect/text/image the two are the same box, so the bbox is the answer as-is — and a frame,
- * whose label zone is a *capped* top-left corner (FRAME_LABEL_ZONE_W/H), can't be grown into
- * holding a longer label at all, which is why callers leave frames alone.
- */
-export function outerForInscribed(kind: string, inner: { w: number; h: number }): { w: number; h: number } {
-  if (kind === 'ellipse') return { w: inner.w * Math.SQRT2, h: inner.h * Math.SQRT2 };
-  if (kind === 'diamond' || kind === 'triangle') return { w: inner.w * 2, h: inner.h * 2 };
-  return { w: inner.w, h: inner.h };
-}
-
 /** How far in from a frame's own top-left corner its label starts. */
 export const FRAME_LABEL_PAD_X = 10;
 export const FRAME_LABEL_PAD_Y = 8;
@@ -1255,21 +1240,136 @@ export function subsetDoc(doc: Doc, ids: string[]): Doc {
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
-/** Approximate pixel size of a (possibly multi-line) label at the given font size (default 'm' = 14px). */
-export function measureLabel(label: string, fontSize?: FontSize): { w: number; h: number } {
-  if (!measureCtx) {
+/** Width of a single line of text in px. Falls back to a character-count estimate when there's
+ * no canvas 2D context to measure with (node, i.e. the test suites). */
+function textWidth(line: string, px: number): number {
+  if (!measureCtx && typeof document !== 'undefined') {
     measureCtx = document.createElement('canvas').getContext('2d');
   }
+  if (!measureCtx) return line.length * px;
+  measureCtx.font = `${px}px system-ui, sans-serif`;
+  return measureCtx.measureText(line).width;
+}
+
+/** Approximate pixel size of a (possibly multi-line) label at the given font size (default 'm' = 14px). */
+export function measureLabel(label: string, fontSize?: FontSize): { w: number; h: number } {
   const px = FONT_SIZE_PX[fontSize ?? 'm'];
   const lines = label.split('\n');
   let w = 0;
-  if (measureCtx) {
-    measureCtx.font = `${px}px system-ui, sans-serif`;
-    for (const line of lines) w = Math.max(w, measureCtx.measureText(line).width);
-  } else {
-    for (const line of lines) w = Math.max(w, line.length * px);
-  }
+  for (const line of lines) w = Math.max(w, textWidth(line, px));
   return { w: Math.ceil(w), h: lines.length * FONT_LINE_H[fontSize ?? 'm'] };
+}
+
+/** Characters that may not open a wrapped line (Japanese 禁則処理: closing brackets, sentence
+ * punctuation, small kana and the prolonged-sound mark), and those that may not end one. A
+ * break next to these is pushed one character along so the punctuation stays with the text it
+ * belongs to instead of being stranded at a line edge. */
+const NO_LINE_START = new Set(
+  Array.from('、。，．,.!?！？：；:;）)]｝}」』】〕〉》”’ーぁぃぅぇぉっゃゅょァィゥェォッャュョヶ々〜～'),
+);
+const NO_LINE_END = new Set(Array.from('（([｛{「『【〔〈《“‘'));
+/** Scripts written without spaces, so a line may break between any two of their characters. */
+const BREAKABLE_SCRIPT = /[　-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
+
+/** Whether a wrapped line may break between these two adjacent characters. */
+function canBreakBetween(prev: string, next: string): boolean {
+  if (next === ' ' || next === '\t') return false; // trailing space rides along with its word
+  if (NO_LINE_START.has(next) || NO_LINE_END.has(prev)) return false;
+  if (prev === ' ' || prev === '\t') return true;
+  return BREAKABLE_SCRIPT.test(prev) || BREAKABLE_SCRIPT.test(next);
+}
+
+/** A line split at every break opportunity: Latin words (with their trailing spaces) stay
+ * whole, space-less scripts come apart per character. */
+function breakTokens(line: string): string[] {
+  const tokens: string[] = [];
+  let cur = '';
+  for (const ch of line) {
+    if (cur !== '' && canBreakBetween(cur[cur.length - 1], ch)) {
+      tokens.push(cur);
+      cur = '';
+    }
+    cur += ch;
+  }
+  if (cur !== '') tokens.push(cur);
+  return tokens;
+}
+
+const rtrim = (s: string) => s.replace(/\s+$/, '');
+
+/**
+ * `label` laid out into lines no wider than `maxWidth` px — the lines a shape actually draws,
+ * so text too long for the box it sits in wraps instead of hanging out over the edges.
+ *
+ * The label's own newlines are always kept; each of those lines is then greedily packed at the
+ * break opportunities `canBreakBetween` allows. A single unbreakable token wider than the box
+ * (a long URL, say) is cut mid-token as a last resort — spilling is never the answer here, since
+ * the caller's whole reason for wrapping is that nothing wider than `maxWidth` fits.
+ *
+ * `maxWidth <= 0` means "don't wrap" (a box too small to hold anything, or a connector label,
+ * which floats free and has no box to overflow).
+ */
+export function wrapLabel(label: string, maxWidth: number, fontSize?: FontSize): string[] {
+  const src = label.split('\n');
+  if (!(maxWidth > 0)) return src;
+  const px = FONT_SIZE_PX[fontSize ?? 'm'];
+  const out: string[] = [];
+  for (const line of src) {
+    if (textWidth(line, px) <= maxWidth) {
+      out.push(line);
+      continue;
+    }
+    // Wrapping the line replaces it with the lines below; a break landing on nothing but the
+    // whitespace it broke at contributes no line at all, rather than a blank one that would
+    // throw off both the line count and where the label centres.
+    const wrapped: string[] = [];
+    const push = (s: string) => {
+      if (s !== '') wrapped.push(s);
+    };
+    const tokens = breakTokens(line);
+    let cur = '';
+    let i = 0;
+    while (i < tokens.length) {
+      const tok = tokens[i];
+      if (cur === '') {
+        if (textWidth(rtrim(tok), px) <= maxWidth) {
+          cur = tok;
+        } else {
+          // Unbreakable and still too wide: cut it character by character, keeping the tail
+          // to carry on packing with.
+          let piece = '';
+          for (const ch of tok) {
+            if (piece !== '' && textWidth(piece + ch, px) > maxWidth) {
+              // Cutting mid-token still respects the one rule a break can't ignore: a
+              // character that may not open a line takes the one before it down with it.
+              let carry = '';
+              const prev = piece.slice(-1);
+              if (NO_LINE_START.has(ch) && piece.length > 1 && textWidth(prev + ch, px) <= maxWidth) {
+                carry = prev;
+                piece = piece.slice(0, -1);
+              }
+              push(rtrim(piece));
+              piece = carry;
+            }
+            piece += ch;
+          }
+          cur = piece;
+        }
+        i++;
+      } else if (textWidth(rtrim(cur + tok), px) <= maxWidth) {
+        cur += tok;
+        i++;
+      } else {
+        // Doesn't fit: close this line and retry the same token on the next one.
+        push(rtrim(cur));
+        cur = '';
+      }
+    }
+    push(rtrim(cur));
+    // A line of nothing but whitespace wraps to nothing above; keep it as the blank line it is.
+    out.push(...(wrapped.length ? wrapped : ['']));
+  }
+  return out;
 }
 
 /** Breathing room between a label and the edge of the box holding it, per side. Splitting
@@ -1292,3 +1392,34 @@ export function textShapeSize(label: string, fontSize?: FontSize): { w: number; 
   const box = labelBox(label, fontSize);
   return { w: Math.max(GRID * 2, snapUp(box.w)), h: Math.max(GRID * 2, snapUp(box.h)) };
 }
+
+/**
+ * Width `s` gives its label before it has to wrap: the shape's text area minus the padding a
+ * label keeps from the edge — the inverse of `labelBox`'s width, so a label sized to fit a box
+ * is exactly the one that doesn't wrap in it.
+ *
+ * Never narrower than one character, however small the shape: below that every character would
+ * land on a line of its own and a short label would tower over the shape it belongs to, which
+ * reads far worse than the one character of overhang this floor allows.
+ *
+ * A frame measures against its whole width instead of its `inscribedBox`: that box is the
+ * fixed-size *hit* zone in the corner, not how far the title may run before it leaves the frame.
+ */
+export function labelMaxWidth(s: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: string;
+  direction?: TriangleDirection;
+  fontSize?: FontSize;
+}): number {
+  const room = s.kind === 'frame' ? s.w - FRAME_LABEL_PAD_X * 2 : inscribedBox(s).w - LABEL_PAD_X * 2;
+  return Math.max(room, FONT_SIZE_PX[s.fontSize ?? 'm']);
+}
+
+/** The lines `s` draws for its label: wrapped to the room the shape gives them. */
+export function shapeLabelLines(s: Shape): string[] {
+  return wrapLabel(s.label, labelMaxWidth(s), s.fontSize);
+}
+

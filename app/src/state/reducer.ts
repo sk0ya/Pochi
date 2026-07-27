@@ -21,10 +21,8 @@ import {
   insideDepth,
   isSelfLoop,
   itemsInRect,
-  labelBox,
   labelCenter,
   nearestSide,
-  outerForInscribed,
   textShapeSize,
   SIDE_NORM,
   type ReorderDir,
@@ -48,7 +46,7 @@ import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
 import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, IconAttribution, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
-import { GRID, emptyDoc, newId, snap, snapPt, snapUp } from '../model/types';
+import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
 
@@ -1527,43 +1525,27 @@ function handlePlainKey(state: EditorState, key: string, ctrl: boolean, shift: b
 }
 
 /**
- * Kinds that grow to keep their whole label inside them. Deliberately not every kind: a frame's
- * label lives in a fixed-size corner zone that growing the frame wouldn't enlarge (and resizing
- * a container from its title would shove its contents' layout around), while image/freedraw
- * boxes are the picture or the stroke itself, not a text container — stretching those to fit a
- * caption would distort the artwork.
- */
-const LABEL_FIT_KINDS = new Set<ShapeKind>(['rect', 'ellipse', 'diamond', 'triangle']);
-
-/**
- * Size patch keeping `label` inside `s`, or null when it already fits.
+ * Size patch keeping `label` inside `s`, or null when there's nothing to change.
+ *
+ * Only a text shape is ever resized by its label, because a text shape *is* its label: there's
+ * no outline around it for the text to stay inside, so it takes whatever room the text needs,
+ * anchored at its top-left the way every label edit has always sized it. Every other kind keeps
+ * exactly the box it was drawn with — a label too long for it wraps inside it instead (see
+ * wrapLabel), rather than the shape resizing itself to chase the text.
  *
  * `floor` is the size the shape had when the edit began (`editingBox`, or the pre-edit doc for
  * the sidebar field). The box grows past it as the text needs, and gives that growth back when
  * the text shrinks again — but never goes below it. Without that floor a box would collapse out
  * from under the caret: a fresh text shape is created roomy to type into, then sized to its
- * label, so the very first character used to snap it down to one character wide; and a box the
- * user sized by hand is theirs to keep, not something a short label may shrink.
- *
- * A text shape *is* its label, so it takes the label's size directly, anchored at its top-left
- * the way every label edit has always sized it. A container is grown around its own centre
- * instead, so it stays put on screen rather than creeping down and to the right as you type.
+ * label, so the very first character used to snap it down to one character wide.
  */
 function fitToLabel(s: Shape, label: string, floor: { w: number; h: number }): Partial<Shape> | null {
-  let need: { w: number; h: number };
-  if (s.kind === 'text') {
-    need = textShapeSize(label, s.fontSize);
-  } else if (LABEL_FIT_KINDS.has(s.kind)) {
-    const outer = outerForInscribed(s.kind, labelBox(label, s.fontSize));
-    need = { w: snapUp(outer.w), h: snapUp(outer.h) };
-  } else {
-    return null;
-  }
+  if (s.kind !== 'text') return null;
+  const need = textShapeSize(label, s.fontSize);
   const w = Math.max(floor.w, need.w);
   const h = Math.max(floor.h, need.h);
   if (w === s.w && h === s.h) return null;
-  if (s.kind === 'text') return { w, h };
-  return { x: s.x - (w - s.w) / 2, y: s.y - (h - s.h) / 2, w, h };
+  return { w, h };
 }
 
 /** The floor `fitToLabel` sizes against for the shape currently in the text-edit overlay. */

@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import { connectorLabelPos, findShape, inscribedBox, labelBox } from '../model/doc';
+import {
+  connectorLabelPos,
+  findShape,
+  inscribedBox,
+  labelBox,
+  LABEL_PAD_Y,
+  labelMaxWidth,
+  wrapLabel,
+} from '../model/doc';
 import { FONT_LINE_H, FONT_SIZE_PX } from '../model/types';
 import type { Action, EditorState } from '../state/reducer';
 
@@ -49,16 +57,30 @@ export function TextEditOverlay({
 
   const { view } = state;
   const fontSize = shape?.fontSize ?? conn?.fontSize;
-  // Room the text typed so far needs. The shape itself grows to hold it too (INSERT_AUTOSIZE),
-  // but only the kinds that can: this keeps the *box being typed into* from ever overflowing,
-  // including over an image, a frame's corner label, or a connector, none of which resize.
+  // Room the text typed so far needs, unwrapped — what a text shape and a connector label, the
+  // two things here with no box around them to wrap to, size their edit box by. Every other kind
+  // wraps instead (below), so it sizes off the wrapped lines rather than this.
   const need = labelBox(text, fontSize);
   let rect: { x: number; y: number; w: number; h: number };
   let textAlign: React.CSSProperties['textAlign'];
   if (shape) {
     const inner = inscribedBox(shape);
-    const w = Math.max(inner.w, need.w);
-    const h = Math.max(inner.h, need.h);
+    let w: number;
+    let h: number;
+    if (shape.kind === 'text') {
+      // A text shape *is* its label and has no outline to stay inside: it just keeps getting
+      // wider under the caret (see fitToLabel), so the box being typed into does too.
+      w = Math.max(inner.w, need.w);
+      h = Math.max(inner.h, need.h);
+    } else {
+      // Every other kind keeps its box and draws its label wrapped to the room that box gives
+      // it (fitToLabel), so type at exactly that width — the same one shapeLabelLines draws at,
+      // so the lines break here where they'll break once committed. Only the height grows, and
+      // only so what's being typed stays visible: the shape underneath doesn't move.
+      w = labelMaxWidth(shape);
+      const lines = wrapLabel(text, w, fontSize);
+      h = Math.max(inner.h, lines.length * FONT_LINE_H[fontSize ?? 'm'] + LABEL_PAD_Y * 2);
+    }
     rect =
       shape.kind === 'frame'
         ? // A frame's label hangs off its top-left corner, so its box grows right/down from
@@ -66,7 +88,7 @@ export function TextEditOverlay({
           { ...inner, w, h }
         : // Everything else centres its label: grow around the centre, matching both how the
           // label renders and how the shape itself grows underneath.
-          { x: inner.x - (w - inner.w) / 2, y: inner.y - (h - inner.h) / 2, w, h };
+          { x: inner.x + (inner.w - w) / 2, y: inner.y - (h - inner.h) / 2, w, h };
   } else {
     // connector label: small box on where the label renders, growing away from the
     // line on whichever side the label itself is anchored to (see connectorLabelPos)
