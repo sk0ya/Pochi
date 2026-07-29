@@ -51,6 +51,22 @@ dotnet run
 - **開発時**: `cd app && npm run dev` で Vite を起動し、`POCHI_DEV_URL=http://localhost:5173` を設定してデスクトップ版を起動すると HMR で開発できる。ブラウザで直接 `http://localhost:5173` を開いてもよい。
 - **オフライン用のローカルバンドル**: `dotnet build -p:BundleFrontend=true` で `npm run build` が走り、`app/dist` を `wwwroot` に固める。以降 `POCHI_LOCAL=1` で起動すればオフラインでも動く。
 
+## 他アプリへの埋め込み(ホストが文書を持つ場合)
+
+Pochi は自分の WebView2 ペインに公開ビルドを読み込む**他のアプリ**からも使える。ホストは `postMessage` で `{id, op, …}` を受けて `{id, result}` を返すだけでよく(`app/src/bridge.ts`)、`hello` に対して**実装した op の一覧**を返すと、Pochi はそれに対応する UI だけを出す(未実装の機能は死んだボタンにならず消える)。
+
+ホスト側が既にファイルを開いていて Pochi を**その文書の編集画面**として使う場合は、次の3つの op を実装する。これが揃うと Pochi は「ホストが文書を持つモード」になり、起動時の localStorage 自動保存の読み書きをやめ、Open/New/最近使ったファイルを隠す(ファイルの所在はホストの管轄になるため)。
+
+| op | 方向 | 内容 |
+| --- | --- | --- |
+| `hostDoc` | Pochi → ホスト | 起動時に一度。ホストは `{name, content}`(name は表示用のパス、content は `.pochi.json` の中身。空文字＝新規の空ファイル)を返す |
+| `hostDocChanged` | Pochi → ホスト | 編集のたび(300msデバウンス)。ホストは受け取った内容を未保存の変更として保持する |
+| `hostSave` | Pochi → ホスト | Save / `:w` / Ctrl+S。ホストが永続化する |
+
+読み込むページがリモート(公開ビルド)のときは、ホストは `AddScriptToExecuteOnDocumentCreated` 相当で `window.__pochiHost = true` を先に注入すること。`window.chrome.webview` はページのモジュール読み込みより一拍遅れて生えることがあり、この印が無いと Pochi 側がホスト無し(web ビルド)と誤認して固定される。
+
+実装例: [Loomo](https://github.com/sk0ya/Loomo) の EditorSupport ペイン(`.pochi.json` を開くとキャンバスになり、編集はエディタタブの本文として Loomo の保存フローに乗る)。
+
 ## キーバインド(vimモード)
 
 モーダル設計。ステータスバーに現在のモードが表示される。`?` でヘルプ。

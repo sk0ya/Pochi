@@ -72,6 +72,7 @@ function FileMenu({
   recentFiles,
   onOpenRecent,
   onRemoveRecent,
+  canOpenFiles,
   onClose,
 }: {
   onNew: () => void;
@@ -83,6 +84,9 @@ function FileMenu({
   recentFiles: RecentFile[];
   onOpenRecent: (path: string) => void;
   onRemoveRecent: (path: string) => void;
+  /** False when the host owns the open file (see hostOwnsDoc in App.tsx): choosing which
+   * file is open is then the host's job, so New/Open/recent are hidden rather than dead. */
+  canOpenFiles: boolean;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -95,27 +99,31 @@ function FileMenu({
 
   return (
     <div ref={ref} className="context-menu file-menu">
-      <button onClick={run(onNew)} title=":new — 新規作成">New</button>
-      <button onClick={run(onOpen)} title=":o — Pochi (.pochi.json) / Excalidraw (.excalidraw) を開く">
-        Open...
-      </button>
-      {recentFiles.length > 0 && (
+      {canOpenFiles && (
         <>
+          <button onClick={run(onNew)} title=":new — 新規作成">New</button>
+          <button onClick={run(onOpen)} title=":o — Pochi (.pochi.json) / Excalidraw (.excalidraw) を開く">
+            Open...
+          </button>
+          {recentFiles.length > 0 && (
+            <>
+              <div className="context-sep" />
+              <div className="context-label">最近使ったファイル</div>
+              {recentFiles.map((f) => (
+                <div key={f.path} className="recent-item">
+                  <button title={f.path} onClick={run(() => onOpenRecent(f.path))}>
+                    {f.name}
+                  </button>
+                  <button className="recent-remove" title="一覧から削除" onClick={() => onRemoveRecent(f.path)}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
           <div className="context-sep" />
-          <div className="context-label">最近使ったファイル</div>
-          {recentFiles.map((f) => (
-            <div key={f.path} className="recent-item">
-              <button title={f.path} onClick={run(() => onOpenRecent(f.path))}>
-                {f.name}
-              </button>
-              <button className="recent-remove" title="一覧から削除" onClick={() => onRemoveRecent(f.path)}>
-                ✕
-              </button>
-            </div>
-          ))}
         </>
       )}
-      <div className="context-sep" />
       <button onClick={run(onSave)} title=":w / Ctrl+S">Save</button>
       <button onClick={run(onExportSvg)} title=":svg">Export SVG</button>
       <button onClick={run(onExportExcalidraw)} title=":export excalidraw — .excalidraw として書き出す">
@@ -146,6 +154,7 @@ export function Toolbar({
   recentFiles,
   onOpenRecent,
   onRemoveRecent,
+  canOpenFiles,
   collab,
   onToggleCollab,
 }: {
@@ -167,6 +176,8 @@ export function Toolbar({
   recentFiles: RecentFile[];
   onOpenRecent: (path: string) => void;
   onRemoveRecent: (path: string) => void;
+  /** See FileMenu: false hides New/Open/recent because the host chooses the file. */
+  canOpenFiles: boolean;
   /** Active collab room, if any; `peers` counts the *other* participants, and `locked`
    * says the room was started with a password. */
   collab: { roomId: string; locked: boolean; peers: number } | null;
@@ -192,6 +203,7 @@ export function Toolbar({
             recentFiles={recentFiles}
             onOpenRecent={onOpenRecent}
             onRemoveRecent={onRemoveRecent}
+            canOpenFiles={canOpenFiles}
             onClose={() => setShowFileMenu(false)}
           />
         )}

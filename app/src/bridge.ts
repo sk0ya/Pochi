@@ -138,6 +138,31 @@ export function openImageDialog(): Promise<{ name: string; dataUrl: string } | n
   return call('openImageDialog', {});
 }
 
+/* ---- host-owned document ---- */
+
+/** A host that already owns the file - Loomo's EditorSupport pane opens `.pochi.json` this
+ * way - hands the content to Pochi instead of letting Pochi open it: Pochi asks for it once
+ * at startup (`hostDoc`), reports every edit back (`hostDocChanged`), and delegates saving
+ * (`hostSave`). Such a host implements none of the dialog ops, so Open/New/recent files and
+ * the file-manager panel are absent by the usual `hasOp` gating, and App.tsx switches the
+ * localStorage autosave off - the host's copy is the document, not ours.
+ *
+ * Returns the initial content (`name` is the host's path, shown in the status bar), or null
+ * if the host has nothing to hand over. Empty content means a new, still-empty file. */
+export function hostDoc(): Promise<{ name: string; content: string } | null> {
+  return call('hostDoc', {});
+}
+
+/** Report the edited document to the host (callers debounce; the host holds it unsaved). */
+export function hostDocChanged(content: string): Promise<boolean> {
+  return call('hostDocChanged', { content });
+}
+
+/** Ask the host to persist the document - Pochi's Save / `:w` / Ctrl+S in host-doc mode. */
+export function hostSave(content: string): Promise<boolean> {
+  return call('hostSave', { content });
+}
+
 /* ---- file manager (desktop only) ---- */
 
 /** One diagram file in a managed folder. */

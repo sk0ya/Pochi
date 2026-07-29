@@ -5,7 +5,8 @@ import './styles.css';
 const container = document.getElementById('root')!;
 
 /** In the desktop shell, the WPF host injects `window.__pochiDesktop` before any page
- * script runs (AddScriptToExecuteOnDocumentCreated). The WebView2 bridge object
+ * script runs (AddScriptToExecuteOnDocumentCreated); any other app embedding Pochi in its
+ * own WebView2 pane injects `window.__pochiHost` the same way. The WebView2 bridge object
  * (`window.chrome.webview`) can attach a beat later than the remote page's module scripts
  * on first load, though — so bridge.ts, which captures it once at import time (the message
  * listener), would see it missing and permanently think it's the web build. Wait for the
@@ -16,8 +17,12 @@ const container = document.getElementById('root')!;
  * synchronously. `chrome.webview` also exists when another app embeds Pochi in its own
  * WebView2 pane, and the handshake is what tells the two apart — see bridge.ts. */
 async function boot() {
-  const w = window as unknown as { __pochiDesktop?: boolean; chrome?: { webview?: unknown } };
-  if (w.__pochiDesktop && !w.chrome?.webview) {
+  const w = window as unknown as {
+    __pochiDesktop?: boolean;
+    __pochiHost?: boolean;
+    chrome?: { webview?: unknown };
+  };
+  if ((w.__pochiDesktop || w.__pochiHost) && !w.chrome?.webview) {
     await new Promise<void>((resolve) => {
       let tries = 0;
       const timer = setInterval(() => {

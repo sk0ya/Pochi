@@ -2,6 +2,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   downloadFile,
   hasOp,
+  hostDoc,
+  hostDocChanged,
+  hostSave,
   isDesktop,
   openFileDialog,
   openImageDialog,
@@ -81,6 +84,17 @@ const PUBLIC_BASE_URL = 'https://sk0ya.github.io/Pochi/';
  * (not per render) because bridge.ts settles its handshake before App is imported - see
  * main.tsx boot(). Any host that implements the ops gets the panel, Pochi's shell or not. */
 const canManageFiles = hasOp('pickFolder') && hasOp('listFiles');
+
+/** Whether the host owns the open file and hands it to us (see hostDoc in bridge.ts). Then
+ * the document isn't ours to open, autosave or name: the startup effect takes it from the
+ * host, every edit is reported back, Save delegates, and the localStorage autosave is off
+ * (it would otherwise mix unrelated host files into one shared slot). */
+const hostOwnsDoc = hasOp('hostDoc');
+
+/** The on-disk envelope: what Save writes and what the host is handed back. */
+function serializeDoc(doc: Doc): string {
+  return JSON.stringify({ app: 'pochi', version: 1, doc }, null, 2);
+}
 
 function readAutosave(): Doc | null {
   try {
@@ -168,7 +182,9 @@ function init(): EditorState {
     // init - the startup effect below loads it and dispatches LOAD once decoded. Skip the
     // autosave read in that case so it can't win a race by rendering first; if the share
     // payload turns out corrupt, that same effect falls back to loading the autosave itself.
-    if (!location.hash.startsWith(SHARE_HASH_PREFIX)) doc = readAutosave();
+    // Nor when the host owns the document: the startup effect below fetches it, and the
+    // autosave slot holds some *other* file's leftovers (see hostOwnsDoc above).
+    if (!location.hash.startsWith(SHARE_HASH_PREFIX) && !hostOwnsDoc) doc = readAutosave();
     vim = localStorage.getItem(VIM_KEY) === 'on';
   } catch {
     /* first run */
@@ -206,6 +222,12 @@ export default function App() {
   // effects, and run #1 clears the hash synchronously, so an unlatched run #2 would decode
   // the now-empty hash to null and race a stale autosave-fallback LOAD against the real one.
   const hashLoadStartedRef = useRef(false);
+  // Host-doc mode (see hostOwnsDoc): the doc as the host last gave it to us, so the reporting
+  // effect below can tell "nothing has been edited yet" from a real edit by identity. Seeded
+  // with the initial empty doc so the pre-load render never reports over the host's file.
+  const hostLoadedDocRef = useRef<Doc | null>(stateRef.current.doc);
+  // One-shot latch for the host-doc startup effect (StrictMode double-invokes effects).
+  const hostLoadStartedRef = useRef(false);
 
   /* App-wide theme (editor UI + canvas), persisted like the vim toggle. Defaults to dark
    * (the historical look). Exports follow it for WYSIWYG — what you see on the canvas is
@@ -481,8 +503,53 @@ export default function App() {
     })();
   }, []);
 
+  /* Host-owned document: take the initial content from the host, in place of the localStorage
+   * autosave that init() skipped for that reason. Empty content is a new, still-empty file —
+   * keep the blank doc and just adopt the host's path. Runs once on mount. */
+  useEffect(() => {
+    if (!hostOwnsDoc || hostLoadStartedRef.current) return;
+    hostLoadStartedRef.current = true;
+    // As with the share link: if the user manages to draw before this resolves, their work
+    // wins rather than being replaced by the host's copy of the file.
+    const docAtStart = stateRef.current.doc;
+    void (async () => {
+      const picked = await hostDoc();
+      if (!picked) return;
+      if (stateRef.current.doc !== docAtStart) {
+        dispatch({ type: 'MSG', msg: 'host document ignored: canvas was edited while it loaded' });
+        return;
+      }
+      if (!picked.content.trim()) {
+        dispatch({ type: 'SET_FILENAME', fileName: picked.name });
+        return;
+      }
+      const result = parseOpenedFile(picked.content);
+      if (!result) {
+        dispatch({ type: 'MSG', msg: `not a pochi or excalidraw file: ${picked.name}` });
+        return;
+      }
+      hostLoadedDocRef.current = result.doc;
+      dispatch({ type: 'LOAD', doc: result.doc, fileName: picked.name });
+      const warning = newerVersionWarning({ version: result.version });
+      if (warning) dispatch({ type: 'MSG', msg: warning });
+    })();
+  }, []);
+
+  /* Host-owned document: report each edit back to the host, which holds the file (and its
+   * unsaved state). Debounced like the autosave it replaces. Skipped while the doc is still
+   * exactly what the host gave us, so merely opening a file never marks it modified — our
+   * re-serialization may differ from the bytes on disk. */
+  useEffect(() => {
+    if (!hostOwnsDoc || state.doc === hostLoadedDocRef.current) return;
+    const t = setTimeout(() => {
+      void hostDocChanged(serializeDoc(state.doc));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [state.doc]);
+
   /* autosave */
   useEffect(() => {
+    if (hostOwnsDoc) return; // the host is the document's home, not localStorage
     const t = setTimeout(() => {
       if (hashPendingRef.current) return; // let the share-link load above resolve first
       try {
@@ -504,7 +571,15 @@ export default function App() {
 
   const save = useCallback(async (nameArg?: string) => {
     const s = stateRef.current;
-    const json = JSON.stringify({ app: 'pochi', version: 1, doc: s.doc }, null, 2);
+    const json = serializeDoc(s.doc);
+    if (hostOwnsDoc) {
+      // The host owns the path (and any save-as/rename UI of its own), so `:w <name>` has
+      // nowhere to go here — hand it the content and let it write.
+      const ok = await hostSave(json);
+      if (ok) dispatch({ type: 'SAVED', fileName: s.fileName ?? 'document' });
+      else dispatch({ type: 'MSG', msg: 'save failed' });
+      return;
+    }
     if (isDesktop) {
       if (!nameArg && s.fileName) {
         await writeFile(s.fileName, json);
@@ -525,8 +600,13 @@ export default function App() {
   }, []);
 
   const open = useCallback(async () => {
+    if (hostOwnsDoc) {
+      // Which file is open is the host's call (it opened this one) - see hostOwnsDoc.
+      dispatch({ type: 'MSG', msg: 'この画面ではファイルはホスト側から開きます' });
+      return;
+    }
     if (!confirmDiscard('保存されていない変更があります。開きますか?')) return;
-    const picked = isDesktop
+    const picked = hasOp('openFileDialog')
       ? await openFileDialog('json')
       : await pickFile('.json,.pochi.json,.excalidraw,application/json');
     if (!picked) return;
@@ -546,12 +626,18 @@ export default function App() {
 
   const requestNew = useCallback(() => {
     if (!confirmDiscard('保存されていない変更があります。新規作成しますか?')) return;
+    // In host-doc mode this clears *this* file's canvas rather than starting an untitled
+    // document, so re-apply the host's path afterwards (NEW drops it) — the next save still
+    // goes there. Read before dispatching: stateRef only catches up on the next render.
+    const hostPath = hostOwnsDoc ? stateRef.current.fileName : null;
     dispatch({ type: 'NEW' });
+    if (hostPath) dispatch({ type: 'SET_FILENAME', fileName: hostPath });
   }, [confirmDiscard]);
 
   /** Reopens a path from the "recent files" list directly, without a dialog. Desktop only -
    * see RecentFile above. Self-heals a stale entry (file moved/deleted) by dropping it. */
   const openRecent = useCallback(async (path: string) => {
+    if (!hasOp('readFile')) return; // a host without it never answers, so never wait on it
     if (!confirmDiscard('保存されていない変更があります。開きますか?')) return;
     const picked = await readFile(path);
     if (!picked) {
@@ -594,7 +680,9 @@ export default function App() {
 
   const doExportSvg = useCallback(async (themeArg?: ExportTheme) => {
     const svg = exportSvg(stateRef.current.doc, themeArg ?? themeRef.current);
-    if (isDesktop) {
+    // Gated on the op, not isDesktop: a host that owns the document implements no save
+    // dialog, and a call it never answers would hang the export silently (see bridge.ts).
+    if (hasOp('saveFileDialog')) {
       const path = await saveFileDialog('diagram.svg', 'svg', svg);
       if (path) dispatch({ type: 'MSG', msg: `exported ${path}` });
     } else {
@@ -608,7 +696,7 @@ export default function App() {
    * unlike Save which always round-trips Pochi's own model exactly. */
   const doExportExcalidraw = useCallback(async () => {
     const json = JSON.stringify(docToExcalidraw(stateRef.current.doc), null, 2);
-    if (isDesktop) {
+    if (hasOp('saveFileDialog')) {
       const path = await saveFileDialog('diagram.excalidraw', 'excalidraw', json);
       if (path) dispatch({ type: 'MSG', msg: `exported ${path}` });
     } else {
@@ -684,7 +772,7 @@ export default function App() {
   }, []);
 
   const importImage = useCallback(async (at?: Pt) => {
-    const picked = isDesktop ? await openImageDialog() : await pickImageFile();
+    const picked = hasOp('openImageDialog') ? await openImageDialog() : await pickImageFile();
     if (!picked) return;
     await addImageFromDataUrl(picked.dataUrl, at);
   }, [addImageFromDataUrl]);
@@ -964,6 +1052,7 @@ export default function App() {
         recentFiles={isDesktop ? recentFiles : []}
         onOpenRecent={(path) => void openRecent(path)}
         onRemoveRecent={removeRecentFile}
+        canOpenFiles={!hostOwnsDoc}
         collab={collabRoom ? { ...collabRoom, peers: collabPeers.length } : null}
         onToggleCollab={() => {
           if (!collabRoom) void startCollab();
