@@ -1762,3 +1762,55 @@ describe('INSERT_SHAPE_AT: context-menu insert on empty canvas', () => {
     expect(st.doc.shapes.map((s) => s.x)).toEqual([-GRID * 5, GRID * 35]);
   });
 });
+
+describe('OPTIMIZE_IMAGES', () => {
+  const image = (id: string, src: string): Shape => ({
+    id,
+    kind: 'image',
+    x: 0,
+    y: 0,
+    w: GRID * 4,
+    h: GRID * 4,
+    label: '',
+    src,
+  });
+
+  const doc = (): Doc => ({
+    shapes: [image('a', 'data:image/png;base64,AAA'), image('b', 'data:image/png;base64,BBB'), rect('r', 0, 0)],
+    connectors: [],
+  });
+
+  it('swaps in the re-encoded sources it was given, leaving everything else alone', () => {
+    const before = doc();
+    const st = reduce(initialState(before, true), {
+      type: 'OPTIMIZE_IMAGES',
+      srcById: { a: 'data:image/webp;base64,SMALL' },
+      msg: 'done',
+    });
+    expect(st.doc.shapes[0].src).toBe('data:image/webp;base64,SMALL');
+    expect(st.doc.shapes[1].src).toBe(before.shapes[1].src);
+    expect(st.doc.shapes[2]).toEqual(before.shapes[2]);
+    expect(st.msg).toBe('done');
+  });
+
+  it('lands as one undo step, so a lossy re-encode can be reverted', () => {
+    const before = doc();
+    const st = reduce(initialState(before, true), {
+      type: 'OPTIMIZE_IMAGES',
+      srcById: { a: 'x', b: 'y' },
+      msg: 'done',
+    });
+    const undone = reduce(st, { type: 'KEY', key: 'u', ctrl: false, shift: false });
+    expect(undone.doc.shapes.map((s) => s.src)).toEqual(before.shapes.map((s) => s.src));
+  });
+
+  it('ignores ids that are no longer in the doc (deleted while re-encoding)', () => {
+    const before = doc();
+    const st = reduce(initialState(before, true), {
+      type: 'OPTIMIZE_IMAGES',
+      srcById: { gone: 'x' },
+      msg: 'done',
+    });
+    expect(st.doc.shapes).toEqual(before.shapes);
+  });
+});

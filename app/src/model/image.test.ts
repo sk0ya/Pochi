@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   dataUrlMediaType,
+  heavyImageShapes,
+  IMAGE_HEAVY_BYTES,
   IMAGE_STORE_MAX_DIM,
+  isWorthReencoding,
   shouldReencodeImage,
   storedImageScale,
 } from './image';
@@ -64,5 +67,64 @@ describe('shouldReencodeImage', () => {
     expect(shouldReencodeImage('https://example.com/a.png')).toBe(false);
     expect(shouldReencodeImage('data:text/plain,hi')).toBe(false);
     expect(shouldReencodeImage('')).toBe(false);
+  });
+});
+
+describe('isWorthReencoding', () => {
+  it('adopts a re-encode that saves a lot, as a full-resolution original does', () => {
+    expect(isWorthReencoding(1_000_000, 80_000)).toBe(true);
+  });
+
+  it('declines a marginal saving, so repeat :optimize runs converge instead of degrading', () => {
+    // The bug this guards: re-compressing an already-optimized image shaves a few percent
+    // while spending another generation of quality, so "smaller at all" would re-encode the
+    // same images on every run and never report itself finished.
+    expect(isWorthReencoding(100_000, 98_000)).toBe(false);
+    expect(isWorthReencoding(100_000, 91_000)).toBe(false);
+    expect(isWorthReencoding(100_000, 89_000)).toBe(true);
+  });
+
+  it('declines a re-encode that is no smaller, or bigger', () => {
+    expect(isWorthReencoding(1000, 1000)).toBe(false);
+    expect(isWorthReencoding(1000, 4000)).toBe(false);
+  });
+});
+
+describe('heavyImageShapes', () => {
+  const bitmap = (bytes: number) => 'data:image/png;base64,' + 'A'.repeat(bytes);
+  const shape = (id: string, src?: string, kind = 'image') => ({ id, kind, src });
+
+  it('reports the shapes over the threshold and what they cost', () => {
+    const doc = {
+      shapes: [
+        shape('big1', bitmap(IMAGE_HEAVY_BYTES)),
+        shape('big2', bitmap(IMAGE_HEAVY_BYTES * 2)),
+        shape('small', bitmap(1000)),
+      ],
+    };
+    const { ids, bytes } = heavyImageShapes(doc);
+    expect(ids).toEqual(['big1', 'big2']);
+    expect(bytes).toBe(doc.shapes[0].src!.length + doc.shapes[1].src!.length);
+  });
+
+  it('ignores an image that is already small enough to be worth leaving alone', () => {
+    expect(heavyImageShapes({ shapes: [shape('a', bitmap(IMAGE_HEAVY_BYTES - 100))] }).ids).toEqual([]);
+  });
+
+  it('never flags a large SVG or GIF, which :optimize would not touch either', () => {
+    const svg = 'data:image/svg+xml,' + '<g/>'.repeat(IMAGE_HEAVY_BYTES);
+    const gif = 'data:image/gif;base64,' + 'A'.repeat(IMAGE_HEAVY_BYTES * 2);
+    expect(heavyImageShapes({ shapes: [shape('s', svg), shape('g', gif)] }).ids).toEqual([]);
+  });
+
+  it('ignores non-image shapes and images without a src', () => {
+    const doc = {
+      shapes: [shape('r', bitmap(IMAGE_HEAVY_BYTES * 2), 'rect'), shape('i', undefined)],
+    };
+    expect(heavyImageShapes(doc)).toEqual({ ids: [], bytes: 0 });
+  });
+
+  it('reports nothing for an empty document', () => {
+    expect(heavyImageShapes({ shapes: [] })).toEqual({ ids: [], bytes: 0 });
   });
 });

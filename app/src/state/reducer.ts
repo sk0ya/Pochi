@@ -278,6 +278,9 @@ export type Action =
   | { type: 'TEXT_AT'; p: Pt }
   | { type: 'INSERT_SHAPE_AT'; kind: DrawKind; p: Pt }
   | { type: 'ADD_IMAGE'; src: string; w: number; h: number; at?: Pt; iconAttribution?: IconAttribution }
+  /** Swaps in re-encoded bitmaps for the image shapes named in `srcById` (`:optimize` — the
+   * re-encoding itself is async and happens in App.tsx, so this stays pure). */
+  | { type: 'OPTIMIZE_IMAGES'; srcById: Record<string, string>; msg: string }
   | { type: 'ADD_TEXT'; text: string }
   | { type: 'PASTE_CLIP'; clip: Clipboard }
   | { type: 'INSERT_TEMPLATE'; templateId: string; at?: Pt }
@@ -2519,6 +2522,17 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         iconAttribution: action.iconAttribution,
       };
       return commit(state, addShape(state.doc, shape), { selectedIds: [shape.id], msg: 'image added' });
+    }
+
+    case 'OPTIMIZE_IMAGES': {
+      // Shapes deleted while the (async) re-encode ran simply aren't in `srcById` any more,
+      // and ones added meanwhile aren't either — both fall through unchanged. Goes through
+      // `commit`, so this lossy swap is a single undo step like any other edit.
+      const shapes = state.doc.shapes.map((s) => {
+        const src = action.srcById[s.id];
+        return src === undefined ? s : { ...s, src };
+      });
+      return commit(state, { ...state.doc, shapes }, { msg: action.msg });
     }
 
     case 'ADD_TEXT': {

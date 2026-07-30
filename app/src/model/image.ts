@@ -28,6 +28,23 @@ export const IMAGE_STORE_MAX_DIM = 1280;
  * Pochi draws images at, low enough that a photo compresses well. */
 export const IMAGE_STORE_QUALITY = 0.9;
 
+/** Largest fraction of the source a re-encode may come out at and still be adopted.
+ *
+ * The point is that "smaller at all" is too weak a test for a *lossy* step. Re-compressing an
+ * image that has already been through here shaves a few percent off while spending another
+ * generation of quality — so with a bare `<` comparison, running `:optimize` repeatedly would
+ * degrade the same images every time and never report itself as finished. Requiring a
+ * double-digit saving makes the operation converge: a full-resolution original clears it by a
+ * mile (90%+), and a second pass over the result cannot clear it at all. */
+export const IMAGE_STORE_MIN_GAIN = 0.9;
+
+/** Whether a re-encode that came out at `encodedLength` is worth adopting over a source of
+ * `sourceLength`. Split out from `encodeImageForStorage` so the rule — the part that has to
+ * make repeat runs converge rather than degrade — is testable without a canvas. */
+export function isWorthReencoding(sourceLength: number, encodedLength: number): boolean {
+  return encodedLength < sourceLength * IMAGE_STORE_MIN_GAIN;
+}
+
 /** Factor to scale a source bitmap by for storage. Never above 1: an image already smaller
  * than the cap keeps its own resolution instead of being upscaled, which would add bytes
  * without adding detail. */
@@ -60,6 +77,34 @@ export function shouldReencodeImage(src: string): boolean {
   return type.startsWith('image/') && type !== 'image/svg+xml' && type !== 'image/gif';
 }
 
+/** Size at which a single stored bitmap is taken as evidence the document predates (or
+ * otherwise escaped) the insert-time re-encode, so opening it is worth a `:optimize` hint.
+ *
+ * Applied per image rather than to their total, which is what keeps the hint from nagging: a
+ * bitmap that has been through `encodeImageForStorage` is capped at 1280px and lands far
+ * below this (a 4000x3000 screenshot re-encodes to about 60KB), so a document full of
+ * already-optimized images never trips it however many it has, while the full-resolution
+ * originals this targets run from several hundred KB into the megabytes. */
+export const IMAGE_HEAVY_BYTES = 256 * 1024;
+
+/** The shapes in `doc` holding a bitmap big enough to be worth re-encoding, and what they
+ * currently cost. Pure, and cheap enough to run on every open — it only measures the data
+ * URL strings already in memory, decoding nothing. */
+export function heavyImageShapes(doc: { shapes: { id: string; kind: string; src?: string }[] }): {
+  ids: string[];
+  bytes: number;
+} {
+  const ids: string[] = [];
+  let bytes = 0;
+  for (const s of doc.shapes) {
+    if (s.kind !== 'image' || !s.src) continue;
+    if (!shouldReencodeImage(s.src) || s.src.length < IMAGE_HEAVY_BYTES) continue;
+    ids.push(s.id);
+    bytes += s.src.length;
+  }
+  return { ids, bytes };
+}
+
 export interface StoredImage {
   /** What to persist in the document: the re-encoded bitmap, or the source unchanged. */
   src: string;
@@ -84,10 +129,11 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
  *
  * Falls back to the source string, still reporting the dimensions it decoded, whenever
  * re-encoding isn't a clear win: a vector or animated source (see `shouldReencodeImage`), no
- * 2D context, an encoder that throws, or — the case that catches both an already-small image
- * and a source whose format simply beats WebP on this content — output no smaller than the
- * input. `toDataURL` also falls back to PNG on its own if WebP is unavailable, which that
- * same size comparison then accepts or discards on its merits.
+ * 2D context, an encoder that throws, or — the case that catches an already-small image, an
+ * already-optimized one, and a source whose format simply beats WebP on this content — output
+ * that doesn't beat the input by IMAGE_STORE_MIN_GAIN. `toDataURL` also falls back to PNG on
+ * its own if WebP is unavailable, which that same comparison then accepts or discards on its
+ * merits.
  *
  * Resolves null only if the image cannot be decoded at all, leaving the fallback the caller
  * already had for that case.
@@ -115,5 +161,5 @@ export async function encodeImageForStorage(dataUrl: string): Promise<StoredImag
   } catch {
     return { src: dataUrl, w, h };
   }
-  return { src: encoded.length < dataUrl.length ? encoded : dataUrl, w, h };
+  return { src: isWorthReencoding(dataUrl.length, encoded.length) ? encoded : dataUrl, w, h };
 }

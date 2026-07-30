@@ -23,8 +23,12 @@ const rows: Array<[string, string]> = [
   ['n / N', '直前の検索の次 / 前の一致へジャンプ(循環)'],
   ['z / + / -', 'カーソルを画面中央に表示 / ズームイン / ズームアウト'],
   ['Esc', 'キャンセル / 選択解除'],
-  [':', 'コマンド入力。:w 保存、:o / :e 開く、:new 新規、:svg SVG書き出し、:png PNGコピー、:export excalidraw Excalidraw書き出し、:share URL共有、:collab 共同編集、:theme テーマ切替、:vim on/off、:q 終了'],
+  [':', 'コマンド入力。:w 保存、:o / :e 開く、:new 新規、:svg SVG書き出し、:png PNGコピー、:export excalidraw Excalidraw書き出し、:share URL共有、:optimize 画像を縮小、:collab 共同編集、:theme テーマ切替、:vim on/off、:q 終了'],
   [':svg / :png [light|dark]', '選択中の図形(なければ全体)を書き出す。引数なしは画面テーマ、light / dark を付けるとその回だけ上書き'],
+  [
+    ':optimize',
+    '文書内の画像を保存用に再エンコードしてファイルを小さくする。新しく貼った画像は自動で縮小されるので、これが効くのは古いファイルや取り込んだ図。縮小は非可逆だが1回のundoなので u で元に戻せる。SVGアイコンとGIFは対象外',
+  ],
   [
     ':collab',
     'P2P共同編集ルームを開始してURLをコピー(ツールバーの 👥 でも可)。開始時にパスワードあり/なしを選ぶ: なしならURLを開いた人は誰でも参加でき、ありならURLに加えてパスワードの入力が必要(パスワードはURLに含まれないので別途伝える)。:collab off で終了',

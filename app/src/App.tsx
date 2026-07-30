@@ -33,7 +33,7 @@ import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
 import { docToExcalidraw, excalidrawToDoc } from './excalidraw';
 import { subsetDoc } from './model/doc';
-import { encodeImageForStorage } from './model/image';
+import { encodeImageForStorage, heavyImageShapes, shouldReencodeImage } from './model/image';
 import { exportBackground, exportSvg, exportViewport } from './model/svg';
 import type { ExportTheme } from './model/svg';
 import type { Doc, Pt } from './model/types';
@@ -190,6 +190,22 @@ function newerVersionWarning(parsed: { version?: unknown }): string | null {
   return typeof parsed.version === 'number' && parsed.version > 1
     ? '新しいバージョンの Pochi で保存されたファイルです。正しく表示されない可能性があります'
     : null;
+}
+
+/** The `:optimize` recommendation for a document that was just loaded from outside, or '' when
+ * nothing in it is worth re-encoding. Opening is only ever the *suggestion*: re-encoding is
+ * lossy, so it stays something the user asks for (see doOptimize / heavyImageShapes). */
+function optimizeHint(doc: Doc): string {
+  const { ids, bytes } = heavyImageShapes(doc);
+  if (!ids.length) return '';
+  return `画像${ids.length}枚で${formatKb(bytes)} — :optimize で縮小できます`;
+}
+
+/** KB up to a megabyte, then MB — data URL lengths span both by a wide margin. */
+function formatKb(chars: number): string {
+  return chars < 1024 * 1024
+    ? `${Math.round(chars / 1024)} KB`
+    : `${(chars / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function init(): EditorState {
@@ -515,9 +531,12 @@ export default function App() {
         return;
       }
       if (loaded) dispatch({ type: 'LOAD', doc: loaded, fileName: null });
+      const hint = loaded ? optimizeHint(loaded) : '';
       dispatch({
         type: 'MSG',
-        msg: doc ? 'loaded diagram from share link' : 'share link is invalid or corrupted',
+        msg: [doc ? 'loaded diagram from share link' : 'share link is invalid or corrupted', hint]
+          .filter(Boolean)
+          .join(' / '),
       });
     })();
   }, []);
@@ -549,8 +568,9 @@ export default function App() {
       }
       hostLoadedDocRef.current = result.doc;
       dispatch({ type: 'LOAD', doc: result.doc, fileName: picked.name });
-      const warning = newerVersionWarning({ version: result.version });
-      if (warning) dispatch({ type: 'MSG', msg: warning });
+      const notes = [newerVersionWarning({ version: result.version }), optimizeHint(result.doc)]
+        .filter((n): n is string => !!n);
+      if (notes.length) dispatch({ type: 'MSG', msg: `opened ${picked.name} — ${notes.join(' / ')}` });
     })();
   }, []);
 
@@ -635,11 +655,15 @@ export default function App() {
       return;
     }
     dispatch({ type: 'LOAD', doc: result.doc, fileName: picked.name });
-    if (result.source === 'excalidraw') dispatch({ type: 'MSG', msg: `imported Excalidraw file: ${picked.name}` });
-    else {
-      const warning = newerVersionWarning({ version: result.version });
-      if (warning) dispatch({ type: 'MSG', msg: warning });
-    }
+    // The status bar shows one message, so everything the open path has to say has to share it
+    // — including LOAD's own `opened <name>`, which is why the filename is repeated here
+    // rather than letting a note replace it.
+    const notes = result.source === 'excalidraw'
+      ? ['imported from Excalidraw']
+      : [newerVersionWarning({ version: result.version })];
+    notes.push(optimizeHint(result.doc));
+    const shown = notes.filter((n): n is string => !!n);
+    if (shown.length) dispatch({ type: 'MSG', msg: `opened ${picked.name} — ${shown.join(' / ')}` });
     if (isDesktop) setRecentFiles((r) => addRecent(r, picked.name));
   }, [confirmDiscard]);
 
@@ -791,6 +815,52 @@ export default function App() {
     dispatch({ type: 'ADD_IMAGE', src: stored?.src ?? dataUrl, w, h, at });
   }, []);
 
+  /* `:optimize` — re-encode the bitmaps a document already contains, for the images that
+   * predate the insert-time re-encode above (an older file, an Excalidraw import, a share link
+   * from someone else). Opening such a document only *suggests* this (see optimizeHint): the
+   * re-encode is lossy, so it stays an explicit request, and it lands as one undo step so `u`
+   * brings the originals back if the result isn't good enough.
+   *
+   * Every re-encodable image is offered, not just the ones over the hint's threshold, since
+   * running the command is already a deliberate act — but `encodeImageForStorage` still keeps
+   * whichever of the two is smaller per image, so a document that is already optimized reports
+   * that rather than churning its images. */
+  const doOptimize = useCallback(async () => {
+    const shapes = stateRef.current.doc.shapes.filter(
+      (s) => s.kind === 'image' && s.src && shouldReencodeImage(s.src),
+    );
+    if (!shapes.length) {
+      dispatch({ type: 'MSG', msg: '縮小できる画像がありません' });
+      return;
+    }
+    dispatch({ type: 'MSG', msg: `画像${shapes.length}枚を縮小中…` });
+    const srcById: Record<string, string> = {};
+    let before = 0;
+    let after = 0;
+    for (const s of shapes) {
+      const src = s.src as string;
+      const stored = await encodeImageForStorage(src);
+      before += src.length;
+      if (stored && stored.src !== src) {
+        srcById[s.id] = stored.src;
+        after += stored.src.length;
+      } else {
+        after += src.length;
+      }
+    }
+    const changed = Object.keys(srcById).length;
+    if (!changed) {
+      dispatch({ type: 'MSG', msg: `画像${shapes.length}枚はすでに最小です` });
+      return;
+    }
+    const saved = Math.round((1 - after / before) * 100);
+    dispatch({
+      type: 'OPTIMIZE_IMAGES',
+      srcById,
+      msg: `画像${changed}枚を縮小: ${formatKb(before)} → ${formatKb(after)} (${saved}% 削減) — u で元に戻せます`,
+    });
+  }, []);
+
   const importImage = useCallback(async (at?: Pt) => {
     const picked = hasOp('openImageDialog') ? await openImageDialog() : await pickImageFile();
     if (!picked) return;
@@ -827,6 +897,9 @@ export default function App() {
         }
         case 'share':
           await doShare();
+          break;
+        case 'optimize':
+          await doOptimize();
           break;
         case 'collab':
           if (rest[0] === 'off') leaveCollab();
@@ -872,7 +945,7 @@ export default function App() {
           dispatch({ type: 'MSG', msg: `unknown command: ${cmd}` });
       }
     },
-    [save, open, requestNew, doExportSvg, doExportExcalidraw, doCopyPng, doShare, startCollab, leaveCollab],
+    [save, open, requestNew, doExportSvg, doExportExcalidraw, doCopyPng, doShare, doOptimize, startCollab, leaveCollab],
   );
 
   /* global keyboard */
