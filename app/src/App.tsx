@@ -33,6 +33,7 @@ import { TextEditOverlay } from './components/TextEditOverlay';
 import { Toolbar } from './components/Toolbar';
 import { docToExcalidraw, excalidrawToDoc } from './excalidraw';
 import { subsetDoc } from './model/doc';
+import { encodeImageForStorage } from './model/image';
 import { exportBackground, exportSvg, exportViewport } from './model/svg';
 import type { ExportTheme } from './model/svg';
 import type { Doc, Pt } from './model/types';
@@ -776,17 +777,18 @@ export default function App() {
     }
   }, []);
 
+  /* Resamples the bitmap down to a sane storage resolution on the way in (see model/image.ts)
+   * — it is only ever drawn at IMAGE_MAX_DIM, and keeping the original was what made
+   * image-heavy diagrams huge. The layout below is unchanged: it still works from the
+   * *source* dimensions, so where the image lands and how it's proportioned don't depend on
+   * whether the re-encode happened. An undecodable image keeps the old default box. */
   const addImageFromDataUrl = useCallback(async (dataUrl: string, at?: Pt) => {
-    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve({ w: img.naturalWidth || IMAGE_MAX_DIM, h: img.naturalHeight || IMAGE_MAX_DIM });
-      img.onerror = () => resolve({ w: IMAGE_MAX_DIM, h: IMAGE_MAX_DIM });
-      img.src = dataUrl;
-    });
+    const stored = await encodeImageForStorage(dataUrl);
+    const dims = stored ?? { w: IMAGE_MAX_DIM, h: IMAGE_MAX_DIM };
     const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(dims.w, dims.h, 1));
     const w = Math.max(GRID, Math.round((dims.w * scale) / GRID) * GRID);
     const h = Math.max(GRID, Math.round((dims.h * scale) / GRID) * GRID);
-    dispatch({ type: 'ADD_IMAGE', src: dataUrl, w, h, at });
+    dispatch({ type: 'ADD_IMAGE', src: stored?.src ?? dataUrl, w, h, at });
   }, []);
 
   const importImage = useCallback(async (at?: Pt) => {
