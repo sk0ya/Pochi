@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { base64UrlToBytes, bytesToBase64Url, decodeShareDoc, encodeShareDoc } from './share';
+import {
+  base64UrlToBytes,
+  bytesToBase64Url,
+  decodeShareDoc,
+  encodeShareDoc,
+  fromCompactDoc,
+  toCompactDoc,
+} from './share';
 import type { Doc } from './model/types';
 
 describe('bytesToBase64Url / base64UrlToBytes', () => {
@@ -144,5 +151,34 @@ describe('encodeShareDoc / decodeShareDoc', () => {
 
   it('rejects empty string payload without throwing', async () => {
     await expect(decodeShareDoc('')).resolves.toBeNull();
+  });
+
+  /* The compact form is also what the localStorage autosave stores (see readAutosave in
+   * App.tsx), which needs it synchronously — so it is exercised directly here, not only
+   * through the deflate/base64 round-trip above. */
+  describe('toCompactDoc / fromCompactDoc', () => {
+    it('round-trips a doc synchronously, up to id renaming', () => {
+      const d = fromCompactDoc(toCompactDoc(doc));
+      expect(d.shapes.map((s) => ({ ...s, id: undefined }))).toEqual(
+        doc.shapes.map((s) => ({ ...s, id: undefined })),
+      );
+      expect(d.connectors[0].from.shapeId).toBe(d.shapes[0].id);
+      expect(d.connectors[0].to.shapeId).toBe(d.shapes[1].id);
+    });
+
+    it('serializes to substantially fewer characters than the doc itself', () => {
+      // The point of storing the autosave this way: it has to fit in localStorage's ~5MB
+      // origin cap. Asserted loosely (>30%) so ordinary format tweaks don't fail the test.
+      const compact = JSON.stringify(toCompactDoc(doc)).length;
+      const plain = JSON.stringify(doc).length;
+      expect(compact).toBeLessThan(plain * 0.7);
+    });
+
+    it('round-trips an empty doc', () => {
+      expect(fromCompactDoc(toCompactDoc({ shapes: [], connectors: [] }))).toEqual({
+        shapes: [],
+        connectors: [],
+      });
+    });
   });
 });

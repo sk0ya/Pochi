@@ -1,5 +1,7 @@
 import type { IconAttribution } from './types';
 
+const textEncoder = new TextEncoder();
+
 /** Drag payload used only by the independent icon sidebar and the canvas drop target. */
 export const ICON_DRAG_MIME = 'application/x-pochi-icon';
 export const ICONIFY_API = 'https://api.iconify.design';
@@ -130,6 +132,25 @@ function sanitizeSvg(raw: string): string {
   return new XMLSerializer().serializeToString(root);
 }
 
+/** Percent-escapes only what a `data:image/svg+xml,` body actually requires: `%` (the escape
+ * introducer itself, hence first), `#` (would otherwise start a URL fragment and truncate the
+ * icon), and any non-ASCII character (so the body survives as plain ASCII regardless of how
+ * the URL is later transported).
+ *
+ * Deliberately leaves `<`, `>`, `"`, `&` and spaces raw — all legal in a data URL body, and an
+ * SVG is mostly made of them. `encodeURIComponent` escapes those plus `/`, `=`, `:`, `;` and
+ * `,`, tripling each to three characters and inflating a stored icon to ~1.7x its source SVG;
+ * this brings that down to ~1.05x. The one place a `src` is re-embedded into markup (the SVG
+ * export in model/svg.ts) XML-escapes it there, and everywhere else it is assigned to a DOM
+ * `href`/`src` property, which does no markup parsing. */
+export function escapeSvgDataUrl(svg: string): string {
+  return svg.replace(/[%#]|[^\x20-\x7E]/g, (c) => {
+    let out = '';
+    for (const byte of textEncoder.encode(c)) out += `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+    return out;
+  });
+}
+
 /** Fetch and embed the actual SVG. Saved documents never depend on this URL afterwards. */
 export async function fetchIconDataUrl(iconName: string, signal?: AbortSignal): Promise<string> {
   const url = iconSvgUrl(iconName);
@@ -137,5 +158,5 @@ export async function fetchIconDataUrl(iconName: string, signal?: AbortSignal): 
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Iconify icon fetch failed (${response.status})`);
   const svg = sanitizeSvg(await response.text());
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml,${escapeSvgDataUrl(svg)}`;
 }

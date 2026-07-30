@@ -274,17 +274,21 @@ function tupleToConnector(t: unknown[]): Connector {
   };
 }
 
-interface CompactDoc {
+export interface CompactDoc {
   s: ShapeTuple[];
   c: ConnectorTuple[];
 }
 
-function toCompactDoc(doc: Doc): CompactDoc {
+/** Exported (alongside `fromCompactDoc`) so the localStorage autosave can store this same
+ * form: it is a purely synchronous ~2x saving, which matters where `encodeShareDoc`'s
+ * deflate step cannot be used because the value has to be read back during the synchronous
+ * reducer init (see readAutosave in App.tsx). */
+export function toCompactDoc(doc: Doc): CompactDoc {
   const { shapes, connectors } = shortIds(doc);
   return { s: shapes.map(shapeToTuple), c: connectors.map(connectorToTuple) };
 }
 
-function fromCompactDoc(compact: CompactDoc): Doc {
+export function fromCompactDoc(compact: CompactDoc): Doc {
   return { shapes: compact.s.map(tupleToShape), connectors: compact.c.map(tupleToConnector) };
 }
 

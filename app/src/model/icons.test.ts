@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attributionForIcon, decodeIconDrag, encodeIconDrag, ICON_DRAG_MIME, iconAttributionTooltip, iconSvgUrl } from './icons';
+import { attributionForIcon, decodeIconDrag, encodeIconDrag, escapeSvgDataUrl, ICON_DRAG_MIME, iconAttributionTooltip, iconSvgUrl } from './icons';
 
 describe('Iconify API icons', () => {
   it('uses an independent drag payload', () => {
@@ -49,5 +49,31 @@ describe('Iconify API icons', () => {
         '※ 商標・ブランド利用規約も適用されます',
       ].join('\n'),
     );
+  });
+});
+
+describe('escapeSvgDataUrl', () => {
+  const svg = '<svg viewBox="0 0 24 24"><path fill="#64748b" d="M12 2L2 7z"/></svg>';
+
+  it('escapes only what a data URL body requires, leaving markup characters raw', () => {
+    expect(escapeSvgDataUrl(svg)).toBe(
+      '<svg viewBox="0 0 24 24"><path fill="%2364748b" d="M12 2L2 7z"/></svg>',
+    );
+  });
+
+  it('escapes a literal percent so it cannot be read back as an escape', () => {
+    expect(escapeSvgDataUrl('<rect width="50%"/>')).toBe('<rect width="50%25"/>');
+  });
+
+  it('percent-encodes non-ASCII as UTF-8 bytes, keeping the body plain ASCII', () => {
+    const escaped = escapeSvgDataUrl('<text>世</text>');
+    expect(escaped).toBe('<text>%E4%B8%96</text>');
+    expect(decodeURIComponent(escaped)).toBe('<text>世</text>');
+  });
+
+  it('stays far closer to the source size than encodeURIComponent', () => {
+    // The reason this exists at all: every stored icon carries this inflation (see icons.ts).
+    expect(escapeSvgDataUrl(svg).length).toBeLessThan(svg.length * 1.1);
+    expect(encodeURIComponent(svg).length).toBeGreaterThan(svg.length * 1.5);
   });
 });

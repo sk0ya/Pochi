@@ -38,7 +38,8 @@ import type { ExportTheme } from './model/svg';
 import type { Doc, Pt } from './model/types';
 import { GRID } from './model/types';
 import { copySvgAsPng } from './pngClipboard';
-import { decodeShareDoc, encodeShareDoc, SHARE_URL_WARN_CHARS } from './share';
+import { decodeShareDoc, encodeShareDoc, fromCompactDoc, SHARE_URL_WARN_CHARS, toCompactDoc } from './share';
+import type { CompactDoc } from './share';
 import { IMAGE_MAX_DIM, initialState, isDirty, parseClipboard, reduce, serializeClipboard } from './state/reducer';
 import type { EditorState } from './state/reducer';
 
@@ -91,17 +92,34 @@ const canManageFiles = hasOp('pickFolder') && hasOp('listFiles');
  * (it would otherwise mix unrelated host files into one shared slot). */
 const hostOwnsDoc = hasOp('hostDoc');
 
-/** The on-disk envelope: what Save writes and what the host is handed back. */
+/** The on-disk envelope: what Save writes and what the host is handed back.
+ *
+ * Written without indentation: pretty-printing a Doc costs roughly 3x the bytes (one line
+ * per field, and a Doc is almost entirely short numeric fields), which is the single largest
+ * avoidable factor in a saved file's size. Nothing reads the file by eye, and `JSON.parse`
+ * accepts either form, so files written by older builds still open unchanged. */
 function serializeDoc(doc: Doc): string {
-  return JSON.stringify({ app: 'pochi', version: 1, doc }, null, 2);
+  return JSON.stringify({ app: 'pochi', version: 1, doc });
 }
 
+/** The autosave is stored in share.ts's compact form (positional tuples + short ids) rather
+ * than as a plain Doc, which costs roughly half the characters. It can't also be deflated the
+ * way a share link is, because `init()` has to read it back synchronously and
+ * CompressionStream is async — and loading it from an effect instead would flash an empty
+ * canvas on every start. Halving it still matters: localStorage caps a whole origin at ~5MB,
+ * and the write below fails silently once that's hit.
+ *
+ * Reads either form, so an autosave written by an older build survives the upgrade: a compact
+ * doc has `s`/`c` arrays, a legacy one `shapes`/`connectors`. */
 function readAutosave(): Doc | null {
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Doc;
-    if (Array.isArray(parsed.shapes) && Array.isArray(parsed.connectors)) return parsed;
+    const parsed = JSON.parse(raw) as Partial<CompactDoc & Doc>;
+    if (Array.isArray(parsed.s) && Array.isArray(parsed.c)) return fromCompactDoc({ s: parsed.s, c: parsed.c });
+    if (Array.isArray(parsed.shapes) && Array.isArray(parsed.connectors)) {
+      return { shapes: parsed.shapes, connectors: parsed.connectors };
+    }
   } catch {
     /* first run / corrupt storage */
   }
@@ -553,7 +571,7 @@ export default function App() {
     const t = setTimeout(() => {
       if (hashPendingRef.current) return; // let the share-link load above resolve first
       try {
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.doc));
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(toCompactDoc(state.doc)));
       } catch {
         /* storage full/unavailable */
       }
