@@ -4,7 +4,7 @@ import { ShapeIcon } from './ShapeIcons';
 import { canReorderStep, findConnector, findShape, groupIdOf, groupMembers, isSelfLoop } from '../model/doc';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { PALETTE } from '../model/palette';
-import type { ArrowDirection, FontSize, LoopSide, Pt, TriangleDirection } from '../model/types';
+import type { ArrowDirection, FontSize, LoopSide, Pt, TextAlign, TriangleDirection } from '../model/types';
 import type { Action, DrawKind, EditorState } from '../state/reducer';
 
 export const TRIANGLE_DIRECTIONS: Array<[TriangleDirection, string, string]> = [
@@ -58,6 +58,12 @@ export const FONT_SIZES: Array<[FontSize, string, string]> = [
   ['s', 'S', '小'],
   ['m', 'M', '標準'],
   ['l', 'L', '大'],
+];
+
+export const TEXT_ALIGNS: Array<[TextAlign, string, string]> = [
+  ['left', '⇤', '左揃え'],
+  ['center', '≡', '中央揃え'],
+  ['right', '⇥', '右揃え'],
 ];
 
 export const FILLABLE_KINDS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'frame']);
@@ -270,6 +276,23 @@ export function ContextMenu({
           )}
           {canMoveBackward && (
             <button onClick={() => run({ type: 'REORDER', ids, dir: 'backward' })}>ひとつ背面へ (Ctrl+[)</button>
+          )}
+          {singleShape && (
+            <>
+              <div className="context-label">文字揃え</div>
+              <div className="direction-row">
+                {TEXT_ALIGNS.map(([textAlign, icon, title]) => (
+                  <button
+                    key={textAlign}
+                    className={`direction-swatch${(singleShape.textAlign ?? 'center') === textAlign ? ' active' : ''}`}
+                    title={title}
+                    onClick={() => run({ type: 'SET_TEXT_ALIGN', ids: [singleShape.id], textAlign })}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
           <div className="context-sep" />
           {ids.length >= 2 && !isFullGroup && (

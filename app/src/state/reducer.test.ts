@@ -1814,3 +1814,21 @@ describe('OPTIMIZE_IMAGES', () => {
     expect(st.doc.shapes).toEqual(before.shapes);
   });
 });
+
+describe('SET_TEXT_ALIGN', () => {
+  it('sets a shape alignment and stores center as the backwards-compatible default', () => {
+    let state = vimState({ shapes: [rect('s1', 0, 0)], connectors: [] });
+    state = reduce(state, { type: 'SET_TEXT_ALIGN', ids: ['s1'], textAlign: 'right' });
+    expect(state.doc.shapes[0].textAlign).toBe('right');
+    state = reduce(state, { type: 'SET_TEXT_ALIGN', ids: ['s1'], textAlign: 'center' });
+    expect(state.doc.shapes[0].textAlign).toBeUndefined();
+  });
+
+  it('applies to shapes only when a mixed selection includes connectors', () => {
+    const connector: Connector = { id: 'c1', from: { x: 0, y: 0 }, to: { x: 100, y: 100 }, label: '' };
+    let state = vimState({ shapes: [rect('s1', 0, 0)], connectors: [connector] });
+    state = reduce(state, { type: 'SET_TEXT_ALIGN', ids: ['s1', 'c1'], textAlign: 'left' });
+    expect(state.doc.shapes[0].textAlign).toBe('left');
+    expect(state.doc.connectors[0]).toEqual(connector);
+  });
+});

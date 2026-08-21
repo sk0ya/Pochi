@@ -2,10 +2,8 @@ import {
   connectorLabelPos,
   connectorPath,
   docBounds,
-  FRAME_LABEL_PAD_X,
   freedrawPathD,
-  FRAME_LABEL_PAD_Y,
-  labelCenter,
+  shapeLabelPosition,
   shapeLabelLines,
   triangleVertices,
 } from './doc';
@@ -95,18 +93,8 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     const dashAttr = s.dashed ? ' stroke-dasharray="6 4"' : '';
     const body = `${tint}<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="8" fill="none" stroke="${stroke}" stroke-width="${STROKE_WIDTH_BASE[s.strokeWidth ?? 'm']}"${dashAttr}/>`;
     const labelColor = s.color ?? t.frameStroke;
-    return (
-      body +
-      labelSvg(
-        shapeLabelLines(s),
-        s.x + FRAME_LABEL_PAD_X,
-        s.y + FRAME_LABEL_PAD_Y,
-        labelColor,
-        s.fontSize,
-        'start',
-        'hanging',
-      )
-    );
+    const labelPos = shapeLabelPosition(s);
+    return body + labelSvg(shapeLabelLines(s), labelPos.x, labelPos.y, labelColor, s.fontSize, labelPos.anchor, 'hanging');
   }
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
@@ -137,9 +125,9 @@ function shapeSvg(s: Shape, t: ThemeColors): string {
     : s.kind === 'text'
       ? s.color ?? t.text
       : t.text;
-  const labelPos = labelCenter(s);
+  const labelPos = shapeLabelPosition(s);
   // Same wrapped lines the canvas draws, so an export is what was on screen.
-  return body + labelSvg(shapeLabelLines(s), labelPos.x, labelPos.y, labelColor, s.fontSize);
+  return body + labelSvg(shapeLabelLines(s), labelPos.x, labelPos.y, labelColor, s.fontSize, labelPos.anchor);
 }
 
 function markerDef(id: string, hex: string): string {

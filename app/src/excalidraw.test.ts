@@ -31,7 +31,7 @@ describe('docToExcalidraw / excalidrawToDoc', () => {
         id: 's6', kind: 'freedraw', x: 0, y: 300, w: 100, h: 100, label: '',
         points: [0, 0, 1000, 0, 1000, 1000],
       },
-      { id: 's7', kind: 'frame', x: 400, y: 300, w: 200, h: 150, label: 'container' },
+      { id: 's7', kind: 'frame', x: 400, y: 300, w: 200, h: 150, label: 'container', textAlign: 'right' },
       {
         id: 's8', kind: 'image', x: 620, y: 300, w: 100, h: 100, label: '',
         src: 'data:image/png;base64,AAAA',

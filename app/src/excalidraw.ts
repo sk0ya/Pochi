@@ -57,6 +57,7 @@ import type {
   Pt,
   Shape,
   StrokeWidthLevel,
+  TextAlign,
   TriangleDirection,
 } from './model/types';
 
@@ -70,6 +71,12 @@ const FONT_FAMILY_HELVETICA = 2;
  * value round-trips back to "no explicit color" (theme default) rather than a literal. */
 const DEFAULT_STROKE = '#1e1e1e';
 const SOURCE_URL = 'https://github.com/sk0ya/Pochi';
+
+/** Reads an alignment stored in Excalidraw/customData and omits the model's default value. */
+function textAlignFrom(value: unknown, defaultAlign: TextAlign): TextAlign | undefined {
+  if (value !== 'left' && value !== 'center' && value !== 'right') return undefined;
+  return value === defaultAlign ? undefined : value;
+}
 
 const ALL_TRIANGLE_DIRECTIONS: TriangleDirection[] = [
   'up', 'down', 'left', 'right', 'up-left', 'up-right', 'down-left', 'down-right',
@@ -234,6 +241,7 @@ function labelTextElement(
   center: Pt,
   label: string,
   fontSize: FontSize | undefined,
+  textAlign: TextAlign | undefined,
   color: string,
 ): ExcalidrawElement {
   const px = FONT_SIZE_PX[fontSize ?? 'm'];
@@ -247,7 +255,7 @@ function labelTextElement(
     text: label,
     fontSize: px,
     fontFamily: FONT_FAMILY_HELVETICA,
-    textAlign: 'center',
+    textAlign: textAlign ?? 'center',
     verticalAlign: 'middle',
     lineHeight: 1.25,
     containerId,
@@ -296,7 +304,13 @@ function shapeToElements(
       el = { ...base, type: 'diamond' };
       break;
     case 'frame':
-      el = { ...base, type: 'frame', name: s.label || null, boundElements: null };
+      el = {
+        ...base,
+        type: 'frame',
+        name: s.label || null,
+        boundElements: null,
+        customData: s.textAlign ? { pochiTextAlign: s.textAlign } : undefined,
+      };
       break;
     case 'image': {
       const fileId = `${s.id}#img`;
@@ -338,7 +352,7 @@ function shapeToElements(
         text: s.label,
         fontSize: px,
         fontFamily: FONT_FAMILY_HELVETICA,
-        textAlign: 'center',
+        textAlign: s.textAlign ?? 'center',
         verticalAlign: 'middle',
         lineHeight: 1.25,
         containerId: null,
@@ -357,6 +371,7 @@ function shapeToElements(
         labelCenter(s),
         s.label,
         s.fontSize,
+        s.textAlign,
         labelColorFor(s),
       ),
     );
@@ -405,7 +420,7 @@ function connectorToElements(doc: Doc, c: Connector): ExcalidrawElement[] {
   const elements = [arrow];
   if (hasLabel) {
     elements.push(
-      labelTextElement(labelId, c.id, connectorLabelPos(doc, c), c.label, c.fontSize, c.color ?? DEFAULT_STROKE),
+      labelTextElement(labelId, c.id, connectorLabelPos(doc, c), c.label, c.fontSize, undefined, c.color ?? DEFAULT_STROKE),
     );
   }
   return elements;
@@ -551,16 +566,17 @@ function elementToShape(
   const h = Math.max(1, Math.round(el.height));
   const label = typeof boundText?.text === 'string' ? boundText.text : '';
   const fontSize = boundText ? bucketFontSize(boundText.fontSize) : undefined;
+  const textAlign = textAlignFrom(boundText?.textAlign, 'center');
   const groupId = firstGroupId(el.groupIds);
   const { color, filled } = colorAndFillOf(el);
 
   switch (el.type) {
     case 'rectangle':
-      return { id, kind: 'rect', x, y, w, h, label, color, filled, fontSize, groupId };
+      return { id, kind: 'rect', x, y, w, h, label, color, filled, fontSize, textAlign, groupId };
     case 'ellipse':
-      return { id, kind: 'ellipse', x, y, w, h, label, color, filled, fontSize, groupId };
+      return { id, kind: 'ellipse', x, y, w, h, label, color, filled, fontSize, textAlign, groupId };
     case 'diamond':
-      return { id, kind: 'diamond', x, y, w, h, label, color, filled, fontSize, groupId };
+      return { id, kind: 'diamond', x, y, w, h, label, color, filled, fontSize, textAlign, groupId };
     case 'frame':
       return {
         id,
@@ -572,23 +588,24 @@ function elementToShape(
         label: typeof el.name === 'string' ? el.name : '',
         color,
         filled,
+        textAlign: textAlignFrom(el.customData?.pochiTextAlign, 'left'),
         groupId,
       };
     case 'image': {
       const fileId = typeof el.fileId === 'string' ? el.fileId : undefined;
       const dataUrl = fileId ? files[fileId]?.dataURL : undefined;
       if (typeof dataUrl !== 'string') return null; // no embedded pixels to import - drop rather than make a blank image
-      return { id, kind: 'image', x, y, w, h, label, color, src: dataUrl, groupId };
+      return { id, kind: 'image', x, y, w, h, label, color, src: dataUrl, textAlign, groupId };
     }
     case 'freedraw': {
       const stroke = strokeToFreedraw(pointsToAbsolute(el));
       if (!stroke) return null;
-      return { id, kind: 'freedraw', ...stroke, label, color, groupId };
+      return { id, kind: 'freedraw', ...stroke, label, color, textAlign, groupId };
     }
     case 'line': {
       const direction = triangleDirectionOf(el);
       if (!direction) return null; // not a closed 3-point polygon we can read as a triangle
-      return { id, kind: 'triangle', x, y, w, h, label, color, filled, fontSize, groupId, direction };
+      return { id, kind: 'triangle', x, y, w, h, label, color, filled, fontSize, textAlign, groupId, direction };
     }
     default:
       return null; // unsupported Excalidraw element kind (embeddable, iframe, magicframe, selection...)
@@ -689,6 +706,7 @@ export function excalidrawToDoc(raw: unknown): Doc | null {
           label: typeof e.text === 'string' ? e.text : '',
           color: e.strokeColor === 'transparent' ? color : strokeColorToPochi(e.strokeColor),
           fontSize: bucketFontSize(e.fontSize),
+          textAlign: e.textAlign && e.textAlign !== 'center' ? e.textAlign : undefined,
           groupId: firstGroupId(e.groupIds),
         });
         continue;

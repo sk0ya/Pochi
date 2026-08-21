@@ -14,6 +14,7 @@ import {
   LINE_STYLES,
   LOOP_SIDES,
   SHAPE_KINDS,
+  TEXT_ALIGNS,
   TRIANGLE_DIRECTIONS,
 } from './ContextMenu';
 
@@ -161,6 +162,7 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
   const canChangeShape = !!singleShape && singleShape.kind !== 'image';
   const canEditText = !!single;
   const currentFontSize = singleShape?.fontSize ?? singleConnector?.fontSize ?? 'm';
+  const currentTextAlign = singleShape?.textAlign ?? 'center';
   const currentStrokeWidth = singleShape?.strokeWidth ?? singleConnector?.strokeWidth ?? 'm';
   const hasStrokeableTarget = shapes.some((s) => STROKEABLE_KINDS.has(s.kind)) || connectors.length > 0;
 
@@ -432,6 +434,24 @@ export function PropertiesSidebar({ state, dispatch }: { state: EditorState; dis
             onLiveChange={(label) => run({ type: 'SET_LABEL', id: single!.id, label })}
             onFinalize={() => run({ type: 'COMMIT_LABEL', id: single!.id })}
           />
+        </>
+      )}
+
+      {singleShape && (
+        <>
+          <div className="context-label">文字揃え</div>
+          <div className="direction-row">
+            {TEXT_ALIGNS.map(([textAlign, icon, title]) => (
+              <button
+                key={textAlign}
+                className={`direction-swatch${currentTextAlign === textAlign ? ' active' : ''}`}
+                title={title}
+                onClick={() => run({ type: 'SET_TEXT_ALIGN', ids: shapes.map((s) => s.id), textAlign })}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
         </>
       )}
 

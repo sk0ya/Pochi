@@ -1,5 +1,5 @@
 import { FONT_LINE_H, FONT_SIZE_PX, FREEDRAW_RES, GRID, snapUp } from './types';
-import type { Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, TriangleDirection } from './types';
+import type { Connector, Doc, Endpoint, FontSize, LoopSide, Pt, Shape, TextAlign, TriangleDirection } from './types';
 
 /** The 3 vertices of a triangle for a given bbox + apex direction. Cardinal
  * directions put the apex at an edge midpoint (isosceles); diagonal directions
@@ -46,6 +46,33 @@ export function labelCenter(s: { x: number; y: number; w: number; h: number; kin
     return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
   }
   return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+}
+
+/** Horizontal anchor for a shape label. The left/right anchors use the same padded,
+ * axis-aligned room that wrapping uses, while the vertical position remains the shape's
+ * visual label center (notably the centroid for triangles). */
+export function shapeLabelPosition(s: Shape): Pt & { anchor: 'start' | 'middle' | 'end' } {
+  const center = labelCenter(s);
+  // Frames have always placed their title at the top-left. Keep that default distinct from
+  // ordinary shape labels, whose historical default is centered.
+  const align: TextAlign = s.textAlign ?? (s.kind === 'frame' ? 'left' : 'center');
+  if (s.kind === 'frame') {
+    const left = s.x + FRAME_LABEL_PAD_X;
+    const right = s.x + s.w - FRAME_LABEL_PAD_X;
+    return {
+      x: align === 'left' ? left : align === 'right' ? right : (left + right) / 2,
+      y: s.y + FRAME_LABEL_PAD_Y,
+      anchor: align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle',
+    };
+  }
+  const inner = inscribedBox(s);
+  const left = inner.x + LABEL_PAD_X;
+  const right = inner.x + inner.w - LABEL_PAD_X;
+  return {
+    x: align === 'left' ? left : align === 'right' ? right : center.x,
+    y: center.y,
+    anchor: align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle',
+  };
 }
 
 /** Largest axis-aligned rectangle that fits inside the shape's own outline,

@@ -14,6 +14,9 @@ export const FREEDRAW_RES = 1000;
 /** Label font size: 's' / 'm' / 'l'; undefined = 'm' (the original, pre-feature default). */
 export type FontSize = 's' | 'm' | 'l';
 
+/** Horizontal alignment of a shape label; undefined = 'center' (the original default). */
+export type TextAlign = 'left' | 'center' | 'right';
+
 /** Label font-size in px per level. 'm' (14) matches the size Pochi always rendered
  * labels at before this option existed, so undefined/'m' looks identical to before. */
 export const FONT_SIZE_PX: Record<FontSize, number> = { s: 11, m: 14, l: 21 };
@@ -67,6 +70,8 @@ export interface Shape {
   filled?: boolean;
   /** Label font size; undefined = 'm'. */
   fontSize?: FontSize;
+  /** Horizontal label alignment; undefined = 'center'. */
+  textAlign?: TextAlign;
   /** Stroke thickness; undefined = 'm'. Ignored when `filled` (no stroke is drawn). */
   strokeWidth?: StrokeWidthLevel;
   /** Dashed vs solid stroke; undefined = solid. Ignored when `filled`. */

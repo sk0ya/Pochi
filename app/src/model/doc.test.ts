@@ -24,6 +24,7 @@ import {
   scaleShapes,
   setConnectorElbowRatio,
   shapeAt,
+  shapeLabelPosition,
   SIDE_NORM,
   subsetDoc,
   toAnchor,
@@ -96,6 +97,23 @@ describe('labelCenter', () => {
     const centroid = labelCenter({ x: 0, y: 0, w: 100, h: 50, kind: 'triangle', direction: 'up' });
     expect(centroid).toEqual({ x: 50, y: 100 / 3 });
     expect(centroid).not.toEqual({ x: 50, y: 25 }); // the bbox center, for contrast
+  });
+});
+
+describe('shapeLabelPosition', () => {
+  const base: Shape = { id: 's', kind: 'rect', x: 0, y: 0, w: 160, h: 96, label: 'label' };
+
+  it('keeps the legacy centered position by default', () => {
+    expect(shapeLabelPosition(base)).toEqual({ x: 80, y: 48, anchor: 'middle' });
+  });
+
+  it('moves the text anchor to the padded shape edges', () => {
+    expect(shapeLabelPosition({ ...base, textAlign: 'left' })).toEqual({ x: 8, y: 48, anchor: 'start' });
+    expect(shapeLabelPosition({ ...base, textAlign: 'right' })).toEqual({ x: 152, y: 48, anchor: 'end' });
+  });
+
+  it('keeps frames left-aligned when textAlign is omitted', () => {
+    expect(shapeLabelPosition({ ...base, kind: 'frame' })).toEqual({ x: 10, y: 8, anchor: 'start' });
   });
 });
 

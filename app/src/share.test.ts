@@ -166,6 +166,16 @@ describe('encodeShareDoc / decodeShareDoc', () => {
       expect(d.connectors[0].to.shapeId).toBe(d.shapes[1].id);
     });
 
+    it('round-trips a non-default shape text alignment', () => {
+      const d = fromCompactDoc(
+        toCompactDoc({
+          shapes: [{ id: 's1', kind: 'rect', x: 0, y: 0, w: 100, h: 60, label: 'left', textAlign: 'left' }],
+          connectors: [],
+        }),
+      );
+      expect(d.shapes[0].textAlign).toBe('left');
+    });
+
     it('serializes to substantially fewer characters than the doc itself', () => {
       // The point of storing the autosave this way: it has to fit in localStorage's ~5MB
       // origin cap. Asserted loosely (>30%) so ordinary format tweaks don't fail the test.

@@ -89,6 +89,7 @@ export function TextEditOverlay({
         : // Everything else centres its label: grow around the centre, matching both how the
           // label renders and how the shape itself grows underneath.
           { x: inner.x + (inner.w - w) / 2, y: inner.y - (h - inner.h) / 2, w, h };
+    textAlign = shape.kind === 'frame' ? (shape.textAlign ?? 'left') : (shape.textAlign ?? 'center');
   } else {
     // connector label: small box on where the label renders, growing away from the
     // line on whichever side the label itself is anchored to (see connectorLabelPos)

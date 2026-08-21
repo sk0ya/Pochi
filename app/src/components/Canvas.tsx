@@ -10,18 +10,16 @@ import {
   findConnector,
   findShape,
   FRAME_BORDER_BAND,
-  FRAME_LABEL_PAD_X,
-  FRAME_LABEL_PAD_Y,
   FRAME_LABEL_ZONE_H,
   FRAME_LABEL_ZONE_W,
   frameBorderOrLabel,
   freedrawPathD,
   isSelfLoop,
-  labelCenter,
   resizeAnchor,
   resizeHandlePoint,
   resolveEndpoint,
   shapeAt,
+  shapeLabelPosition,
   shapeLabelLines,
   triangleVertices,
 } from '../model/doc';
@@ -58,7 +56,7 @@ function Label({
   cy: number;
   color?: string;
   fontSize?: FontSize;
-  anchor?: 'middle' | 'start';
+  anchor?: 'middle' | 'start' | 'end';
 }) {
   if (!lines.length || (lines.length === 1 && lines[0] === '')) return null;
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
@@ -89,12 +87,14 @@ function FrameLabel({
   y,
   color,
   fontSize,
+  anchor = 'start',
 }: {
   lines: string[];
   x: number;
   y: number;
   color?: string;
   fontSize?: FontSize;
+  anchor?: 'middle' | 'start' | 'end';
 }) {
   if (!lines.length || (lines.length === 1 && lines[0] === '')) return null;
   const lineH = FONT_LINE_H[fontSize ?? 'm'];
@@ -102,7 +102,7 @@ function FrameLabel({
     <text
       fill={color ?? 'var(--muted)'}
       fontSize={FONT_SIZE_PX[fontSize ?? 'm']}
-      textAnchor="start"
+      textAnchor={anchor}
       dominantBaseline="hanging"
       style={{ userSelect: 'none', pointerEvents: 'none' }}
     >
@@ -259,7 +259,7 @@ function ShapeView({
       };
   const cx = s.x + s.w / 2;
   const cy = s.y + s.h / 2;
-  const labelPos = labelCenter(s);
+  const labelPos = shapeLabelPosition(s);
   // Wrapped to the room the shape actually gives its text, so a label longer than its box
   // stacks up inside it instead of running out past the edges. Memoized on what the wrap
   // depends on (not, notably, x/y): this runs for every shape on every canvas render — hover,
@@ -409,10 +409,11 @@ function ShapeView({
       {s.kind === 'frame' ? (
         <FrameLabel
           lines={labelLines}
-          x={s.x + FRAME_LABEL_PAD_X}
-          y={s.y + FRAME_LABEL_PAD_Y}
+          x={labelPos.x}
+          y={labelPos.y}
           color={s.color}
           fontSize={s.fontSize}
+          anchor={labelPos.anchor}
         />
       ) : (
         <Label
@@ -427,6 +428,7 @@ function ShapeView({
                 : undefined
           }
           fontSize={s.fontSize}
+          anchor={labelPos.anchor}
         />
       )}
     </g>

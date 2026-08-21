@@ -17,7 +17,7 @@
  * a corrupted or truncated payload resolves `decodeShareDoc` to `null` so callers (startup
  * hash parsing in App.tsx) can fall back to the normal autosave restore instead of crashing.
  */
-import type { ArrowDirection, Connector, Doc, FontSize, IconAttribution, Pt, Shape, ShapeKind, TriangleDirection } from './model/types';
+import type { ArrowDirection, Connector, Doc, FontSize, IconAttribution, Pt, Shape, ShapeKind, TextAlign, TriangleDirection } from './model/types';
 
 /** Bytes -> base64url (RFC 4648 §5): '+'/'/' become '-'/'_', and padding is stripped
  * (both are illegal/unnecessary in a URL fragment). Pure/sync. */
@@ -141,6 +141,7 @@ type ShapeTuple = [
   string?,
   number[]?,
   IconAttribution?,
+  TextAlign?,
 ];
 
 function shapeToTuple(s: Shape): ShapeTuple {
@@ -160,6 +161,7 @@ function shapeToTuple(s: Shape): ShapeTuple {
     s.src,
     s.points,
     s.iconAttribution,
+    s.textAlign,
   ]) as ShapeTuple;
 }
 
@@ -167,7 +169,7 @@ function tupleToShape(t: unknown[]): Shape {
   // `?? undefined` throughout: an absent optional that sits BEFORE a present one
   // serializes as null inside the tuple (only the trailing run gets trimmed), and
   // null must not leak into the Doc, whose optionals are `T | undefined`.
-  const [kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src, points, iconAttribution] = t as ShapeTuple;
+  const [kind, x, y, w, h, label, id, color, direction, filled, fontSize, groupId, src, points, iconAttribution, textAlign] = t as ShapeTuple;
   return {
     kind,
     x,
@@ -184,6 +186,7 @@ function tupleToShape(t: unknown[]): Shape {
     src: src ?? undefined,
     points: points ?? undefined,
     iconAttribution: iconAttribution ?? undefined,
+    textAlign: textAlign ?? undefined,
   };
 }
 

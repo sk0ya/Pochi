@@ -45,7 +45,7 @@ import { classifyStroke, strokeToFreedraw } from '../model/sketch';
 import type { AlignEdge, DistributeAxis } from '../model/doc';
 import { findTemplate } from '../model/templates';
 import type { Template } from '../model/templates';
-import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, IconAttribution, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TriangleDirection } from '../model/types';
+import type { ArrowDirection, Connector, Doc, Endpoint, FontSize, IconAttribution, LoopSide, Pt, Shape, ShapeKind, StrokeWidthLevel, TextAlign, TriangleDirection } from '../model/types';
 import { GRID, emptyDoc, newId, snap, snapPt } from '../model/types';
 
 export type Mode = 'normal' | 'insert' | 'command' | 'draw' | 'move' | 'resize' | 'arrow' | 'hint' | 'search';
@@ -311,6 +311,7 @@ export type Action =
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_COLOR'; ids: string[]; color: string | null }
   | { type: 'SET_FONT_SIZE'; ids: string[]; fontSize: FontSize }
+  | { type: 'SET_TEXT_ALIGN'; ids: string[]; textAlign: TextAlign }
   | { type: 'SET_TRIANGLE_DIRECTION'; ids: string[]; direction: TriangleDirection }
   | { type: 'SET_FILLED'; ids: string[]; filled: boolean }
   | { type: 'SET_SHAPE_KIND'; ids: string[]; kind: ShapeKind }
@@ -2242,6 +2243,17 @@ function reduceCore(state: EditorState, action: Action): EditorState {
         connectors: state.doc.connectors.map((c) => (idSet.has(c.id) ? { ...c, fontSize } : c)),
       };
       return commit(state, doc, { msg: `font size: ${action.fontSize}` });
+    }
+
+    case 'SET_TEXT_ALIGN': {
+      const idSet = new Set(action.ids);
+      if (!idSet.size || !state.doc.shapes.some((s) => idSet.has(s.id))) return state;
+      const textAlign = action.textAlign === 'center' ? undefined : action.textAlign;
+      const doc: Doc = {
+        ...state.doc,
+        shapes: state.doc.shapes.map((s) => (idSet.has(s.id) ? { ...s, textAlign } : s)),
+      };
+      return commit(state, doc, { msg: `text align: ${action.textAlign}` });
     }
 
     case 'SET_TRIANGLE_DIRECTION': {
